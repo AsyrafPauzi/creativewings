@@ -1,0 +1,557 @@
+/* ==========================================================================
+   CREATIVE WINGS — CONTESTANT PORTAL STYLES
+   Notion/Figma Soft Aesthetic | Primary: #006599 | Accent: #FE6261
+   ========================================================================== */
+
+
+/* --------------------------------------------------------------------------
+   1. OVERVIEW (Dashboard Home)
+   -------------------------------------------------------------------------- */
+
+.cw-content-wrapper {
+    padding: 0 0 40px;
+}
+.cw-dash-header { margin-bottom: 26px; }
+
+/* 3-column stats container (2 stats + 1 upgrade CTA) */
+.cw-stats-container {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    margin-bottom: 28px;
+    align-items: stretch;
+}
+
+/* Stat box */
+.cw-stat-box-v2 {
+    background: var(--cw-surface);
+    border-radius: var(--cw-radius);
+    border: 1px solid var(--cw-border);
+    padding: 22px 24px;
+    box-shadow: var(--cw-shadow);
+    transition: all 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+.cw-stat-box-v2:hover {
+    box-shadow: var(--cw-shadow-md);
+    transform: translateY(-2px);
+}
+
+/* Icon circle inside stat box */
+.cw-stat-box-v2 .stat-icon {
+    width: 40px; height: 40px;
+    border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+}
+.cw-stat-box-v2 .stat-icon.blue   { background: var(--cw-primary-light); color: var(--cw-primary); }
+.cw-stat-box-v2 .stat-icon.coral  { background: var(--cw-accent-light);  color: var(--cw-accent); }
+.cw-stat-box-v2 .stat-icon.green  { background: var(--cw-success-light); color: var(--cw-success); }
+.cw-stat-box-v2 .stat-icon.yellow { background: var(--cw-warning-light); color: var(--cw-warning); }
+
+/* Legacy icon style (direct .fas child) */
+.cw-stat-box-v2 > i,
+.cw-stat-box-v2 i.stat-direct {
+    font-size: 22px;
+    color: var(--cw-primary);
+    margin-bottom: 10px;
+}
+.cw-stat-box-v2 h3 {
+    font-size: 30px;
+    font-weight: 800;
+    color: var(--cw-text);
+    margin: 0 0 3px;
+    line-height: 1;
+    letter-spacing: -0.5px;
+}
+.cw-stat-box-v2 span {
+    font-size: 13px;
+    color: var(--cw-text-soft);
+    font-weight: 500;
+}
+
+/* Upgrade CTA card (inside stats row) */
+.cw-upgrade-card-host {
+    background: linear-gradient(135deg, var(--cw-primary) 0%, #004f7a 100%);
+    color: #fff;
+    border-radius: var(--cw-radius);
+    padding: 22px 24px;
+    text-align: center;
+    box-shadow: 0 8px 20px rgba(0, 101, 153, 0.30);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+.cw-upgrade-card-host h4 {
+    font-size: 18px;
+    font-weight: 800;
+    margin: 0 0 6px;
+    letter-spacing: -0.3px;
+}
+.cw-upgrade-card-host p {
+    font-size: 13px;
+    margin-bottom: 16px;
+    opacity: 0.88;
+    line-height: 1.5;
+}
+.cw-upgrade-card-host .cw-btn-upgrade {
+    background: rgba(255,255,255,0.92);
+    color: var(--cw-primary);
+    padding: 9px 22px;
+    border-radius: var(--cw-radius-pill);
+    font-weight: 800;
+    font-size: 13px;
+    margin-top: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+.cw-upgrade-card-host .cw-btn-upgrade:hover {
+    background: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+
+/* --------------------------------------------------------------------------
+   2. RECENT SUBMISSIONS TABLE
+   -------------------------------------------------------------------------- */
+
+.cw-overview-table-card {
+    background: var(--cw-surface);
+    border: 1px solid var(--cw-border);
+    border-radius: var(--cw-radius);
+    box-shadow: var(--cw-shadow);
+    overflow: hidden;
+    margin-bottom: 24px;
+}
+.cw-overview-table-card .table-header {
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--cw-border);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--cw-text);
+}
+
+.cw-recent-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.cw-recent-table th,
+.cw-recent-table td {
+    padding: 13px 22px;
+    text-align: left;
+    font-size: 13px;
+}
+.cw-recent-table th {
+    font-weight: 700;
+    color: var(--cw-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--cw-bg);
+    border-bottom: 1px solid var(--cw-border);
+    font-size: 11px;
+}
+.cw-recent-table td {
+    color: var(--cw-text);
+    font-weight: 500;
+    border-bottom: 1px solid #f8fafc;
+}
+.cw-recent-table tr:last-child td { border-bottom: none; }
+.cw-recent-table tr:hover td { background: #fbfcfe; }
+
+/* Status chips */
+.cw-status-badge {
+    padding: 4px 11px;
+    border-radius: var(--cw-radius-pill);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    display: inline-block;
+}
+.cw-status-completed { background: var(--cw-success-light); color: #14532d; }
+.cw-status-registered { background: var(--cw-primary-light); color: var(--cw-primary); }
+.cw-status-pending    { background: var(--cw-warning-light); color: #78350f; }
+
+
+/* --------------------------------------------------------------------------
+   3. MY ACTIVITIES CARD GRID
+   -------------------------------------------------------------------------- */
+
+.cw-activities-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 22px;
+    margin-top: 20px;
+}
+
+/* Activity card */
+.cw-activity-card {
+    background: var(--cw-surface);
+    border-radius: var(--cw-radius);
+    border: 1px solid var(--cw-border);
+    overflow: hidden;
+    box-shadow: var(--cw-shadow);
+    transition: all 0.26s ease;
+    display: flex;
+    flex-direction: column;
+}
+.cw-activity-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--cw-shadow-md);
+}
+
+/* Image */
+.cw-activity-image-wrap { position: relative; overflow: hidden; }
+.cw-activity-card img {
+    width: 100%; height: 175px; object-fit: cover;
+    transition: transform 0.5s ease;
+    display: block;
+}
+.cw-activity-card:hover img { transform: scale(1.04); }
+
+/* Type badge on image */
+.cw-activity-type-badge {
+    position: absolute;
+    top: 10px; left: 10px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #fff;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(4px);
+}
+.cw-activity-type-badge.competition { background: var(--cw-primary); }
+.cw-activity-type-badge.activity    { background: var(--cw-accent); }
+.cw-activity-type-badge.seminar     { background: #7c3aed; }
+
+/* Card body */
+.cw-activity-info {
+    padding: 16px 18px;
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+.cw-activity-info h4 {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0 0 8px;
+    color: var(--cw-text);
+    line-height: 1.3;
+}
+.cw-activity-meta {
+    font-size: 13px;
+    color: var(--cw-text-soft);
+    margin-bottom: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+}
+.cw-activity-meta i {
+    margin-right: 4px;
+    color: var(--cw-primary);
+}
+
+/* Details button */
+.cw-activity-card .cw-btn-details {
+    width: 100%;
+    padding: 10px 0;
+    border-radius: var(--cw-radius-sm);
+    background: var(--cw-bg);
+    color: var(--cw-text-soft);
+    font-weight: 700;
+    font-size: 13px;
+    text-decoration: none;
+    display: block;
+    text-align: center;
+    transition: all 0.2s;
+    border: 1.5px solid var(--cw-border);
+    cursor: pointer;
+    font-family: inherit;
+    margin-top: auto;
+}
+.cw-activity-card .cw-btn-details:hover {
+    background: var(--cw-primary-light);
+    color: var(--cw-primary);
+    border-color: var(--cw-primary);
+}
+
+
+/* --------------------------------------------------------------------------
+   4. UPGRADE TAB (Role Cards)
+   -------------------------------------------------------------------------- */
+
+.cw-upgrade-cards-v2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    margin-top: 28px;
+}
+
+/* Base card */
+.cw-role-upgrade-card {
+    padding: 36px 28px;
+    border-radius: 18px;
+    border: 1.5px solid var(--cw-border);
+    text-align: center;
+    background: var(--cw-surface);
+    box-shadow: var(--cw-shadow);
+    transition: all 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.cw-role-upgrade-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--cw-shadow-md);
+}
+
+/* Creator card — primary blue gradient accent */
+.cw-role-upgrade-card.creator {
+    border-color: rgba(0, 101, 153, 0.25);
+    background: linear-gradient(160deg, var(--cw-surface) 60%, #e9f5fc 100%);
+}
+/* Business card — dark slate */
+.cw-role-upgrade-card.business {
+    border-color: #c8d2da;
+    background: linear-gradient(160deg, var(--cw-surface) 60%, #f1f5f9 100%);
+}
+
+/* Role icon badge */
+.cw-role-upgrade-card .role-icon {
+    width: 56px; height: 56px;
+    border-radius: 16px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+    margin-bottom: 16px;
+    flex-shrink: 0;
+}
+.cw-role-upgrade-card.creator .role-icon { background: var(--cw-primary-light); color: var(--cw-primary); }
+.cw-role-upgrade-card.business .role-icon { background: #f1f5f9; color: #1e293b; }
+
+.cw-role-upgrade-card h3 {
+    font-size: 22px;
+    font-weight: 800;
+    margin: 0 0 10px;
+    color: var(--cw-text);
+    letter-spacing: -0.3px;
+}
+.cw-role-upgrade-card > p {
+    font-size: 14px;
+    color: var(--cw-text-soft);
+    line-height: 1.55;
+    margin-bottom: 20px;
+}
+
+/* Feature list */
+.cw-role-upgrade-card .cw-feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 0 0;
+    width: 100%;
+    text-align: left;
+}
+.cw-role-upgrade-card .cw-feature-list li {
+    margin-bottom: 10px;
+    color: var(--cw-text-soft);
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    font-size: 14px;
+    line-height: 1.4;
+}
+.cw-role-upgrade-card .cw-feature-list li i {
+    color: var(--cw-success);
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+/* Upgrade button */
+.cw-role-upgrade-card button {
+    width: 100%;
+    padding: 13px 20px;
+    border-radius: var(--cw-radius-pill);
+    font-size: 15px;
+    font-weight: 800;
+    border: none;
+    margin-top: 24px;
+    transition: all 0.22s;
+    cursor: pointer;
+    font-family: inherit;
+    letter-spacing: -0.2px;
+}
+.cw-role-upgrade-card .btn-creator-v2 {
+    background: var(--cw-primary);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(0, 101, 153, 0.28);
+}
+.cw-role-upgrade-card .btn-creator-v2:hover {
+    background: var(--cw-primary-hover);
+    transform: translateY(-2px);
+}
+.cw-role-upgrade-card .btn-business-v2 {
+    background: #1e293b;
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(30, 41, 59, 0.22);
+}
+.cw-role-upgrade-card .btn-business-v2:hover {
+    background: #0f172a;
+    transform: translateY(-2px);
+}
+
+
+/* --------------------------------------------------------------------------
+   5. SETTINGS TAB
+   -------------------------------------------------------------------------- */
+
+.cw-settings-card {
+    background: var(--cw-surface);
+    border-radius: 18px;
+    border: 1px solid var(--cw-border);
+    box-shadow: var(--cw-shadow-md);
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 36px;
+}
+.cw-settings-card h3 {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--cw-text);
+    margin: 0 0 24px;
+    letter-spacing: -0.3px;
+}
+.cw-settings-name-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+/* Settings inputs */
+.cw-settings-field { margin-bottom: 20px; }
+.cw-settings-field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cw-text);
+    margin-bottom: 7px;
+}
+.cw-settings-field input,
+.cw-settings-field select,
+.cw-settings-field textarea {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1.5px solid var(--cw-border);
+    border-radius: var(--cw-radius-sm);
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--cw-text);
+    background: var(--cw-surface);
+    box-sizing: border-box;
+    transition: all 0.2s;
+}
+.cw-settings-field input:focus,
+.cw-settings-field select:focus,
+.cw-settings-field textarea:focus {
+    border-color: var(--cw-primary);
+    box-shadow: 0 0 0 3px rgba(0, 101, 153, 0.12);
+    outline: none;
+}
+
+/* Divider inside settings */
+.cw-settings-divider {
+    border: none;
+    border-top: 1px solid var(--cw-border);
+    margin: 24px 0;
+}
+
+/* Save button */
+.cw-settings-save-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+}
+
+
+/* --------------------------------------------------------------------------
+   6. PAGINATION (shared component — also used on activity grid)
+   -------------------------------------------------------------------------- */
+.cw-status-badge.completed { background: var(--cw-success-light); color: #14532d; }
+
+.cw-pagination-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 36px;
+    flex-wrap: wrap;
+}
+.cw-page-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 38px; height: 38px;
+    padding: 0 10px;
+    border-radius: 10px;
+    border: 1.5px solid var(--cw-border);
+    background: var(--cw-surface);
+    color: var(--cw-text-soft);
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.18s;
+    cursor: pointer;
+    line-height: 1;
+}
+.cw-page-btn:hover {
+    border-color: var(--cw-primary);
+    color: var(--cw-primary);
+    background: var(--cw-primary-light);
+}
+.cw-page-btn.active {
+    background: var(--cw-primary);
+    border-color: var(--cw-primary);
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(0, 101, 153, 0.28);
+}
+.cw-page-btn.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.cw-page-ellipsis {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px; height: 38px;
+    color: var(--cw-muted);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+
+/* --------------------------------------------------------------------------
+   7. RESPONSIVE
+   -------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+    .cw-stats-container { grid-template-columns: 1fr 1fr; }
+    .cw-upgrade-cards-v2 { grid-template-columns: 1fr; }
+    .cw-settings-card { padding: 24px; }
+}
+@media (max-width: 600px) {
+    .cw-stats-container { grid-template-columns: 1fr; }
+    .cw-activities-grid { grid-template-columns: 1fr; }
+    .cw-settings-name-grid { grid-template-columns: 1fr; }
+}

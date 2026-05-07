@@ -1,0 +1,728 @@
+/* ==========================================================================
+   CREATIVE WINGS — CAMPAIGN WIZARD STYLES
+   Split-panel layout: sidebar stepper + scrollable content area
+   Palette: Primary #006599 | Accent #FE6261
+   ========================================================================== */
+
+/* ==========================================================================
+   WIZARD SHELL
+   ========================================================================== */
+
+.cww-shell {
+    display: flex;
+    flex-direction: column;
+    width: 96vw;
+    max-width: 1160px;
+    max-height: 92vh;
+    background: var(--cw-surface);
+    border-radius: 20px;
+    box-shadow: 0 30px 80px rgba(15,23,42,.28);
+    overflow: hidden;
+}
+
+/* Branded header bar */
+.cww-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 28px;
+    background: var(--cw-primary);
+    flex-shrink: 0;
+}
+.cww-header-left { display: flex; align-items: center; gap: 12px; }
+.cww-header-icon {
+    width: 38px; height: 38px;
+    background: rgba(255,255,255,.18);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; color: #fff;
+}
+.cww-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+}
+.cww-header p {
+    margin: 0;
+    font-size: 12px;
+    color: rgba(255,255,255,.7);
+}
+.cww-close-btn {
+    width: 32px; height: 32px;
+    background: rgba(255,255,255,.18);
+    border: none; border-radius: 50%;
+    color: #fff; font-size: 14px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s;
+    padding: 0; box-sizing: border-box;
+}
+.cww-close-btn:hover { background: rgba(255,255,255,.32); }
+
+/* Body: sidebar + content */
+.cww-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ==========================================================================
+   SIDEBAR STEPPER
+   ========================================================================== */
+
+.cww-sidebar {
+    width: 210px;
+    flex-shrink: 0;
+    background: var(--cw-bg);
+    border-right: 1px solid var(--cw-border);
+    padding: 28px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+}
+
+.cww-step-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 8px;
+    border-radius: 10px;
+    cursor: default;
+    transition: background .15s;
+}
+.cww-step-item.clickable { cursor: pointer; }
+.cww-step-item.clickable:hover { background: var(--cw-primary-light); }
+
+/* Circle number */
+.cww-step-num {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--cw-border);
+    color: var(--cw-muted);
+    font-size: 12px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: all .2s;
+}
+.cww-step-item.active .cww-step-num {
+    background: var(--cw-primary);
+    color: #fff;
+    box-shadow: 0 3px 8px rgba(0,101,153,.3);
+}
+.cww-step-item.done .cww-step-num {
+    background: #16a34a;
+    color: #fff;
+}
+
+/* Step label */
+.cww-step-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.cww-step-label strong {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--cw-text-soft);
+    line-height: 1.3;
+    transition: color .15s;
+}
+.cww-step-item.active .cww-step-label strong { color: var(--cw-primary); }
+.cww-step-item.done .cww-step-label strong { color: #16a34a; }
+.cww-step-label span {
+    font-size: 11px;
+    color: var(--cw-muted);
+}
+
+/* Connector line between steps */
+.cww-step-connector {
+    width: 1px;
+    height: 16px;
+    background: var(--cw-border);
+    margin: 0 0 0 22px;
+}
+.cww-step-connector.done { background: #16a34a; }
+
+/* ==========================================================================
+   CONTENT AREA
+   ========================================================================== */
+
+.cww-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.cww-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px 32px;
+}
+
+/* Step panels */
+.cw-wizard-step { display: none; }
+.cw-wizard-step.active { display: block; }
+
+.cw-step-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--cw-text);
+    margin: 0 0 6px;
+}
+.cw-step-subtitle {
+    font-size: 13px;
+    color: var(--cw-text-soft);
+    margin: 0 0 24px;
+}
+.cw-mini-head {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--cw-text-soft);
+    margin: 24px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--cw-border);
+}
+
+/* Footer */
+.cww-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 32px;
+    border-top: 1px solid var(--cw-border);
+    background: var(--cw-surface);
+    flex-shrink: 0;
+}
+.cww-footer-step-info {
+    font-size: 12px;
+    color: var(--cw-muted);
+    font-weight: 600;
+}
+
+/* Navigation buttons */
+.cw-btn-nav {
+    padding: 11px 22px;
+    border-radius: var(--cw-radius-sm);
+    font-size: 14px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    transition: all .2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+.cw-btn-nav.back {
+    background: var(--cw-bg);
+    color: var(--cw-text-soft);
+    border: 1.5px solid var(--cw-border);
+}
+.cw-btn-nav.back:hover { background: var(--cw-border); }
+.cw-btn-nav.back:disabled,
+.cw-btn-nav.back[disabled] {
+    background: var(--cw-bg) !important;
+    color: var(--cw-muted) !important;
+    border-color: var(--cw-border) !important;
+    opacity: 1 !important;
+    cursor: not-allowed;
+}
+.cw-btn-nav.next {
+    background: var(--cw-primary);
+    color: #fff;
+    box-shadow: 0 3px 8px rgba(0,101,153,.22);
+}
+.cw-btn-nav.next:hover { background: var(--cw-primary-hover); }
+.cw-btn-nav.submit {
+    background: var(--cw-accent);
+    color: #fff;
+    box-shadow: 0 3px 8px rgba(254,98,97,.25);
+}
+.cw-btn-nav.submit:hover { opacity: .9; }
+.cw-btn-nav:disabled { opacity: .55; cursor: not-allowed; }
+
+/* ==========================================================================
+   FORM FIELD COMPONENTS
+   ========================================================================== */
+
+.cw-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.cw-field label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    color: var(--cw-text-soft);
+}
+.cw-field.full { grid-column: 1 / -1; }
+
+.cw-input-dark,
+.cw-input-dark-lg,
+select.cw-input-dark {
+    width: 100%;
+    background: var(--cw-surface);
+    border: 1.5px solid var(--cw-border);
+    color: var(--cw-text);
+    padding: 11px 14px;
+    border-radius: var(--cw-radius-sm);
+    font-size: 14px;
+    font-family: inherit;
+    box-sizing: border-box;
+    transition: all .2s;
+}
+.cw-input-dark:focus,
+.cw-input-dark-lg:focus { border-color: var(--cw-primary); box-shadow: 0 0 0 3px rgba(0,101,153,.1); outline: none; }
+
+.cw-form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+
+/* Event mode radios */
+.cw-event-mode-radios { display: flex; gap: 16px; align-items: center; margin-bottom: 14px; }
+.cw-radio-option { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; color: var(--cw-text); cursor: pointer; }
+.cw-radio-option input[type=radio] { accent-color: var(--cw-primary); width: 16px; height: 16px; cursor: pointer; }
+
+/* Location wrap */
+.cw-location-input-wrap {
+    display: flex; align-items: center;
+    background: var(--cw-surface);
+    border: 1.5px solid var(--cw-border);
+    border-radius: var(--cw-radius-sm);
+    overflow: hidden;
+    transition: border-color .2s;
+    margin-bottom: 16px;
+}
+.cw-location-input-wrap:focus-within { border-color: var(--cw-primary); }
+.cw-location-input-wrap i { padding: 12px 14px; background: var(--cw-bg); color: var(--cw-text-soft); font-size: 15px; flex-shrink: 0; }
+.cw-location-input-wrap input { border: none; background: transparent; color: var(--cw-text); padding: 12px; font-size: 14px; font-family: inherit; outline: none; flex-grow: 1; }
+
+/* Date grid */
+.cw-date-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px; }
+
+/* Banner upload */
+.cw-upload-box {
+    border: 2px dashed var(--cw-border);
+    border-radius: var(--cw-radius-sm);
+    padding: 20px;
+    text-align: center;
+    color: var(--cw-text-soft);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all .2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+.cw-upload-box:hover { border-color: var(--cw-primary); color: var(--cw-primary); background: var(--cw-primary-light); }
+.cwb-banner-preview { width: 100%; max-height: 180px; object-fit: cover; border-radius: 10px; margin-top: 10px; border: 1.5px solid var(--cw-border); }
+
+/* Rich text area */
+.cw-field-rich-text .wp-editor-container { border: 1.5px solid var(--cw-border) !important; border-radius: var(--cw-radius-sm) !important; overflow: hidden; }
+
+/* ==========================================================================
+   STEP 1 — CATEGORY TILES
+   ========================================================================== */
+
+.cw-step-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start; }
+.cw-cat-selection { display: flex; flex-direction: column; gap: 10px; }
+
+.cw-cat-card {
+    background: var(--cw-surface);
+    border: 1.5px solid var(--cw-border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    cursor: pointer;
+    transition: all .2s;
+}
+.cw-cat-card:hover { border-color: var(--cw-primary); background: var(--cw-primary-light); }
+.cw-cat-card.selected {
+    border-color: var(--cw-primary);
+    background: var(--cw-primary-light);
+    box-shadow: 0 0 0 1.5px var(--cw-primary);
+}
+.cw-cat-icon {
+    width: 38px; height: 38px;
+    background: var(--cw-bg);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--cw-text-soft); font-size: 17px; flex-shrink: 0;
+    transition: all .2s;
+}
+.cw-cat-card.selected .cw-cat-icon { background: var(--cw-primary); color: #fff; }
+.cw-cat-card span { font-weight: 600; color: var(--cw-text); font-size: 14px; }
+.cw-sub-selection select { width: 100%; padding: 12px 14px; font-size: 14px; border-radius: 10px; border: 1.5px solid var(--cw-border); font-family: inherit; color: var(--cw-text); background: var(--cw-surface); }
+.cw-sub-selection select:focus { border-color: var(--cw-primary); outline: none; }
+
+/* ==========================================================================
+   STEP 3 — TOGGLE CARDS
+   ========================================================================== */
+
+.cw-config-card {
+    background: var(--cw-bg);
+    border: 1.5px solid var(--cw-border);
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+}
+.cw-toggle-box {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--cw-border);
+    gap: 16px;
+}
+.cw-toggle-box:last-child { border-bottom: none; padding-bottom: 0; }
+.cw-toggle-box label { font-size: 14px; font-weight: 600; color: var(--cw-text); cursor: pointer; }
+.cw-toggle-box small { display: block; font-size: 12px; color: var(--cw-text-soft); font-weight: 400; margin-top: 2px; }
+.cw-toggle-box input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--cw-primary); cursor: pointer; flex-shrink: 0; }
+
+/* ==========================================================================
+   STEP 4 — SDG GRID
+   ========================================================================== */
+
+.cw-sdg-grid-container {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    background: var(--cw-bg);
+    padding: 14px;
+    border-radius: var(--cw-radius-sm);
+}
+.cw-sdg-btn {
+    position: relative;
+    background: #c2c2c2;
+    border: 2px solid transparent;
+    padding: 0;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-end;
+    min-height: 102px;
+    line-height: 1.2;
+    color: #fff;
+    overflow: hidden;
+    transition: all .2s;
+    cursor: pointer;
+}
+/* Goal number: small badge top-left only — never overlaps the title */
+.cw-sdg-btn .sdg-num {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    z-index: 3;
+    min-width: 1.35em;
+    padding: 2px 5px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.1;
+    color: #fff;
+    background: rgba(15, 23, 42, 0.72);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+/* Title strip fixed at bottom — full width, separate from centre */
+.cw-sdg-btn .sdg-caption {
+    position: relative;
+    z-index: 2;
+    margin-top: auto;
+    width: 100%;
+    padding: 8px 5px 6px;
+    background: linear-gradient(to top, rgba(15, 23, 42, 0.94) 0%, rgba(15, 23, 42, 0.78) 45%, rgba(15, 23, 42, 0.2) 100%);
+}
+.cw-sdg-btn .sdg-name {
+    display: block;
+    font-size: 8.5px;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.25;
+    word-break: break-word;
+    hyphens: auto;
+    max-height: 3.6em;
+    overflow: hidden;
+    color: #f8fafc;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.cw-sdg-btn.selected {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 2px var(--cw-surface), 0 0 0 4px var(--cw-primary);
+    z-index: 2;
+}
+.cw-sdg-btn.selected .sdg-bg-img { opacity: .5 !important; }
+.cw-sdg-btn:hover { transform: scale(1.03); opacity: .95; }
+
+/* ==========================================================================
+   STEP 3/4 — SINGLE-LINE REPEATER ROWS (Prizes, FAQs, Add-ons)
+   Matches the Participant Form Fields style
+   ========================================================================== */
+
+/* Generic row wrapper */
+.cww-rep-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 10px;
+    align-items: center;
+    background: var(--cw-surface);
+    border: 1.5px solid var(--cw-border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    transition: border-color .15s;
+}
+.cww-rep-row:hover { border-color: var(--cw-primary); }
+
+.cww-rep-row input[type=text],
+.cww-rep-row input[type=number],
+.cww-rep-row input[type=email],
+.cww-rep-row input[type=tel],
+.cww-rep-row textarea {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1.5px solid var(--cw-border);
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--cw-text);
+    background: var(--cw-bg);
+    box-sizing: border-box;
+    transition: border-color .15s;
+}
+.cww-rep-row input:focus,
+.cww-rep-row textarea:focus { border-color: var(--cw-primary); outline: none; }
+
+.cww-rep-del {
+    width: 32px; height: 32px;
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    color: #dc2626;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: all .15s;
+}
+.cww-rep-del:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
+
+/* Add row button */
+.cww-rep-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    background: transparent;
+    border: 1.5px dashed var(--cw-primary);
+    color: var(--cw-primary);
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    margin-top: 4px;
+    transition: all .15s;
+}
+.cww-rep-add:hover { background: var(--cw-primary-light); }
+
+/* Add-on row: wider grid (title + price | type | required | delete) */
+.cww-addon-row {
+    display: grid;
+    grid-template-columns: 1fr 90px 160px auto auto;
+    gap: 10px;
+    align-items: center;
+    background: var(--cw-surface);
+    border: 1.5px solid var(--cw-border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    transition: border-color .15s;
+}
+.cww-addon-row:hover { border-color: var(--cw-primary); }
+
+/* Sub-rows for label/opts inside add-on */
+.cww-addon-row-extra {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: -4px 0 8px;
+    padding: 8px 14px 12px;
+    background: var(--cw-bg);
+    border: 1.5px solid var(--cw-border);
+    border-top: none;
+    border-radius: 0 0 12px 12px;
+}
+.cww-addon-row-extra input { width: 100%; padding: 8px 12px; border: 1.5px solid var(--cw-border); border-radius: 8px; font-size: 13px; font-family: inherit; background: var(--cw-surface); color: var(--cw-text); box-sizing: border-box; }
+.cww-addon-row-extra input:focus { border-color: var(--cw-primary); outline: none; }
+
+.cww-addon-row select {
+    padding: 9px 10px;
+    border: 1.5px solid var(--cw-border);
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--cw-text);
+    background: var(--cw-bg);
+    width: 100%;
+}
+.cww-addon-row select:focus { border-color: var(--cw-primary); outline: none; }
+
+/* Required toggle inside add-on / field rows */
+.cww-req-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--cw-text-soft);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.cww-req-label input[type=checkbox] { accent-color: var(--cw-primary); width: 14px; height: 14px; }
+
+/* ==========================================================================
+   STEP 5 — FIELD BUILDER (Participant Form)
+   Re-use .cw-fb-row-wrap from cw-style-business.css, override here
+   ========================================================================== */
+
+.cw-fb-row-wrap {
+    display: grid;
+    grid-template-columns: 1fr 160px auto auto;
+    gap: 10px;
+    align-items: center;
+    background: var(--cw-surface);
+    border: 1.5px solid var(--cw-border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    transition: border-color .15s;
+}
+.cw-fb-row-wrap:hover { border-color: var(--cw-primary); }
+
+.cw-fb-row-wrap input[type=text] {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1.5px solid var(--cw-border);
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--cw-text);
+    background: var(--cw-bg);
+    box-sizing: border-box;
+    transition: border-color .15s;
+}
+.cw-fb-row-wrap input[type=text]:focus { border-color: var(--cw-primary); outline: none; }
+
+.cw-fb-row-wrap select.fb-type-select {
+    padding: 9px 10px;
+    border: 1.5px solid var(--cw-border);
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--cw-text);
+    background: var(--cw-bg);
+    width: 100%;
+}
+.cw-fb-row-wrap select:focus { border-color: var(--cw-primary); outline: none; }
+
+.cw-fb-req-label {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 600;
+    color: var(--cw-text-soft); cursor: pointer;
+    white-space: nowrap;
+}
+.cw-fb-req-label input { accent-color: var(--cw-primary); width: 14px; height: 14px; }
+
+.cw-fb-del {
+    width: 32px; height: 32px;
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    color: #dc2626;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: all .15s;
+}
+.cw-fb-del:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
+
+.cw-fb-opts-wrap {
+    grid-column: 1 / -1;
+    margin-top: -4px;
+}
+.cw-fb-opts-wrap input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1.5px solid var(--cw-border);
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    background: var(--cw-bg);
+    color: var(--cw-text);
+    box-sizing: border-box;
+}
+
+.cw-repeater-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    background: transparent;
+    border: 1.5px dashed var(--cw-primary);
+    color: var(--cw-primary);
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    margin-top: 6px;
+    transition: all .15s;
+}
+.cw-repeater-add:hover { background: var(--cw-primary-light); }
+
+/* ==========================================================================
+   PUBLISH READY BANNER
+   ========================================================================== */
+
+.cw-publish-ready {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: #f0fdf4;
+    border: 1.5px solid #bbf7d0;
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-top: 20px;
+    font-size: 13px;
+    color: #14532d;
+}
+.cw-publish-ready i { font-size: 20px; color: #16a34a; flex-shrink: 0; margin-top: 1px; }
+.cw-publish-ready strong { display: block; font-size: 15px; margin-bottom: 3px; }
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+
+@media (max-width: 860px) {
+    .cww-sidebar { display: none; }
+    .cww-shell { max-width: 100%; width: 100%; border-radius: 0; max-height: 100vh; }
+}
+@media (max-width: 640px) {
+    .cww-scroll { padding: 20px 18px; }
+    .cww-footer { padding: 14px 18px; }
+    .cw-form-row-2 { grid-template-columns: 1fr; }
+    .cw-date-grid { grid-template-columns: 1fr; }
+    .cw-step-grid { grid-template-columns: 1fr; }
+    .cw-sdg-grid-container { grid-template-columns: repeat(4, 1fr); }
+    .cww-addon-row { grid-template-columns: 1fr 80px auto auto; }
+}
