@@ -322,11 +322,12 @@ class CW_Auth {
         // --- NEW FIX: Read the Onboarding Complete Flag ---
         $is_onboarded = get_user_meta($user->ID, 'cw_onboarding_complete', true) === 'true';
         
-        // Admin -> Admin Panel
-        if ( in_array( 'administrator', $user->roles ) ) return admin_url();
+        // Business (incl. administrator) / Creator / ONBOARDED Contestant -> Dashboard
+        if ( class_exists( 'CW_Roles' ) && CW_Roles::is_business_user( $user ) ) {
+            return home_url( '/my-account' );
+        }
 
-        // Business / Creator / ONBOARDED Contestant -> Dashboard
-        if ( in_array( 'business_role', $user->roles ) || in_array( 'creator_role', $user->roles ) || $is_onboarded ) {
+        if ( in_array( 'creator_role', $user->roles, true ) || $is_onboarded ) {
             return home_url( '/my-account' ); // Allowed to go to the dashboard
         }
 
@@ -352,7 +353,8 @@ class CW_Auth {
         
         // --- LOGIC 1: Enforce redirection TO /get-started/ ---
         // If the user is a Contestant AND has NOT yet completed the onboarding (no flag set)
-        if ( in_array('contestant', (array) $user->roles) && ! $is_onboarded ) {
+        if ( in_array( 'contestant', (array) $user->roles, true ) && ! $is_onboarded
+            && ( ! class_exists( 'CW_Roles' ) || ! CW_Roles::is_business_user( $user ) ) ) {
             // If they try to access the dashboard endpoint, send them to Get Started
             if ( function_exists('is_account_page') && is_account_page() && ! is_wc_endpoint_url('customer-logout') ) {
                 wp_redirect( home_url( '/get-started' ) );

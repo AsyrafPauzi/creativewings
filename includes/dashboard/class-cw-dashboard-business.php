@@ -29,13 +29,15 @@ class CW_Dashboard_Business {
         }
 
         // 2. Get Campaign Stats
-        $campaigns = get_posts([
-            'post_type'      => 'product', 
-            'author'         => $uid, 
-            'post_status'    => ['publish', 'pending', 'draft'], 
-            'posts_per_page' => -1
-        ]);
-        
+        $campaigns = get_posts(
+            class_exists( 'CW_Roles' ) ? CW_Roles::get_business_campaign_query_args( $uid ) : [
+                'post_type'      => 'product',
+                'author'         => $uid,
+                'post_status'    => [ 'publish', 'pending', 'draft' ],
+                'posts_per_page' => -1,
+            ]
+        );
+
         $total_active  = 0;
         $total_pending = 0;
         $total_entries = 0;
@@ -220,13 +222,15 @@ class CW_Dashboard_Business {
        ========================================================================== */
    public function render_campaigns() {
         $uid = get_current_user_id();
-        $campaigns = get_posts([
-            'post_type'      => 'product', 
-            'author'         => $uid, 
-            'post_status'    => ['publish', 'pending', 'draft'], 
-            'posts_per_page' => -1
-        ]);
-        
+        $campaigns = get_posts(
+            class_exists( 'CW_Roles' ) ? CW_Roles::get_business_campaign_query_args( $uid ) : [
+                'post_type'      => 'product',
+                'author'         => $uid,
+                'post_status'    => [ 'publish', 'pending', 'draft' ],
+                'posts_per_page' => -1,
+            ]
+        );
+
         // --- FIX: Define base URLs using the safe ?tab=slug structure ---
         $my_account_page_url = get_permalink( wc_get_page_id( 'myaccount' ) );
         $base_campaigns_url = add_query_arg('tab', 'campaigns', $my_account_page_url); // For Edit links
@@ -668,15 +672,15 @@ class CW_Dashboard_Business {
         $uid = get_current_user_id();
         
         // --- CRITICAL SECURITY FIX: Enforce Campaign Ownership ---
-        $campaign_author_id = get_post_field('post_author', $campaign_id);
-        
-        if ( !$campaign_author_id || (int)$campaign_author_id !== (int)$uid ) {
-            
-            if (!$campaign_author_id) {
-                $error_message = 'Error: Campaign ID ' . $campaign_id . ' not found.';
-            } else {
-                $error_message = 'Access Denied: You do not own Campaign ID ' . $campaign_id;
-            }
+        if ( ! get_post( $campaign_id ) ) {
+            $error_message = 'Error: Campaign ID ' . $campaign_id . ' not found.';
+        } elseif ( class_exists( 'CW_Roles' ) ? ! CW_Roles::user_owns_campaign( $campaign_id, $uid ) : (int) get_post_field( 'post_author', $campaign_id ) !== (int) $uid ) {
+            $error_message = 'Access Denied: You do not own Campaign ID ' . $campaign_id;
+        } else {
+            $error_message = '';
+        }
+
+        if ( $error_message ) {
             
             // Redirect to the main campaign list with an error message (using Transients)
             if ( class_exists('CW_Core_Platform') && function_exists('wc_get_page_id') ) {

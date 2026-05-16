@@ -84,7 +84,9 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
 
             add_action( 'plugins_loaded', [ $this, 'init_plugin' ] );
             add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_assets' ] );
-            
+
+            add_action( 'init', [ 'CW_Activator', 'register_rewrite_rules' ], 10 );
+            add_action( 'init', [ 'CW_Activator', 'maybe_flush_rewrite_rules' ], 99 );
         }
 
         /**
@@ -121,12 +123,8 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             new CW_Campaign_Admin();
             new CW_Certificate();
             new CW_REST_API();
-            if ( CW_Loader::needs_school_upload() ) {
-                new CW_School_Upload();
-            }
-            if ( CW_Loader::needs_claim_flow() ) {
-                $this->claim_flow = new CW_Claim_Flow();
-            }
+            new CW_School_Upload();
+            $this->claim_flow = new CW_Claim_Flow();
             if ( is_admin() ) {
                 new CW_Campaign_Import();
             }
@@ -159,7 +157,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
 
             if ( $is_account && $is_logged_in ) {
                 $user = wp_get_current_user();
-                if ( in_array( 'business_role', (array) $user->roles ) ) {
+                if ( class_exists( 'CW_Roles' ) && CW_Roles::is_business_user( $user ) ) {
                     wp_enqueue_style( 'cw-style-business', CW_URL . 'assets/css/cw-style-business.css', ['cw-style-general'], CW_VERSION );
                     wp_enqueue_style( 'cw-style-wizard', CW_URL . 'assets/css/cw-style-wizard.css', ['cw-style-business'], CW_VERSION );
                 } elseif ( in_array( 'creator_role', (array) $user->roles ) ) {

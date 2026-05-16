@@ -43,8 +43,11 @@ class CW_Onboarding {
         $user = wp_get_current_user();
         
         // 1. Check existing roles to prevent redundancy
-        if ( in_array( 'business_role', (array) $user->roles ) ) {
-            return '<div class="cw-msg success"><h2>You are a Business Partner!</h2><a href="'.home_url('/my-account').'" class="cw-btn">Go to Dashboard</a></div>';
+        if ( class_exists( 'CW_Roles' ) && CW_Roles::is_business_user( $user ) ) {
+            $title = CW_Roles::is_business_admin( $user )
+                ? __( 'You have full business access as a site administrator.', 'creativewings-core' )
+                : __( 'You are a Business Partner!', 'creativewings-core' );
+            return '<div class="cw-msg success"><h2>' . esc_html( $title ) . '</h2><a href="' . esc_url( home_url( '/my-account' ) ) . '" class="cw-btn">' . esc_html__( 'Go to Dashboard', 'creativewings-core' ) . '</a></div>';
         }
         
         if ( in_array( 'creator_role', (array) $user->roles ) ) {

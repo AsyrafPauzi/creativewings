@@ -87,7 +87,7 @@ class CW_Business_Form {
         if ( $edit_id_param > 0 ) {
             $edit_id  = $edit_id_param;
             $campaign = get_post($edit_id);
-            if ( $campaign && ( $campaign->post_author == get_current_user_id() || current_user_can('administrator') ) ) {
+            if ( $campaign && ( class_exists( 'CW_Roles' ) ? CW_Roles::user_owns_campaign( $campaign->ID ) : ( (int) $campaign->post_author === get_current_user_id() ) ) ) {
                 $mode  = 'edit';
                 $meta  = get_post_meta($edit_id);
                 $terms = get_the_terms($edit_id, 'product_cat');
@@ -127,11 +127,29 @@ class CW_Business_Form {
                 }
             }
         }
-        if ( empty( $existing_age_brackets ) ) {
-            $existing_age_brackets = get_option( 'cw_default_age_brackets', [] );
-        }
-
         $val     = function($k) use ($meta) { return isset($meta[$k][0]) ? $meta[$k][0] : ''; };
+
+        $enable_addons = $val( 'cw_enable_addons' );
+        if ( $enable_addons === '' ) {
+            $enable_addons = ( $mode === 'edit' && ! empty( $existing_addons ) ) ? 'yes' : 'no';
+        }
+        $enable_age_brackets = $val( 'cw_enable_age_brackets' );
+        if ( $enable_age_brackets === '' ) {
+            $enable_age_brackets = ( $mode === 'edit' && ! empty( $existing_age_brackets ) ) ? 'yes' : 'no';
+        }
+        $enable_school_sponsors = $val( 'cw_enable_school_sponsors' );
+        if ( $enable_school_sponsors === '' ) {
+            $enable_school_sponsors = ( $mode === 'edit' && ( ! empty( $existing_schools ) || $val( 'cw_campaign_serial' ) ) ) ? 'yes' : 'no';
+        }
+        $allow_multiple_participants = $val( 'cw_allow_multiple_participants' );
+        if ( $allow_multiple_participants === '' ) {
+            $max_p_meta = (int) $val( 'cw_max_participants' );
+            $allow_multiple_participants = ( $mode === 'edit' && $max_p_meta > 1 ) ? 'yes' : 'no';
+        }
+        $use_account_fullname = $val( 'cw_use_account_fullname' );
+        if ( $use_account_fullname === '' ) {
+            $use_account_fullname = 'yes';
+        }
         $parents = get_terms(['taxonomy' => 'product_cat', 'parent' => 0, 'hide_empty' => false]);
 
         $is_comp_selected     = $term && (($parent_term && $parent_term->slug === 'competitions') || $term->slug === 'competitions');
@@ -292,10 +310,13 @@ class CW_Business_Form {
 
                                     <!-- Activity block -->
                                     <div id="set-activity" style="display:none;" class="cw-config-card">
-                                        <p style="font-size:14px;font-weight:700;color:var(--cw-text);margin:0 0 12px;">Participant Capacity</p>
-                                        <div class="cw-form-row-2">
-                                            <div class="cw-field"><label>Min Participants</label><input type="number" name="cw_min_participants" value="<?php echo $val('cw_min_participants')?:1; ?>" class="cw-input-dark"></div>
-                                            <div class="cw-field"><label>Max Participants</label><input type="number" name="cw_max_participants" value="<?php echo $val('cw_max_participants')?:100; ?>" class="cw-input-dark"></div>
+                                        <div class="cw-toggle-box">
+                                            <div><label for="cw_allow_multi_participants">Allow multiple participants</label><small>One registration can include more than one person (e.g. parent registers children).</small></div>
+                                            <input type="checkbox" name="cw_allow_multiple_participants" value="yes" id="cw_allow_multi_participants" onchange="toggleParticipantCapacity()" <?php checked( $allow_multiple_participants, 'yes' ); ?>>
+                                        </div>
+                                        <div id="cw-participant-capacity" class="cw-form-row-2" style="display:<?php echo $allow_multiple_participants === 'yes' ? 'grid' : 'none'; ?>;padding-top:10px;">
+                                            <div class="cw-field"><label>Min Participants</label><input type="number" name="cw_min_participants" value="<?php echo esc_attr( $val('cw_min_participants') ?: 1 ); ?>" class="cw-input-dark" min="1"></div>
+                                            <div class="cw-field"><label>Max Participants</label><input type="number" name="cw_max_participants" value="<?php echo esc_attr( $val('cw_max_participants') ?: 10 ); ?>" class="cw-input-dark" min="1"></div>
                                         </div>
                                         <div id="set-talk" style="display:none;">
                                             <div class="cw-field"><label>Speaker / Host Name</label><input type="text" name="cw_talk_speaker" class="cw-input-dark" value="<?php echo $val('cw_talk_speaker'); ?>"></div>
@@ -339,7 +360,12 @@ class CW_Business_Form {
                                     <?php endforeach; ?>
                                 </div>
 
-                                <p class="cw-mini-head" style="margin-top:28px;">Campaign code &amp; school sponsors</p>
+                                <div class="cw-toggle-box" style="margin-top:28px;">
+                                    <div><label for="cw_enable_school_sponsors">Enable campaign code &amp; school sponsors</label><small>Submission codes, PIC upload links, and sponsor coupons for the claim flow.</small></div>
+                                    <input type="checkbox" name="cw_enable_school_sponsors" value="yes" id="cw_enable_school_sponsors" onchange="toggleWizardSection('cw-section-school-sponsors', this)" <?php checked( $enable_school_sponsors, 'yes' ); ?>>
+                                </div>
+                                <div id="cw-section-school-sponsors" class="cw-wizard-feature-panel" style="display:<?php echo $enable_school_sponsors === 'yes' ? 'block' : 'none'; ?>;">
+                                <p class="cw-mini-head" style="margin-top:0;">Campaign serial</p>
                                 <div class="cw-field">
                                     <label>Campaign serial (3 digits, e.g. 002)</label>
                                     <input type="text" name="cw_campaign_serial" class="cw-input-dark" maxlength="3" pattern="\d{3}"
@@ -349,8 +375,25 @@ class CW_Business_Form {
                                     <div><label>School sponsor coupons optional</label><small>If yes, parents can pay full price without coupon</small></div>
                                     <input type="checkbox" name="cw_school_coupons_optional" value="yes" <?php checked( $val('cw_school_coupons_optional') ?: 'yes', 'yes' ); ?>>
                                 </div>
+                                <p class="cw-mini-head" style="margin-top:16px;">School sponsors (WooCommerce coupons)</p>
+                                <div id="cw-school-container">
+                                    <?php $sidx = 0; foreach ( (array) $existing_schools as $s ) { if ( ! is_array( $s ) ) continue; ?>
+                                    <div class="cww-rep-row">
+                                        <input type="text" name="cw_school_sponsors[<?php echo $sidx; ?>][school_code]" value="<?php echo esc_attr( $s['school_code'] ?? '' ); ?>" placeholder="School code 001" maxlength="3">
+                                        <input type="text" name="cw_school_sponsors[<?php echo $sidx; ?>][school_name]" value="<?php echo esc_attr( $s['school_name'] ?? '' ); ?>" placeholder="School name">
+                                        <input type="text" name="cw_school_sponsors[<?php echo $sidx; ?>][coupon_code]" value="<?php echo esc_attr( $s['coupon_code'] ?? '' ); ?>" placeholder="WC coupon code">
+                                        <button type="button" class="cww-rep-del" onclick="this.closest('.cww-rep-row').remove()"><i class="fas fa-times"></i></button>
+                                    </div>
+                                    <?php $sidx++; } ?>
+                                </div>
+                                <button type="button" class="cww-rep-add" onclick="addSchoolRow()"><i class="fas fa-plus"></i> Add school</button>
+                                </div>
 
-                                <p class="cw-mini-head" style="margin-top:20px;">Age categories (reusable brackets)</p>
+                                <div class="cw-toggle-box" style="margin-top:20px;">
+                                    <div><label for="cw_enable_age_brackets">Enable age categories</label><small>For claim flow and age-based pricing categories.</small></div>
+                                    <input type="checkbox" name="cw_enable_age_brackets" value="yes" id="cw_enable_age_brackets" onchange="toggleWizardSection('cw-section-age-brackets', this)" <?php checked( $enable_age_brackets, 'yes' ); ?>>
+                                </div>
+                                <div id="cw-section-age-brackets" class="cw-wizard-feature-panel" style="display:<?php echo $enable_age_brackets === 'yes' ? 'block' : 'none'; ?>;">
                                 <button type="button" class="cww-rep-add" onclick="cwLoadDefaultAgeBrackets()"><i class="fas fa-download"></i> Load default brackets</button>
                                 <div id="cw-age-bracket-container" style="margin-top:10px;">
                                     <?php $abidx = 0; foreach ( (array) $existing_age_brackets as $b ) { if ( ! is_array( $b ) ) continue; ?>
@@ -364,30 +407,19 @@ class CW_Business_Form {
                                     <?php $abidx++; } ?>
                                 </div>
                                 <button type="button" class="cww-rep-add" onclick="addAgeBracketRow()"><i class="fas fa-plus"></i> Add age bracket</button>
-
-                                <p class="cw-mini-head" style="margin-top:20px;">School sponsors (WooCommerce coupons)</p>
-                                <div id="cw-school-container">
-                                    <?php $sidx = 0; foreach ( (array) $existing_schools as $s ) { if ( ! is_array( $s ) ) continue; ?>
-                                    <div class="cww-rep-row">
-                                        <input type="text" name="cw_school_sponsors[<?php echo $sidx; ?>][school_code]" value="<?php echo esc_attr( $s['school_code'] ?? '' ); ?>" placeholder="School code 001" maxlength="3">
-                                        <input type="text" name="cw_school_sponsors[<?php echo $sidx; ?>][school_name]" value="<?php echo esc_attr( $s['school_name'] ?? '' ); ?>" placeholder="School name">
-                                        <input type="text" name="cw_school_sponsors[<?php echo $sidx; ?>][coupon_code]" value="<?php echo esc_attr( $s['coupon_code'] ?? '' ); ?>" placeholder="WC coupon code">
-                                        <button type="button" class="cww-rep-del" onclick="this.closest('.cww-rep-row').remove()"><i class="fas fa-times"></i></button>
-                                    </div>
-                                    <?php $sidx++; } ?>
                                 </div>
-                                <button type="button" class="cww-rep-add" onclick="addSchoolRow()"><i class="fas fa-plus"></i> Add school</button>
 
-                                <p class="cw-mini-head" style="margin-top:20px;">Checkout message (claim flow)</p>
-                                <div class="cw-toggle-box">
-                                    <div><label>Enable checkout message field</label></div>
-                                    <input type="checkbox" name="cw_enable_checkout_message" value="yes" <?php checked( $val('cw_enable_checkout_message'), 'yes' ); ?>>
+                                <div class="cw-toggle-box" style="margin-top:20px;">
+                                    <div><label for="cw_enable_checkout_message_toggle">Enable checkout message (claim flow)</label></div>
+                                    <input type="checkbox" name="cw_enable_checkout_message" value="yes" id="cw_enable_checkout_message_toggle" onchange="toggleWizardSection('cw-section-checkout-message', this)" <?php checked( $val('cw_enable_checkout_message'), 'yes' ); ?>>
                                 </div>
+                                <div id="cw-section-checkout-message" class="cw-wizard-feature-panel" style="display:<?php echo $val('cw_enable_checkout_message') === 'yes' ? 'block' : 'none'; ?>;">
                                 <div class="cw-field">
                                     <label>Message field label</label>
                                     <input type="text" name="cw_checkout_message_label" class="cw-input-dark" value="<?php echo esc_attr( $val('cw_checkout_message_label') ); ?>" placeholder="Heartfelt message">
                                 </div>
                                 <label><input type="checkbox" name="cw_checkout_message_required" value="yes" <?php checked( $val('cw_checkout_message_required'), 'yes' ); ?>> Required</label>
+                                </div>
 
                                 <!-- FAQs -->
                                 <p class="cw-mini-head" style="margin-top:28px;">FAQs</p>
@@ -402,9 +434,11 @@ class CW_Business_Form {
                                 </div>
                                 <button type="button" class="cww-rep-add" onclick="addFaqRow()"><i class="fas fa-plus"></i> Add FAQ</button>
 
-                                <!-- Optional Add-ons -->
-                                <p class="cw-mini-head" style="margin-top:28px;">Optional Add-ons</p>
-                                <p style="font-size:13px;color:var(--cw-text-soft);margin:0 0 12px;">Purchasable extras participants can add during registration (e.g. T-shirt, meals).</p>
+                                <div class="cw-toggle-box" style="margin-top:28px;">
+                                    <div><label for="cw_enable_addons">Enable optional add-ons</label><small>Purchasable extras during registration (e.g. T-shirt, meals).</small></div>
+                                    <input type="checkbox" name="cw_enable_addons" value="yes" id="cw_enable_addons" onchange="toggleWizardSection('cw-section-addons', this)" <?php checked( $enable_addons, 'yes' ); ?>>
+                                </div>
+                                <div id="cw-section-addons" class="cw-wizard-feature-panel" style="display:<?php echo $enable_addons === 'yes' ? 'block' : 'none'; ?>;margin-top:12px;">
                                 <div id="cw-addon-container">
                                     <?php $idx=0; if($existing_addons) foreach($existing_addons as $a){ if(!is_array($a))continue;
                                         $atype = isset($a['addon_type']) ? strtolower(trim((string)$a['addon_type'])) : 'checkbox';
@@ -433,6 +467,7 @@ class CW_Business_Form {
                                     <?php $idx++; } ?>
                                 </div>
                                 <button type="button" class="cww-rep-add" onclick="addAddonRow()"><i class="fas fa-plus"></i> Add Add-on</button>
+                                </div>
                             </div>
 
                             <!-- ════════════ STEP 5: FORM BUILDER & PUBLISH ════════════ -->
@@ -440,6 +475,16 @@ class CW_Business_Form {
                                 <h4 class="cw-step-title">Participant Form Fields</h4>
                                 <p class="cw-step-subtitle">Define what information to collect from participants at registration.</p>
 
+                                <div id="cw-step5-name-block" class="cw-config-card" style="margin-bottom:20px;display:none;">
+                                    <p class="cw-mini-head" style="margin-top:0;">Participant name (certificate)</p>
+                                    <p style="font-size:13px;color:var(--cw-text-soft);margin:0 0 12px;">Shown on the public registration form. Each participant name is printed on their e-certificate.</p>
+                                    <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;">
+                                        <input type="checkbox" name="cw_use_account_fullname" value="yes" <?php checked( $use_account_fullname, 'yes' ); ?>>
+                                        <span><strong>Use registrant account full name for Participant 1</strong><br><small>Prefills from signup (editable). Other participants always enter their own names.</small></span>
+                                    </label>
+                                </div>
+
+                                <p class="cw-mini-head">Additional custom fields</p>
                                 <div id="cw-fb-container">
                                     <?php $fid=1000; if($existing_fields) foreach($existing_fields as $f):
                                         $ftype = isset($f['type']) ? strtolower(trim((string)$f['type'])) : 'text';
@@ -631,7 +676,13 @@ class CW_Business_Form {
                 const judgesBox = document.getElementById('cw-judges-box');
                 if (judgesBox) judgesBox.style.display = (type === 'competitions') ? 'flex' : 'none';
 
+                const nameBlock = document.getElementById('cw-step5-name-block');
+                if (nameBlock) {
+                    nameBlock.style.display = (type === 'activities' || type === 'talks') ? 'block' : 'none';
+                }
+
                 window.toggleMultiLimits();
+                window.toggleParticipantCapacity();
                 window.toggleOnlineLink();
                 window.toggleCertSettings();
             };
@@ -666,6 +717,17 @@ class CW_Business_Form {
                 const chk = document.getElementById('cw_multi_check');
                 const box = document.getElementById('cw-multi-limits');
                 if (box) box.style.display = (chk && chk.checked) ? 'grid' : 'none';
+            };
+
+            window.toggleParticipantCapacity = function() {
+                const chk = document.getElementById('cw_allow_multi_participants');
+                const box = document.getElementById('cw-participant-capacity');
+                if (box) box.style.display = (chk && chk.checked) ? 'grid' : 'none';
+            };
+
+            window.toggleWizardSection = function(panelId, checkbox) {
+                const panel = document.getElementById(panelId);
+                if (panel) panel.style.display = (checkbox && checkbox.checked) ? 'block' : 'none';
             };
 
             window.toggleCertSettings = function() {

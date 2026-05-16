@@ -27,7 +27,7 @@ class CW_Business_Save {
             wp_die( 'Security check failed.' );
         }
         $pid = intval( $_POST['campaign_id'] );
-        if ( get_post_field( 'post_author', $pid ) == get_current_user_id() || current_user_can( 'administrator' ) ) {
+        if ( class_exists( 'CW_Roles' ) ? CW_Roles::user_owns_campaign( $pid ) : ( (int) get_post_field( 'post_author', $pid ) === get_current_user_id() ) ) {
             $this->save_campaign( $pid );
         } else {
             wp_die( 'Unauthorized' );

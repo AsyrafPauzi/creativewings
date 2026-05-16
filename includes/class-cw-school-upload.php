@@ -200,11 +200,18 @@ class CW_School_Upload {
             if ( class_exists( 'CW_Audit_Log' ) ) {
                 CW_Audit_Log::log( 'staged_update', 'staged', $sid, [ 'code' => $parsed['normalized'] ] );
             }
+            if ( class_exists( 'CW_Pending_Parent_Link' ) ) {
+                CW_Pending_Parent_Link::on_staged_uploaded( $sid, $campaign_id, $parsed['normalized'] );
+            }
         } else {
             $sid = (int) CW_Staged_Submissions::insert( $payload );
             if ( class_exists( 'CW_Audit_Log' ) ) {
                 CW_Audit_Log::log( 'staged_create', 'staged', $sid, [ 'code' => $parsed['normalized'] ] );
             }
+        }
+
+        if ( class_exists( 'CW_Pending_Parent_Link' ) ) {
+            CW_Pending_Parent_Link::on_staged_uploaded( $sid, $campaign_id, $parsed['normalized'] );
         }
 
         wp_safe_redirect( add_query_arg( [ 'saved' => '1', 'code' => $parsed['normalized'] ], $base ) );

@@ -581,22 +581,39 @@ class CW_Shortcodes {
         // ── Registration form config ──────────────────────────────────────────
         $custom_fields   = get_post_meta($pid, 'cw_custom_fields', true) ?: [];
         $is_multi_sub    = get_post_meta($pid, 'multiple_submissions', true) === 'true';
-        $reg_min         = $is_competition ? ( (int)get_post_meta($pid,'cw_multi_min',true) ?: 1 ) : ( $min_p ?: 1 );
-        $reg_max         = $is_competition ? ( $is_multi_sub ? ((int)get_post_meta($pid,'cw_multi_max',true) ?: 50) : 1 ) : ( $max_p ?: 10 );
+        $allow_multi_p   = ! $is_competition && get_post_meta( $pid, 'cw_allow_multiple_participants', true ) === 'yes';
+        $reg_min         = $is_competition ? ( (int) get_post_meta( $pid, 'cw_multi_min', true ) ?: 1 ) : ( $allow_multi_p ? ( $min_p ?: 1 ) : 1 );
+        $reg_max         = $is_competition ? ( $is_multi_sub ? ( (int) get_post_meta( $pid, 'cw_multi_max', true ) ?: 50 ) : 1 ) : ( $allow_multi_p ? ( $max_p ?: 10 ) : 1 );
         $reg_label       = $is_competition ? 'Artwork Entry' : 'Participant';
         $reg_btn         = $is_competition ? '+ Add Artwork' : '+ Add Participant';
-        $show_name_field = $is_activity || $is_seminar; // competitions use billing name
+        $show_name_field = $is_activity || $is_seminar;
+        $use_account_fn  = get_post_meta( $pid, 'cw_use_account_fullname', true );
+        if ( $use_account_fn === '' ) {
+            $use_account_fn = 'yes';
+        }
+        $account_full_name = '';
+        if ( is_user_logged_in() ) {
+            $uid = get_current_user_id();
+            $account_full_name = get_user_meta( $uid, 'cw_full_name', true );
+            if ( ! $account_full_name ) {
+                $u = wp_get_current_user();
+                $account_full_name = $u->display_name;
+            }
+        }
         $reg_config = [
-            'pid'       => $pid,
-            'fields'    => $custom_fields,
-            'min'       => $reg_min,
-            'max'       => $reg_max,
-            'label'     => $reg_label,
-            'btnText'   => $reg_btn,
-            'showName'  => $show_name_field,
-            'calcMode'  => $is_competition ? 'entry' : 'team',
-            'action'    => get_permalink($pid),
-            'nonce'     => wp_create_nonce('cw_reg_'.$pid),
+            'pid'               => $pid,
+            'fields'            => $custom_fields,
+            'min'               => $reg_min,
+            'max'               => $reg_max,
+            'label'             => $reg_label,
+            'btnText'           => $reg_btn,
+            'showName'          => $show_name_field,
+            'allowMultiple'     => $allow_multi_p,
+            'useAccountFullname'=> ( $use_account_fn === 'yes' ),
+            'accountFullName'   => $account_full_name,
+            'calcMode'          => $is_competition ? 'entry' : 'team',
+            'action'            => get_permalink( $pid ),
+            'nonce'             => wp_create_nonce( 'cw_reg_' . $pid ),
         ];
 
         ob_start();
@@ -1273,11 +1290,24 @@ class CW_Shortcodes {
             if (cfg.min < cfg.max) {
                 html += '<button type="button" class="cwd-reg-row-del" onclick="cwdRemoveRow(this)" aria-label="Remove"><i class="fas fa-times"></i></button>';
             }
-            html += '<h4 class="cwd-reg-row-title">' + cfg.label + ' ' + num + '</h4>';
+            var rowTitle = cfg.label;
+            if (cfg.allowMultiple || cfg.max > 1) {
+                rowTitle = cfg.label + ' ' + num;
+            }
+            html += '<h4 class="cwd-reg-row-title">' + rowTitle + '</h4>';
             if (cfg.showName) {
+                var nameVal = '';
+                var nameHint = '';
+                if (num === 1 && cfg.useAccountFullname && cfg.accountFullName) {
+                    nameVal = cfg.accountFullName.replace(/"/g, '&quot;');
+                    nameHint = '<p class="cwd-reg-hint" style="font-size:12px;color:#64748b;margin:4px 0 8px;">Prefilled from your account — edit if this certificate should show a different name.</p>';
+                } else if (num > 1 && cfg.useAccountFullname) {
+                    nameHint = '<p class="cwd-reg-hint" style="font-size:12px;color:#64748b;margin:4px 0 8px;">Enter the full name for this participant (certificate).</p>';
+                }
                 html += '<div class="cwd-reg-field">'
                       + '<label class="cwd-reg-label">Full Name <span class="cwd-req">*</span></label>'
-                      + '<input type="text" name="cw_names[' + num + ']" class="cwd-reg-input" placeholder="Enter full name" required>'
+                      + nameHint
+                      + '<input type="text" name="cw_names[' + num + ']" class="cwd-reg-input" placeholder="Enter full name" value="' + nameVal + '" required>'
                       + '</div>';
             } else {
                 html += '<input type="hidden" name="cw_names[' + num + ']" value="Self">';

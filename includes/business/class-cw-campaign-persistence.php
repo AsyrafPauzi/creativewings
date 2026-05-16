@@ -52,6 +52,23 @@ class CW_Campaign_Persistence {
 
         $product_id = (int) $product_id;
 
+        if ( ! isset( $data['cw_enable_addons'] ) && ( ! empty( $data['addons'] ) || ! empty( $data['cw_addons'] ) ) ) {
+            $data['cw_enable_addons'] = 'yes';
+        }
+        if ( ! isset( $data['cw_enable_age_brackets'] ) && ( ! empty( $data['age_brackets'] ) || ! empty( $data['cw_age_brackets'] ) ) ) {
+            $data['cw_enable_age_brackets'] = 'yes';
+        }
+        if ( ! isset( $data['cw_enable_school_sponsors'] ) && ( ! empty( $data['schools'] ) || ! empty( $data['cw_school_sponsors'] ) || ! empty( $data['cw_campaign_serial'] ) ) ) {
+            $data['cw_enable_school_sponsors'] = 'yes';
+        }
+        if ( ! isset( $data['cw_allow_multiple_participants'] ) ) {
+            $max_p = (int) ( $data['cw_max_participants'] ?? 1 );
+            $data['cw_allow_multiple_participants'] = $max_p > 1 ? 'yes' : 'no';
+        }
+        if ( ! isset( $data['cw_use_account_fullname'] ) ) {
+            $data['cw_use_account_fullname'] = 'yes';
+        }
+
         // Category: slug or term id.
         if ( ! empty( $data['product_cat'] ) ) {
             wp_set_object_terms( $product_id, (int) $data['product_cat'], 'product_cat' );
@@ -82,6 +99,8 @@ class CW_Campaign_Persistence {
             'cw_cert_x', 'cw_cert_y', 'cw_cert_font_size', 'cw_cert_font_color', 'cw_cert_max_width', 'cw_cert_align',
             'cw_event_mode', 'cw_online_link', 'cw_multi_min', 'cw_multi_max',
             'cw_campaign_serial', 'cw_checkout_message_label',
+            'cw_enable_addons', 'cw_enable_age_brackets', 'cw_enable_school_sponsors',
+            'cw_allow_multiple_participants', 'cw_use_account_fullname',
         ];
         foreach ( $scalar_keys as $k ) {
             if ( array_key_exists( $k, $data ) ) {
@@ -98,10 +117,28 @@ class CW_Campaign_Persistence {
         update_post_meta( $product_id, 'cw_enable_voting', ( ! empty( $data['cw_enable_voting'] ) && $data['cw_enable_voting'] !== 'no' ) ? 'yes' : 'no' );
         update_post_meta( $product_id, 'multiple_submissions', ! empty( $data['multiple_submissions'] ) && $data['multiple_submissions'] !== 'false' ? 'true' : 'false' );
 
+        $toggle_keys = [
+            'cw_enable_addons',
+            'cw_enable_age_brackets',
+            'cw_enable_school_sponsors',
+            'cw_allow_multiple_participants',
+            'cw_use_account_fullname',
+        ];
+        foreach ( $toggle_keys as $tk ) {
+            if ( array_key_exists( $tk, $data ) ) {
+                update_post_meta( $product_id, $tk, self::is_yes( $data[ $tk ] ) ? 'yes' : 'no' );
+            }
+        }
+
         update_post_meta( $product_id, 'cw_enable_checkout_message', ( ! empty( $data['cw_enable_checkout_message'] ) && $data['cw_enable_checkout_message'] !== 'no' ) ? 'yes' : 'no' );
         update_post_meta( $product_id, 'cw_checkout_message_required', ! empty( $data['cw_checkout_message_required'] ) ? 'yes' : 'no' );
         $sco = $data['cw_school_coupons_optional'] ?? 'yes';
         update_post_meta( $product_id, 'cw_school_coupons_optional', ( $sco === 'yes' || $sco === true || $sco === '1' ) ? 'yes' : 'no' );
+
+        if ( ! self::is_yes( $data['cw_allow_multiple_participants'] ?? 'no' ) ) {
+            update_post_meta( $product_id, 'cw_min_participants', '1' );
+            update_post_meta( $product_id, 'cw_max_participants', '1' );
+        }
 
         if ( isset( $data['faq'] ) ) {
             self::save_repeater_meta( $product_id, 'faq', $data['faq'], 'question' );
@@ -109,27 +146,44 @@ class CW_Campaign_Persistence {
         if ( isset( $data['prizes'] ) || isset( $data['cw_prizes'] ) ) {
             self::save_repeater_meta( $product_id, 'prizes', $data['prizes'] ?? $data['cw_prizes'], 'prize_title' );
         }
-        if ( isset( $data['addons'] ) || isset( $data['cw_addons'] ) ) {
-            self::save_addons( $product_id, $data['addons'] ?? $data['cw_addons'] );
+
+        if ( array_key_exists( 'addons', $data ) || array_key_exists( 'cw_addons', $data ) || ! empty( $data['_save_feature_blocks'] ) ) {
+            if ( self::is_yes( $data['cw_enable_addons'] ?? 'no' ) ) {
+                self::save_addons( $product_id, $data['addons'] ?? $data['cw_addons'] ?? [] );
+            } else {
+                update_post_meta( $product_id, 'addon_products', [] );
+            }
         }
+
         if ( isset( $data['sdg_goals'] ) ) {
             self::save_sdg_goals( $product_id, $data['sdg_goals'] );
         }
-        if ( isset( $data['custom_fields'] ) ) {
-            self::save_custom_fields( $product_id, $data['custom_fields'] );
+        if ( array_key_exists( 'custom_fields', $data ) || ! empty( $data['_save_feature_blocks'] ) ) {
+            self::save_custom_fields( $product_id, $data['custom_fields'] ?? [] );
         }
-        if ( isset( $data['age_brackets'] ) || isset( $data['cw_age_brackets'] ) ) {
-            $brackets = $data['age_brackets'] ?? $data['cw_age_brackets'];
-            update_post_meta( $product_id, 'cw_age_brackets', self::sanitize_age_brackets( $brackets ) );
-        }
-        if ( isset( $data['schools'] ) || isset( $data['cw_school_sponsors'] ) ) {
-            $schools = $data['schools'] ?? $data['cw_school_sponsors'];
-            update_post_meta( $product_id, 'cw_school_sponsors', self::sanitize_schools( $schools ) );
-            if ( class_exists( 'CW_Sponsor_Coupons' ) ) {
-                CW_Sponsor_Coupons::sync_campaign_coupons( $product_id );
+
+        if ( array_key_exists( 'age_brackets', $data ) || array_key_exists( 'cw_age_brackets', $data ) || ! empty( $data['_save_feature_blocks'] ) ) {
+            if ( self::is_yes( $data['cw_enable_age_brackets'] ?? 'no' ) ) {
+                $brackets = $data['age_brackets'] ?? $data['cw_age_brackets'] ?? [];
+                update_post_meta( $product_id, 'cw_age_brackets', self::sanitize_age_brackets( $brackets ) );
+            } else {
+                update_post_meta( $product_id, 'cw_age_brackets', [] );
             }
-            if ( class_exists( 'CW_Staged_Submissions' ) ) {
-                CW_Staged_Submissions::sync_school_upload_tokens( $product_id );
+        }
+
+        if ( array_key_exists( 'schools', $data ) || array_key_exists( 'cw_school_sponsors', $data ) || ! empty( $data['_save_feature_blocks'] ) ) {
+            if ( self::is_yes( $data['cw_enable_school_sponsors'] ?? 'no' ) ) {
+                $schools = $data['schools'] ?? $data['cw_school_sponsors'] ?? [];
+                update_post_meta( $product_id, 'cw_school_sponsors', self::sanitize_schools( $schools ) );
+                if ( class_exists( 'CW_Sponsor_Coupons' ) ) {
+                    CW_Sponsor_Coupons::sync_campaign_coupons( $product_id );
+                }
+                if ( class_exists( 'CW_Staged_Submissions' ) ) {
+                    CW_Staged_Submissions::sync_school_upload_tokens( $product_id );
+                }
+            } else {
+                update_post_meta( $product_id, 'cw_school_sponsors', [] );
+                delete_post_meta( $product_id, 'cw_school_upload_links' );
             }
         }
 
@@ -186,7 +240,18 @@ class CW_Campaign_Persistence {
             'cw_checkout_message_required'  => isset( $_POST['cw_checkout_message_required'] ) ? 'yes' : 'no',
             'cw_school_coupons_optional'    => isset( $_POST['cw_school_coupons_optional'] ) ? 'yes' : 'no',
             'cw_campaign_serial'            => $_POST['cw_campaign_serial'] ?? '',
+            'cw_enable_addons'              => isset( $_POST['cw_enable_addons'] ) ? 'yes' : 'no',
+            'cw_enable_age_brackets'        => isset( $_POST['cw_enable_age_brackets'] ) ? 'yes' : 'no',
+            'cw_enable_school_sponsors'     => isset( $_POST['cw_enable_school_sponsors'] ) ? 'yes' : 'no',
+            'cw_allow_multiple_participants' => isset( $_POST['cw_allow_multiple_participants'] ) ? 'yes' : 'no',
+            'cw_use_account_fullname'       => isset( $_POST['cw_use_account_fullname'] ) ? 'yes' : 'no',
+            '_save_feature_blocks'          => true,
         ];
+
+        if ( ! self::is_yes( $data['cw_allow_multiple_participants'] ) ) {
+            $data['cw_min_participants'] = '1';
+            $data['cw_max_participants'] = '1';
+        }
 
         if ( isset( $_POST['cw_faq'] ) ) {
             $data['faq'] = $_POST['cw_faq'];
@@ -194,23 +259,19 @@ class CW_Campaign_Persistence {
         if ( isset( $_POST['cw_prizes'] ) ) {
             $data['prizes'] = $_POST['cw_prizes'];
         }
-        if ( isset( $_POST['cw_addons'] ) ) {
-            $data['addons'] = $_POST['cw_addons'];
-        }
+        $data['addons']        = isset( $_POST['cw_addons'] ) && is_array( $_POST['cw_addons'] ) ? $_POST['cw_addons'] : [];
         if ( isset( $_POST['sdg_goals'] ) ) {
             $data['sdg_goals'] = $_POST['sdg_goals'];
         }
-        if ( isset( $_POST['custom_fields'] ) ) {
-            $data['custom_fields'] = $_POST['custom_fields'];
-        }
-        if ( isset( $_POST['cw_age_brackets'] ) ) {
-            $data['age_brackets'] = $_POST['cw_age_brackets'];
-        }
-        if ( isset( $_POST['cw_school_sponsors'] ) ) {
-            $data['schools'] = $_POST['cw_school_sponsors'];
-        }
+        $data['custom_fields'] = isset( $_POST['custom_fields'] ) && is_array( $_POST['custom_fields'] ) ? $_POST['custom_fields'] : [];
+        $data['age_brackets']  = isset( $_POST['cw_age_brackets'] ) && is_array( $_POST['cw_age_brackets'] ) ? $_POST['cw_age_brackets'] : [];
+        $data['schools']       = isset( $_POST['cw_school_sponsors'] ) && is_array( $_POST['cw_school_sponsors'] ) ? $_POST['cw_school_sponsors'] : [];
 
         return $data;
+    }
+
+    public static function is_yes( $v ) {
+        return $v === 'yes' || $v === true || $v === '1' || $v === 1;
     }
 
     private static function save_repeater_meta( $pid, $meta_key, $rows, $required_field ) {

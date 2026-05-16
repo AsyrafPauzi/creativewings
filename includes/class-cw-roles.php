@@ -5,6 +5,88 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CW_Roles {
 
+    /**
+     * Site administrators use the same dashboard and campaign tools as business partners.
+     */
+    public static function is_business_admin( $user = null ) {
+        $user = self::resolve_user( $user );
+        return $user && in_array( 'administrator', (array) $user->roles, true );
+    }
+
+    public static function is_business_user( $user = null ) {
+        $user = self::resolve_user( $user );
+        if ( ! $user ) {
+            return false;
+        }
+        return self::is_business_admin( $user ) || in_array( 'business_role', (array) $user->roles, true );
+    }
+
+    public static function is_creator_user( $user = null ) {
+        $user = self::resolve_user( $user );
+        return $user && in_array( 'creator_role', (array) $user->roles, true );
+    }
+
+    /**
+     * Dashboard role slug: business (incl. administrator), creator, or contestant.
+     */
+    public static function get_dashboard_role( $user = null ) {
+        $user = self::resolve_user( $user );
+        if ( ! $user ) {
+            return 'contestant';
+        }
+        if ( self::is_business_user( $user ) ) {
+            return 'business';
+        }
+        if ( self::is_creator_user( $user ) ) {
+            return 'creator';
+        }
+        return 'contestant';
+    }
+
+    /**
+     * @return array<string, mixed> get_posts() args for campaign products.
+     */
+    public static function get_business_campaign_query_args( $user_id = 0 ) {
+        $user_id = $user_id ? (int) $user_id : get_current_user_id();
+        $args    = [
+            'post_type'      => 'product',
+            'post_status'    => [ 'publish', 'pending', 'draft' ],
+            'posts_per_page' => -1,
+        ];
+        if ( ! self::is_business_admin( $user_id ) ) {
+            $args['author'] = $user_id;
+        }
+        return $args;
+    }
+
+    public static function user_owns_campaign( $campaign_id, $user_id = 0 ) {
+        $campaign_id = (int) $campaign_id;
+        if ( ! $campaign_id ) {
+            return false;
+        }
+        $user_id = $user_id ? (int) $user_id : get_current_user_id();
+        if ( self::is_business_admin( $user_id ) ) {
+            return true;
+        }
+        return (int) get_post_field( 'post_author', $campaign_id ) === $user_id;
+    }
+
+    /**
+     * @param int|WP_User|null $user
+     */
+    private static function resolve_user( $user ) {
+        if ( $user instanceof WP_User ) {
+            return $user;
+        }
+        if ( is_numeric( $user ) && (int) $user > 0 ) {
+            return get_userdata( (int) $user );
+        }
+        if ( is_user_logged_in() ) {
+            return wp_get_current_user();
+        }
+        return null;
+    }
+
     public function __construct() {
         // Run on init to ensure roles exist
         add_action( 'init', [ $this, 'register_roles' ] );

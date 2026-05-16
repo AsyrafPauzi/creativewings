@@ -17,6 +17,7 @@ class CW_Certificate {
         add_action( 'save_post_product', [ $this, 'save_product_cert_settings' ], 25, 2 );
         add_action( 'admin_post_cw_start_cert_batch', [ $this, 'handle_start_batch' ] );
         add_action( 'admin_post_cw_cert_preview', [ $this, 'handle_preview' ] );
+        add_action( 'admin_post_cw_send_cert_test_email', [ $this, 'handle_test_email' ] );
         add_action( 'admin_post_nopriv_cw_download_cert', [ $this, 'handle_download' ] );
         add_action( 'admin_post_cw_download_cert', [ $this, 'handle_download' ] );
         add_action( self::BATCH_HOOK, [ $this, 'process_batch' ] );
@@ -32,6 +33,19 @@ class CW_Certificate {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Certificate emails started — sending in batches to avoid spam filters.', 'creativewings-core' ) . '</p></div>';
         } elseif ( 'none' === $msg ) {
             echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html__( 'No participants waiting for certificate email.', 'creativewings-core' ) . '</p></div>';
+        } elseif ( 'test_sent' === $msg ) {
+            $to = isset( $_GET['cw_cert_test_to'] ) ? sanitize_email( wp_unslash( $_GET['cw_cert_test_to'] ) ) : '';
+            echo '<div class="notice notice-success is-dismissible"><p>';
+            printf( esc_html__( 'Test certificate email sent to %s.', 'creativewings-core' ), esc_html( $to ) );
+            echo '</p></div>';
+        } elseif ( 'test_fail' === $msg ) {
+            $reason = isset( $_GET['cw_cert_test_reason'] ) ? sanitize_text_field( wp_unslash( $_GET['cw_cert_test_reason'] ) ) : '';
+            echo '<div class="notice notice-error is-dismissible"><p>';
+            esc_html_e( 'Test certificate email could not be sent.', 'creativewings-core' );
+            if ( $reason ) {
+                echo ' ' . esc_html( $reason );
+            }
+            echo '</p></div>';
         }
     }
 
@@ -420,6 +434,27 @@ class CW_Certificate {
             <a class="button" href="<?php echo esc_url( $preview ); ?>" target="_blank"><?php esc_html_e( 'Preview with sample name', 'creativewings-core' ); ?></a>
         </p>
         <hr>
+        <h4><?php esc_html_e( 'Test certificate email', 'creativewings-core' ); ?></h4>
+        <p class="description"><?php esc_html_e( 'Save the product after changing template or name position, then send a test to your inbox.', 'creativewings-core' ); ?></p>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="max-width:480px;">
+            <?php wp_nonce_field( 'cw_send_cert_test_email' ); ?>
+            <input type="hidden" name="action" value="cw_send_cert_test_email">
+            <input type="hidden" name="campaign_id" value="<?php echo (int) $post->ID; ?>">
+            <p>
+                <label for="cw_cert_test_email"><?php esc_html_e( 'Send test to email', 'creativewings-core' ); ?></label><br>
+                <input type="email" id="cw_cert_test_email" name="test_email" class="regular-text" required
+                    placeholder="admin@example.com" value="<?php echo esc_attr( wp_get_current_user()->user_email ); ?>">
+            </p>
+            <p>
+                <label for="cw_cert_test_name"><?php esc_html_e( 'Name on certificate', 'creativewings-core' ); ?></label><br>
+                <input type="text" id="cw_cert_test_name" name="test_name" class="regular-text" value="Test Participant">
+            </p>
+            <button type="submit" class="button" <?php disabled( ! $template ); ?>><?php esc_html_e( 'Send test certificate email', 'creativewings-core' ); ?></button>
+            <?php if ( ! $template ) : ?>
+                <p class="description"><?php esc_html_e( 'Upload a certificate template first.', 'creativewings-core' ); ?></p>
+            <?php endif; ?>
+        </form>
+        <hr>
         <h4><?php esc_html_e( 'Send certificates by email (batched)', 'creativewings-core' ); ?></h4>
         <p><?php printf( esc_html__( '%d participants waiting (not emailed yet). Sends %d emails every %d minutes to avoid spam filters.', 'creativewings-core' ), (int) $eligible, self::BATCH_SIZE, (int) ( self::BATCH_DELAY / 60 ) ); ?></p>
         <?php if ( is_array( $batch ) && ! empty( $batch['running'] ) ) : ?>
@@ -501,6 +536,149 @@ class CW_Certificate {
         header( 'Content-Disposition: inline; filename="certificate-preview.png"' );
         readfile( $file );
         @unlink( $file );
+        exit;
+    }
+
+    public function handle_test_email() {
+        if ( ! current_user_can( 'edit_products' ) ) {
+            wp_die( 'Unauthorized', 403 );
+        }
+        check_admin_referer( 'cw_send_cert_test_email' );
+
+        $campaign_id = (int) ( $_POST['campaign_id'] ?? 0 );
+        $email       = sanitize_email( wp_unslash( $_POST['test_email'] ?? '' ) );
+        $name        = sanitize_text_field( wp_unslash( $_POST['test_name'] ?? 'Test Participant' ) );
+        $redirect    = $campaign_id ? get_edit_post_link( $campaign_id, 'raw' ) : admin_url( 'edit.php?post_type=product' );
+
+        if ( ! $campaign_id || ! is_email( $email ) ) {
+            wp_safe_redirect(
+                add_query_arg(
+                    [
+                        'cw_cert_notice'       => 'test_fail',
+                        'cw_cert_test_reason'  => rawurlencode( __( 'Invalid campaign or email address.', 'creativewings-core' ) ),
+                    ],
+                    $redirect
+                )
+            );
+            exit;
+        }
+
+        if ( ! current_user_can( 'edit_post', $campaign_id ) ) {
+            wp_die( 'Unauthorized', 403 );
+        }
+
+        if ( get_post_meta( $campaign_id, 'cw_enable_certificate', true ) !== 'yes' ) {
+            wp_safe_redirect(
+                add_query_arg(
+                    [
+                        'cw_cert_notice'      => 'test_fail',
+                        'cw_cert_test_reason' => rawurlencode( __( 'Enable certificates on this campaign first.', 'creativewings-core' ) ),
+                    ],
+                    $redirect
+                )
+            );
+            exit;
+        }
+
+        $template = self::template_path( $campaign_id );
+        if ( ! $template ) {
+            wp_safe_redirect(
+                add_query_arg(
+                    [
+                        'cw_cert_notice'      => 'test_fail',
+                        'cw_cert_test_reason' => rawurlencode( __( 'Upload a certificate template first.', 'creativewings-core' ) ),
+                    ],
+                    $redirect
+                )
+            );
+            exit;
+        }
+
+        $file = self::render_image_certificate( $template, $name, self::get_layout( $campaign_id ), 0 );
+        if ( is_wp_error( $file ) ) {
+            wp_safe_redirect(
+                add_query_arg(
+                    [
+                        'cw_cert_notice'      => 'test_fail',
+                        'cw_cert_test_reason' => rawurlencode( $file->get_error_message() ),
+                    ],
+                    $redirect
+                )
+            );
+            exit;
+        }
+
+        $preview_url = wp_nonce_url(
+            add_query_arg(
+                [
+                    'action'      => 'cw_cert_preview',
+                    'campaign_id' => $campaign_id,
+                    'name'        => rawurlencode( $name ),
+                ],
+                admin_url( 'admin-post.php' )
+            ),
+            'cw_cert_preview'
+        );
+
+        $campaign_title = get_the_title( $campaign_id );
+        $subject        = sprintf(
+            '[%s] %s',
+            get_bloginfo( 'name' ),
+            __( 'TEST — Participation certificate', 'creativewings-core' )
+        );
+        $body           = sprintf(
+            '<p><strong>%s</strong></p>
+            <p>%s</p>
+            <p><strong>%s</strong><br>%s</p>
+            <p><a href="%s">%s</a></p>
+            <p>%s</p>',
+            esc_html__( 'This is a test email from Creative Wings admin.', 'creativewings-core' ),
+            esc_html__( 'If the name position looks wrong, adjust X/Y % on the product and click Update, then send another test.', 'creativewings-core' ),
+            esc_html__( 'Campaign:', 'creativewings-core' ),
+            esc_html( $campaign_title ),
+            esc_url( $preview_url ),
+            esc_html__( 'Open certificate preview in browser', 'creativewings-core' ),
+            esc_html__( 'The certificate file is also attached to this email (when under 4MB).', 'creativewings-core' )
+        );
+
+        $attachments = [];
+        if ( file_exists( $file ) && filesize( $file ) < 4000000 ) {
+            $attachments[] = $file;
+        }
+
+        $sent = wp_mail(
+            $email,
+            $subject,
+            wp_kses_post( $body ),
+            [ 'Content-Type: text/html; charset=UTF-8' ],
+            $attachments
+        );
+
+        if ( file_exists( $file ) ) {
+            @unlink( $file );
+        }
+
+        if ( $sent ) {
+            wp_safe_redirect(
+                add_query_arg(
+                    [
+                        'cw_cert_notice' => 'test_sent',
+                        'cw_cert_test_to'  => rawurlencode( $email ),
+                    ],
+                    $redirect
+                )
+            );
+        } else {
+            wp_safe_redirect(
+                add_query_arg(
+                    [
+                        'cw_cert_notice'      => 'test_fail',
+                        'cw_cert_test_reason' => rawurlencode( __( 'wp_mail failed — check SMTP/plugin settings.', 'creativewings-core' ) ),
+                    ],
+                    $redirect
+                )
+            );
+        }
         exit;
     }
 

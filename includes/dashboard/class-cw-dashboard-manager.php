@@ -30,8 +30,16 @@ class CW_Dashboard_Manager {
         $base_url = get_permalink( wc_get_page_id( 'myaccount' ) );
 
         // Define Menus based on Role (FINAL STRUCTURE)
-        if ( in_array( 'creator_role', (array) $user->roles ) ) {
-            $role = 'creator';
+        $role = class_exists( 'CW_Roles' ) ? CW_Roles::get_dashboard_role( $user ) : 'contestant';
+
+        if ( 'business' === $role ) {
+            $menu_items = [
+                'overview'  => ['icon' => 'fa-th-large', 'label' => 'Dashboard'],
+                'campaigns' => ['icon' => 'fa-bullhorn', 'label' => 'My Campaigns'],
+                'wallet'    => ['icon' => 'fa-wallet',   'label' => 'Wallet'],
+                'biz-info'  => ['icon' => 'fa-building', 'label' => 'Company Profile'],
+            ];
+        } elseif ( 'creator' === $role ) {
             $menu_items = [
                 'overview'      => ['icon' => 'fa-th-large', 'label' => 'Dashboard'],
                 'explore'       => ['icon' => 'fa-bolt',     'label' => 'Explore Opportunities'], // NEW TAB
@@ -40,16 +48,7 @@ class CW_Dashboard_Manager {
                 'profile'       => ['icon' => 'fa-user-cog', 'label' => 'Profile Settings'],
                 // Removed 'competitions' as it's now part of 'activities'
             ];
-        } elseif ( in_array( 'business_role', (array) $user->roles ) ) {
-            $role = 'business';
-            $menu_items = [
-                'overview'  => ['icon' => 'fa-th-large', 'label' => 'Dashboard'],
-                'campaigns' => ['icon' => 'fa-bullhorn', 'label' => 'My Campaigns'],
-                'wallet'    => ['icon' => 'fa-wallet',   'label' => 'Wallet'],
-                'biz-info'  => ['icon' => 'fa-building', 'label' => 'Company Profile'],
-            ];
         } else {
-            $role = 'contestant';
             $menu_items = [
                 'overview'         => ['icon' => 'fa-th-large', 'label' => 'Overview'],
                 'link-submission'  => ['icon' => 'fa-link',     'label' => 'Link submission code'],
@@ -79,7 +78,13 @@ class CW_Dashboard_Manager {
                         </div>
                         <div class="cw-logo-text">
                             <h1>Creative Wings</h1>
-                            <p><?php echo ucfirst($role); ?> Portal</p>
+                            <p><?php
+                            $portal_label = ucfirst( $role );
+                            if ( 'business' === $role && class_exists( 'CW_Roles' ) && CW_Roles::is_business_admin( $user ) ) {
+                                $portal_label = __( 'Administrator', 'creativewings-core' );
+                            }
+                            echo esc_html( $portal_label );
+                            ?> Portal</p>
                         </div>
                     </div>
 
@@ -104,7 +109,13 @@ class CW_Dashboard_Manager {
                             <?php echo get_avatar( $user->ID, 38, '', '', ['class' => 'cw-sidebar-avatar'] ); ?>
                             <div class="cw-sidebar-user-info">
                                 <span class="cw-sidebar-user-name"><?php echo esc_html( $user->display_name ); ?></span>
-                                <span class="cw-sidebar-user-role"><?php echo ucfirst( $role ); ?></span>
+                                <span class="cw-sidebar-user-role"><?php
+                                $sidebar_role = ucfirst( $role );
+                                if ( 'business' === $role && class_exists( 'CW_Roles' ) && CW_Roles::is_business_admin( $user ) ) {
+                                    $sidebar_role = __( 'Administrator', 'creativewings-core' );
+                                }
+                                echo esc_html( $sidebar_role );
+                                ?></span>
                             </div>
                         </div>
                         <a href="<?php echo wp_logout_url(home_url()); ?>" class="cw-nav-link logout">

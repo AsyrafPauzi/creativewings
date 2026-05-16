@@ -39,6 +39,7 @@ class CW_Activator {
         add_rewrite_tag( '%cw_school_upload_token%', '([^&]+)' );
 
         // 6. Flush Rules
+        update_option( 'cw_needs_rewrite_flush', '1' );
         flush_rewrite_rules();
     }
 
@@ -50,7 +51,7 @@ class CW_Activator {
      * Run on every load until DB version matches.
      */
     public static function maybe_upgrade() {
-        $target = '1.1.0';
+        $target = '1.2.0';
         $ver    = get_option( 'cw_db_version', '0' );
         if ( version_compare( $ver, $target, '>=' ) ) {
             return;
@@ -60,9 +61,37 @@ class CW_Activator {
         if ( ! get_option( 'cw_webhook_secret' ) ) {
             update_option( 'cw_webhook_secret', wp_generate_password( 32, false, false ) );
         }
-        add_rewrite_rule( '^cw-school-upload/([^/]+)/?$', 'index.php?cw_school_upload_token=$matches[1]', 'top' );
+        // Rewrites must run on init (not plugins_loaded) — flag flush for next request.
+        update_option( 'cw_needs_rewrite_flush', '1' );
+    }
+
+    /**
+     * Register pretty permalinks (safe on init only).
+     */
+    public static function register_rewrite_rules() {
+        global $wp_rewrite;
+        if ( ! $wp_rewrite instanceof WP_Rewrite ) {
+            return;
+        }
+
+        add_rewrite_tag( '%cw_school_upload_token%', '([^&]+)' );
+        add_rewrite_rule(
+            '^cw-school-upload/([^/]+)/?$',
+            'index.php?cw_school_upload_token=$matches[1]',
+            'top'
+        );
         add_rewrite_endpoint( 'cw-link-submission', EP_ROOT | EP_PAGES );
+    }
+
+    /**
+     * One-time flush after DB upgrade or activation.
+     */
+    public static function maybe_flush_rewrite_rules() {
+        if ( ! get_option( 'cw_needs_rewrite_flush' ) ) {
+            return;
+        }
         flush_rewrite_rules();
+        delete_option( 'cw_needs_rewrite_flush' );
     }
 
     private static function init_roles() {
@@ -184,10 +213,28 @@ class CW_Activator {
             KEY object_lookup (object_type, object_id)
         ) $charset_collate;";
 
+        $pending = $wpdb->prefix . 'cw_pending_parent_links';
+        $sql5    = "CREATE TABLE $pending (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            user_id bigint(20) unsigned NOT NULL,
+            submission_code varchar(20) NOT NULL,
+            campaign_id bigint(20) unsigned NOT NULL,
+            school_code varchar(3) NOT NULL,
+            month_code varchar(2) NOT NULL,
+            seq_code varchar(6) NOT NULL,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY submission_campaign (submission_code, campaign_id),
+            UNIQUE KEY user_campaign (user_id, campaign_id),
+            KEY campaign_id (campaign_id)
+        ) $charset_collate;";
+
         dbDelta( $sql );
         dbDelta( $sql2 );
         dbDelta( $sql3 );
         dbDelta( $sql4 );
+        dbDelta( $sql5 );
 
         if ( false === get_option( 'cw_default_age_brackets', false ) ) {
             update_option( 'cw_default_age_brackets', [

@@ -72,6 +72,7 @@ class CW_Shop {
         $fields  = get_post_meta( $post_id, 'cw_custom_fields', true ); 
         
         // --- LOGIC: CONTEXT DETECTION ---
+        $allow_multi_p = false;
         $is_activity = has_term( 'activities', 'product_cat', $post_id );
         if(!$is_activity) {
             $terms = get_the_terms($post_id, 'product_cat');
@@ -83,13 +84,13 @@ class CW_Shop {
         }
 
         if ( $is_activity ) {
-            // Activity (Team/Participants) - NEEDS NAMES
-            $is_multi = false;
-            $min_p = (int) get_post_meta( $post_id, 'cw_min_participants', true ) ?: 1;
-            $max_p = (int) get_post_meta( $post_id, 'cw_max_participants', true ) ?: 10;
-            $label_text = 'Participant';
-            $btn_text = '+ Add Participant';
-            $calc_mode = 'team'; // Fixed Qty 1
+            $allow_multi_p = get_post_meta( $post_id, 'cw_allow_multiple_participants', true ) === 'yes';
+            $is_multi      = false;
+            $min_p         = $allow_multi_p ? ( (int) get_post_meta( $post_id, 'cw_min_participants', true ) ?: 1 ) : 1;
+            $max_p         = $allow_multi_p ? ( (int) get_post_meta( $post_id, 'cw_max_participants', true ) ?: 10 ) : 1;
+            $label_text    = 'Participant';
+            $btn_text      = '+ Add Participant';
+            $calc_mode     = 'team';
         } else {
             // Competition (Artwork) - NO NAMES (Use Billing Name)
             $is_multi = get_post_meta( $post_id, 'multiple_submissions', true ) === 'true';
@@ -100,20 +101,41 @@ class CW_Shop {
             $calc_mode = 'entry'; // Qty scales
         }
 
-        $addons = get_post_meta( $post_id, 'addon_products', true );
-        if(isset($addons[0])) $addons = $addons[0];
+        $addons = [];
+        if ( get_post_meta( $post_id, 'cw_enable_addons', true ) === 'yes' ) {
+            $addons = get_post_meta( $post_id, 'addon_products', true );
+            if ( isset( $addons[0] ) ) {
+                $addons = $addons[0];
+            }
+        }
+
+        $use_account_fn = get_post_meta( $post_id, 'cw_use_account_fullname', true );
+        if ( $use_account_fn === '' ) {
+            $use_account_fn = 'yes';
+        }
+        $account_full_name = '';
+        if ( is_user_logged_in() ) {
+            $uid = get_current_user_id();
+            $account_full_name = get_user_meta( $uid, 'cw_full_name', true );
+            if ( ! $account_full_name ) {
+                $account_full_name = wp_get_current_user()->display_name;
+            }
+        }
 
         $js_config = [
-            'fields'    => $fields,
-            'min'       => $min_p,
-            'max'       => $max_p,
-            'is_multi'  => $is_multi,
-            'label'     => $label_text,
-            'btn_text'  => $btn_text,
-            'calc_mode' => $calc_mode,
-            'is_activity' => $is_activity, // NEW FLAG
-            'addons'    => $addons,
-            'post_id'   => $post_id
+            'fields'              => $fields,
+            'min'                 => $min_p,
+            'max'                 => $max_p,
+            'is_multi'            => $is_multi,
+            'label'               => $label_text,
+            'btn_text'            => $btn_text,
+            'calc_mode'           => $calc_mode,
+            'is_activity'         => $is_activity,
+            'allow_multiple'      => ! empty( $allow_multi_p ),
+            'use_account_fullname'=> ( $use_account_fn === 'yes' ),
+            'account_full_name'   => $account_full_name,
+            'addons'              => $addons,
+            'post_id'             => $post_id,
         ];
 
         echo '<script>var cwConfig = ' . json_encode($js_config) . ';</script>';
@@ -189,20 +211,29 @@ class CW_Shop {
 
             function renderRowHTML(rowNum) {
                 let nameField = '';
-                
-                // CONDITIONAL NAME FIELD
+                const allowMulti = cwConfig.allow_multiple || cwConfig.max > 1;
+                let rowTitle = labelText;
+                if (allowMulti) {
+                    rowTitle = labelText + ' ' + rowNum;
+                }
+
                 if (isActivity) {
-                    // For Activities (Certificates needed per person), SHOW name field
-                    nameField = `<div class="cw-field-row"><label>Participant Name <span style="color:red">*</span></label><input type="text" class="cw-frontend-input cw-input-name" required style="width:100%"></div>`;
+                    let nameVal = '';
+                    let hint = '';
+                    if (rowNum === 1 && cwConfig.use_account_fullname && cwConfig.account_full_name) {
+                        nameVal = cwConfig.account_full_name.replace(/"/g, '&quot;');
+                        hint = '<p style="font-size:12px;color:#64748b;margin:4px 0 8px;">Prefilled from your account — edit if needed.</p>';
+                    } else if (rowNum > 1 && cwConfig.use_account_fullname) {
+                        hint = '<p style="font-size:12px;color:#64748b;margin:4px 0 8px;">Enter full name for this participant (certificate).</p>';
+                    }
+                    nameField = `<div class="cw-field-row"><label>Full Name <span style="color:red">*</span></label>${hint}<input type="text" class="cw-frontend-input cw-input-name" value="${nameVal}" required style="width:100%"></div>`;
                 } else {
-                    // For Competitions (Artworks), HIDE name field (will use Billing Name)
-                    // We submit a hidden field just to keep structure, or handle in backend
                     nameField = `<input type="hidden" class="cw-input-name" value="Self">`;
                 }
 
                 let html = `<div class="cw-entry-row" data-row-num="${rowNum}">
                     <span class="cw-remove-row">×</span>
-                    <h4 class="cw-row-title">${labelText} ${rowNum}</h4>
+                    <h4 class="cw-row-title">${rowTitle}</h4>
                     ${nameField}`;
 
                 if(cwConfig.fields) {
@@ -561,6 +592,10 @@ class CW_Shop {
         );
         if ( ! $locked ) {
             return;
+        }
+
+        if ( class_exists( 'CW_Pending_Parent_Link' ) ) {
+            CW_Pending_Parent_Link::delete_by_code( $row['submission_code'], (int) $row['campaign_id'] );
         }
 
         $name = $row['student_name'];

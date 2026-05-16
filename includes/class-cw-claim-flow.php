@@ -12,6 +12,7 @@ class CW_Claim_Flow {
 
         add_action( 'admin_post_cw_claim_lookup', [ $this, 'handle_lookup' ] );
         add_action( 'admin_post_cw_claim_confirm', [ $this, 'handle_confirm' ] );
+        add_action( 'admin_post_cw_claim_continue', [ $this, 'handle_continue' ] );
 
         add_filter( 'woocommerce_get_item_data', [ $this, 'display_claim_cart' ], 20, 2 );
         add_action( 'woocommerce_before_calculate_totals', [ $this, 'maybe_zero_claim_line' ], 25 );
@@ -54,6 +55,11 @@ class CW_Claim_Flow {
             echo '<p class="cw-alert error">' . esc_html__( 'Session expired. Please enter your code again.', 'creativewings-core' ) . '</p>';
         }
 
+        if ( 'waiting' === $step ) {
+            $this->render_waiting_step( $base );
+            return;
+        }
+
         $this->render_enter_step( $base );
     }
 
@@ -61,7 +67,21 @@ class CW_Claim_Flow {
         ?>
         <div class="cw-content-wrapper">
             <h2><?php esc_html_e( 'Link your submission code', 'creativewings-core' ); ?></h2>
-            <p><?php esc_html_e( 'Enter the code from your school (e.g. 0020500100001).', 'creativewings-core' ); ?></p>
+            <p><?php esc_html_e( 'Enter the code from your school (e.g. 0020500100001). You can link your code before your school uploads the artwork — we will notify you when you can continue to checkout.', 'creativewings-core' ); ?></p>
+            <?php if ( ! empty( $_GET['linked'] ) ) : ?>
+                <div class="cw-alert success"><?php esc_html_e( 'Your code is saved. We will email you when your school has uploaded the artwork.', 'creativewings-core' ); ?></div>
+            <?php endif; ?>
+            <?php
+            if ( class_exists( 'CW_Pending_Parent_Link' ) ) {
+                $pending_list = CW_Pending_Parent_Link::list_for_user( get_current_user_id() );
+                if ( ! empty( $pending_list ) ) : ?>
+                    <div class="cw-alert" style="margin-bottom:1em">
+                        <p><strong><?php esc_html_e( 'Waiting for school upload', 'creativewings-core' ); ?></strong>
+                        — <a href="<?php echo esc_url( add_query_arg( 'step', 'waiting', $base ) ); ?>"><?php esc_html_e( 'View status', 'creativewings-core' ); ?></a></p>
+                    </div>
+                <?php endif;
+            }
+            ?>
             <?php if ( ! empty( $_GET['error'] ) ) : ?>
                 <div class="cw-alert error"><?php echo esc_html( sanitize_text_field( wp_unslash( $_GET['error'] ) ) ); ?></div>
             <?php endif; ?>
@@ -109,6 +129,98 @@ class CW_Claim_Flow {
         <?php
     }
 
+    private function render_waiting_step( $base ) {
+        $uid     = get_current_user_id();
+        $pending = class_exists( 'CW_Pending_Parent_Link' )
+            ? CW_Pending_Parent_Link::list_for_user( $uid )
+            : [];
+        if ( empty( $pending ) ) {
+            wp_safe_redirect( $base );
+            exit;
+        }
+        ?>
+        <div class="cw-content-wrapper">
+            <h2><?php esc_html_e( 'Waiting for school upload', 'creativewings-core' ); ?></h2>
+            <?php if ( ! empty( $_GET['linked'] ) ) : ?>
+                <div class="cw-alert success"><?php esc_html_e( 'Your code is saved. We will email you when your school has uploaded the artwork.', 'creativewings-core' ); ?></div>
+            <?php endif; ?>
+            <?php foreach ( $pending as $p ) :
+                $campaign_id = (int) $p['campaign_id'];
+                $staged      = CW_Staged_Submissions::get_by_code( $p['submission_code'], $campaign_id );
+                $ready       = $staged
+                    && ( $staged['status'] ?? '' ) === 'staged'
+                    && (int) ( $staged['artwork_attachment_id'] ?? 0 ) > 0
+                    && ( $staged['moderation_status'] ?? 'approved' ) === 'approved';
+                ?>
+                <div class="cw-pending-card" style="border:1px solid #ddd;padding:1em;margin:1em 0;border-radius:4px">
+                    <p><strong><?php echo esc_html( $p['submission_code'] ); ?></strong></p>
+                    <p><?php echo esc_html( get_the_title( $campaign_id ) ); ?></p>
+                    <?php if ( $ready ) : ?>
+                        <p><?php esc_html_e( 'Your school has uploaded the artwork. You can continue to confirm the student name and checkout.', 'creativewings-core' ); ?></p>
+                        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                            <?php wp_nonce_field( 'cw_claim_continue', 'cw_claim_nonce' ); ?>
+                            <input type="hidden" name="action" value="cw_claim_continue">
+                            <input type="hidden" name="campaign_id" value="<?php echo esc_attr( (string) $campaign_id ); ?>">
+                            <button type="submit" class="button button-primary"><?php esc_html_e( 'Continue to checkout', 'creativewings-core' ); ?></button>
+                        </form>
+                    <?php else : ?>
+                        <p><?php esc_html_e( 'Your school has not uploaded this submission yet. Please check back later or wait for our email.', 'creativewings-core' ); ?></p>
+                        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                            <?php wp_nonce_field( 'cw_claim_continue', 'cw_claim_nonce' ); ?>
+                            <input type="hidden" name="action" value="cw_claim_continue">
+                            <input type="hidden" name="campaign_id" value="<?php echo esc_attr( (string) $campaign_id ); ?>">
+                            <button type="submit" class="button"><?php esc_html_e( 'Check again', 'creativewings-core' ); ?></button>
+                        </form>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+            <p><a href="<?php echo esc_url( $base ); ?>"><?php esc_html_e( 'Enter another code', 'creativewings-core' ); ?></a></p>
+        </div>
+        <?php
+    }
+
+    public function handle_continue() {
+        if ( ! is_user_logged_in() || ! wp_verify_nonce( $_POST['cw_claim_nonce'] ?? '', 'cw_claim_continue' ) ) {
+            wp_die( 'Security check failed', 403 );
+        }
+
+        $uid         = get_current_user_id();
+        $campaign_id = absint( $_POST['campaign_id'] ?? 0 );
+        $base        = wc_get_account_endpoint_url( 'cw-link-submission' );
+        $pending     = class_exists( 'CW_Pending_Parent_Link' )
+            ? CW_Pending_Parent_Link::get_for_user_campaign( $uid, $campaign_id )
+            : null;
+
+        if ( ! $pending ) {
+            wp_safe_redirect( $base );
+            exit;
+        }
+
+        $row = CW_Staged_Submissions::get_by_code( $pending['submission_code'], $campaign_id );
+        if ( ! $row || (int) ( $row['artwork_attachment_id'] ?? 0 ) < 1 ) {
+            wp_safe_redirect( add_query_arg( 'step', 'waiting', $base ) );
+            exit;
+        }
+
+        if ( ( $row['status'] ?? '' ) === 'claimed' ) {
+            CW_Pending_Parent_Link::delete_for_user_campaign( $uid, $campaign_id );
+            wp_safe_redirect( add_query_arg( 'error', rawurlencode( 'This code is already linked to an account.' ), $base ) );
+            exit;
+        }
+
+        if ( ( $row['moderation_status'] ?? 'approved' ) !== 'approved' ) {
+            wp_safe_redirect( add_query_arg( 'error', rawurlencode( 'Artwork is not approved yet.' ), $base ) );
+            exit;
+        }
+
+        $token = class_exists( 'CW_Security' )
+            ? CW_Security::set_claim_session( $uid, (int) $row['id'], $campaign_id )
+            : '';
+
+        wp_safe_redirect( add_query_arg( [ 'step' => 'confirm', 'claim_token' => $token ], $base ) );
+        exit;
+    }
+
     public function handle_lookup() {
         if ( ! is_user_logged_in() || ! wp_verify_nonce( $_POST['cw_claim_nonce'] ?? '', 'cw_claim_lookup' ) ) {
             wp_die( 'Security check failed', 403 );
@@ -143,9 +255,32 @@ class CW_Claim_Flow {
             exit;
         }
 
+        $uid = get_current_user_id();
+        if ( CW_Staged_Submissions::user_has_claimed_campaign( $uid, $campaign_id ) ) {
+            wp_safe_redirect( add_query_arg( 'error', rawurlencode( 'You already linked a submission for this campaign.' ), $base ) );
+            exit;
+        }
+        if ( class_exists( 'CW_Pending_Parent_Link' ) && CW_Pending_Parent_Link::user_has_pending( $uid, $campaign_id ) ) {
+            $existing_pending = CW_Pending_Parent_Link::get_for_user_campaign( $uid, $campaign_id );
+            if ( $existing_pending && $existing_pending['submission_code'] !== $parsed['normalized'] ) {
+                wp_safe_redirect( add_query_arg( 'error', rawurlencode( 'You already registered a different code for this campaign.' ), $base ) );
+                exit;
+            }
+        }
+
         $row = CW_Staged_Submissions::get_by_code( $parsed['normalized'], $campaign_id );
         if ( ! $row ) {
-            wp_safe_redirect( add_query_arg( 'error', rawurlencode( 'Submission code not found.' ), $base ) );
+            $held = class_exists( 'CW_Pending_Parent_Link' )
+                ? CW_Pending_Parent_Link::get_by_code( $parsed['normalized'], $campaign_id )
+                : null;
+            if ( $held && (int) $held['user_id'] !== $uid ) {
+                wp_safe_redirect( add_query_arg( 'error', rawurlencode( 'Another account has already registered this code while waiting for school upload.' ), $base ) );
+                exit;
+            }
+            if ( class_exists( 'CW_Pending_Parent_Link' ) ) {
+                CW_Pending_Parent_Link::save( $uid, $parsed, $campaign_id );
+            }
+            wp_safe_redirect( add_query_arg( [ 'step' => 'waiting', 'linked' => '1' ], $base ) );
             exit;
         }
 
@@ -159,10 +294,8 @@ class CW_Claim_Flow {
             exit;
         }
 
-        $uid = get_current_user_id();
-        if ( CW_Staged_Submissions::user_has_claimed_campaign( $uid, $campaign_id ) ) {
-            wp_safe_redirect( add_query_arg( 'error', rawurlencode( 'You already linked a submission for this campaign.' ), $base ) );
-            exit;
+        if ( class_exists( 'CW_Pending_Parent_Link' ) ) {
+            CW_Pending_Parent_Link::delete_for_user_campaign( $uid, $campaign_id );
         }
 
         $token = class_exists( 'CW_Security' )
