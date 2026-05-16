@@ -8,7 +8,110 @@ class CW_Campaign_Admin {
     public function __construct() {
         add_action( 'add_meta_boxes', [ $this, 'metaboxes' ] );
         add_action( 'admin_post_cw_bulk_codes', [ $this, 'render_bulk_codes' ] );
+        add_action( 'save_post_product', [ $this, 'ensure_woocommerce_product_defaults' ], 5, 2 );
         add_action( 'save_post_product', [ $this, 'save_product_flags' ], 20, 2 );
+        add_filter( 'redirect_post_location', [ $this, 'fix_product_save_redirect' ], 99, 2 );
+        add_action( 'admin_notices', [ $this, 'product_save_admin_notice' ] );
+        add_action( 'edit_form_top', [ $this, 'warn_if_not_product_campaign' ] );
+    }
+
+    /**
+     * @param WP_Post $post
+     */
+    public function warn_if_not_product_campaign( $post ) {
+        if ( ! $post || 'product' === $post->post_type ) {
+            return;
+        }
+        echo '<div class="notice notice-error"><p><strong>' . esc_html__( 'Not a WooCommerce product', 'creativewings-core' ) . '</strong> ';
+        printf(
+            /* translators: %s: post type slug */
+            esc_html__( 'This item is post type “%s”. Campaigns must be edited under WooCommerce → Products, not the blog Posts screen.', 'creativewings-core' ),
+            esc_html( $post->post_type )
+        );
+        echo '</p></div>';
+    }
+
+    /**
+     * Campaign products created via import/wizard may lack WC type/stock meta; admin Publish needs these.
+     */
+    public function ensure_woocommerce_product_defaults( $post_id, $post ) {
+        if ( wp_is_post_autosave( $post_id ) || ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) ) {
+            return;
+        }
+        if ( ! $post || 'product' !== $post->post_type ) {
+            return;
+        }
+
+        $terms = wp_get_object_terms( $post_id, 'product_type', [ 'fields' => 'slugs' ] );
+        if ( empty( $terms ) || is_wp_error( $terms ) ) {
+            wp_set_object_terms( $post_id, 'simple', 'product_type' );
+        }
+
+        if ( '' === get_post_meta( $post_id, '_stock_status', true ) ) {
+            update_post_meta( $post_id, '_stock_status', 'instock' );
+        }
+        update_post_meta( $post_id, '_manage_stock', 'no' );
+
+        if ( '' === get_post_meta( $post_id, '_virtual', true ) ) {
+            update_post_meta( $post_id, '_virtual', 'yes' );
+        }
+
+        if ( get_post_meta( $post_id, '_price', true ) === '' && get_post_meta( $post_id, '_regular_price', true ) === '' ) {
+            update_post_meta( $post_id, '_regular_price', '0' );
+            update_post_meta( $post_id, '_price', '0' );
+        }
+
+        if ( function_exists( 'wc_delete_product_transients' ) ) {
+            wc_delete_product_transients( $post_id );
+        }
+    }
+
+    public function product_save_admin_notice() {
+        if ( ! isset( $_GET['post'], $_GET['message'] ) ) {
+            return;
+        }
+        $post_id = (int) $_GET['post'];
+        if ( 'product' !== get_post_type( $post_id ) ) {
+            return;
+        }
+        if ( ! in_array( (int) $_GET['message'], [ 6, 10 ], true ) ) {
+            return;
+        }
+        if ( 'publish' === get_post_status( $post_id ) ) {
+            return;
+        }
+        echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Creative Wings:', 'creativewings-core' ) . '</strong> ';
+        esc_html_e( 'Save completed but this campaign is still not Published. In the Product data box set a price, choose Simple product, then click Publish again. If it keeps failing, deploy the latest plugin (certificate nested-form fix).', 'creativewings-core' );
+        echo '</p></div>';
+    }
+
+    /**
+     * After saving a campaign product, stay on the product editor or WooCommerce product list.
+     *
+     * @param string $location
+     * @param int    $post_id
+     * @return string
+     */
+    public function fix_product_save_redirect( $location, $post_id ) {
+        if ( 'product' !== get_post_type( $post_id ) ) {
+            return $location;
+        }
+
+        $query = [];
+        if ( false !== strpos( $location, '?' ) ) {
+            parse_str( (string) wp_parse_url( $location, PHP_URL_QUERY ), $query );
+        }
+
+        $edit_link = get_edit_post_link( $post_id, 'raw' );
+        if ( $edit_link ) {
+            if ( ! empty( $query['message'] ) ) {
+                return add_query_arg( 'message', (int) $query['message'], $edit_link );
+            }
+            return $edit_link;
+        }
+
+        $query['post_type'] = 'product';
+        return add_query_arg( $query, admin_url( 'edit.php' ) );
     }
 
     public function save_product_flags( $post_id, $post ) {

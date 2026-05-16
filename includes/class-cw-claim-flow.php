@@ -19,7 +19,7 @@ class CW_Claim_Flow {
         add_filter( 'woocommerce_get_item_data', [ $this, 'display_claim_cart' ], 20, 2 );
         add_action( 'woocommerce_before_calculate_totals', [ $this, 'maybe_zero_claim_line' ], 25 );
 
-        add_action( 'woocommerce_checkout_before_order_review', [ $this, 'checkout_message_field' ] );
+        add_action( 'woocommerce_after_order_notes', [ $this, 'checkout_message_field' ] );
         add_action( 'woocommerce_checkout_update_order_meta', [ $this, 'save_checkout_message' ] );
         add_action( 'woocommerce_checkout_process', [ $this, 'validate_checkout_message' ] );
     }
@@ -593,6 +593,10 @@ class CW_Claim_Flow {
         WC()->cart->calculate_totals();
         $this->persist_wc_cart_session();
 
+        if ( class_exists( 'CW_Shop' ) ) {
+            CW_Shop::set_school_claim_checkout_session( $product_id, $staged_id );
+        }
+
         CW_Security::clear_claim_session( $uid );
         wp_safe_redirect( wc_get_checkout_url() );
         exit;
@@ -717,16 +721,18 @@ class CW_Claim_Flow {
             }
             $label = get_post_meta( $pid, 'cw_checkout_message_label', true ) ?: __( 'Your message', 'creativewings-core' );
             $req   = get_post_meta( $pid, 'cw_checkout_message_required', true ) === 'yes';
+            echo '<div class="cw-checkout-message-card">';
             woocommerce_form_field(
                 'cw_checkout_message',
                 [
                     'type'     => 'textarea',
-                    'class'    => [ 'form-row-wide' ],
+                    'class'    => [ 'form-row-wide', 'cw-checkout-message-field' ],
                     'label'    => esc_html( $label ),
                     'required' => $req,
                 ],
                 WC()->checkout->get_value( 'cw_checkout_message' )
             );
+            echo '</div>';
             break;
         }
     }

@@ -32,7 +32,78 @@ class CW_Shop {
         add_action('wp', [ $this, 'remove_loop_add_to_cart' ]);
         
         // Deadline Check
-        add_filter('woocommerce_is_purchasable', [ $this, 'check_deadline_status' ], 10, 2);
+        add_filter( 'woocommerce_is_purchasable', [ $this, 'check_deadline_status' ], 99, 2 );
+        add_filter( 'woocommerce_cart_item_is_purchasable', [ $this, 'cart_item_school_claim_purchasable' ], 99, 3 );
+        add_filter( 'woocommerce_add_cart_item', [ $this, 'preserve_claim_cart_item' ], 10, 2 );
+
+        add_action( 'woocommerce_cart_emptied', [ $this, 'clear_school_claim_checkout_session' ] );
+        add_action( 'woocommerce_thankyou', [ $this, 'clear_school_claim_checkout_session' ] );
+    }
+
+    /**
+     * Remember link-submission checkout in WC session (survives cart validation even if line meta is missing).
+     */
+    public static function set_school_claim_checkout_session( $product_id, $staged_id = 0 ) {
+        if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+            return;
+        }
+        WC()->session->set( 'cw_school_claim_product_id', (int) $product_id );
+        WC()->session->set( 'cw_school_claim_staged_id', (int) $staged_id );
+    }
+
+    public function clear_school_claim_checkout_session() {
+        if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+            return;
+        }
+        WC()->session->__unset( 'cw_school_claim_product_id' );
+        WC()->session->__unset( 'cw_school_claim_staged_id' );
+    }
+
+    /**
+     * @param array<string, mixed> $cart_item
+     * @return array<string, mixed>
+     */
+    public function preserve_claim_cart_item( $cart_item, $cart_item_key ) {
+        foreach ( [ 'cw_staged_id', 'cw_claim_code', 'cw_age_bracket_key', 'cw_age_bracket_label' ] as $key ) {
+            if ( isset( $cart_item[ $key ] ) ) {
+                continue;
+            }
+            $session_cart = WC()->session ? WC()->session->get( 'cart' ) : null;
+            if ( is_array( $session_cart ) && isset( $session_cart[ $cart_item_key ][ $key ] ) ) {
+                $cart_item[ $key ] = $session_cart[ $cart_item_key ][ $key ];
+            }
+        }
+        return $cart_item;
+    }
+
+    /**
+     * Keep school-link lines in the cart when public registration has not opened yet.
+     *
+     * @param bool       $purchasable
+     * @param array      $cart_item
+     * @param string|int $cart_item_key
+     */
+    public function cart_item_school_claim_purchasable( $purchasable, $cart_item, $cart_item_key ) {
+        if ( $purchasable ) {
+            return $purchasable;
+        }
+        if ( empty( $cart_item['cw_staged_id'] ) && empty( $cart_item['cw_claim_code'] ) ) {
+            return $purchasable;
+        }
+
+        $product_id = isset( $cart_item['product_id'] ) ? (int) $cart_item['product_id'] : 0;
+        if ( ! $product_id && isset( $cart_item['data'] ) && is_object( $cart_item['data'] ) ) {
+            $product_id = (int) $cart_item['data']->get_id();
+        }
+        if ( ! $product_id ) {
+            return $purchasable;
+        }
+
+        if ( self::get_registration_block_reason( $product_id, true ) ) {
+            return false;
+        }
+
+        return true;
     }
 
     public function check_deadline_status( $is_purchasable, $product ) {
@@ -40,12 +111,79 @@ class CW_Shop {
             return $is_purchasable;
         }
 
-        $reason = self::get_registration_block_reason( (int) $product->get_id(), ! empty( $GLOBALS['cw_claim_checkout_flow'] ) );
+        $product_id   = (int) $product->get_id();
+        $school_claim = self::is_school_claim_checkout( $product_id );
+
+        if ( $school_claim ) {
+            return self::get_registration_block_reason( $product_id, true ) ? false : true;
+        }
+
+        $reason = self::get_registration_block_reason( $product_id, false );
         if ( $reason ) {
             return false;
         }
 
         return $is_purchasable;
+    }
+
+    /**
+     * Parent link-submission checkout (school PIC upload → confirm → pay).
+     * Must stay purchasable on cart/checkout, not only during admin-post add_to_cart.
+     *
+     * @param int $product_id Optional product ID to match a specific cart line.
+     */
+    public static function is_school_claim_checkout( $product_id = 0 ) {
+        if ( ! empty( $GLOBALS['cw_claim_checkout_flow'] ) ) {
+            return true;
+        }
+
+        if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+            return false;
+        }
+
+        $product_id = (int) $product_id;
+        $session_pid = (int) WC()->session->get( 'cw_school_claim_product_id' );
+        if ( $session_pid && ( ! $product_id || $session_pid === $product_id ) ) {
+            return true;
+        }
+
+        if ( ! WC()->cart ) {
+            return false;
+        }
+
+        $session_cart = WC()->session->get( 'cart' );
+        if ( is_array( $session_cart ) ) {
+            foreach ( $session_cart as $values ) {
+                if ( empty( $values['cw_staged_id'] ) && empty( $values['cw_claim_code'] ) ) {
+                    continue;
+                }
+                if ( ! $product_id ) {
+                    return true;
+                }
+                $line_product_id = isset( $values['product_id'] ) ? (int) $values['product_id'] : 0;
+                if ( $line_product_id === $product_id ) {
+                    return true;
+                }
+            }
+        }
+
+        foreach ( WC()->cart->get_cart() as $item ) {
+            if ( empty( $item['cw_staged_id'] ) && empty( $item['cw_claim_code'] ) ) {
+                continue;
+            }
+            if ( ! $product_id ) {
+                return true;
+            }
+            $line_product_id = isset( $item['product_id'] ) ? (int) $item['product_id'] : 0;
+            if ( ! $line_product_id && isset( $item['data'] ) && is_object( $item['data'] ) ) {
+                $line_product_id = (int) $item['data']->get_id();
+            }
+            if ( $line_product_id === $product_id ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -403,6 +541,12 @@ class CW_Shop {
             return $passed;
         }
 
+        $block = self::get_registration_block_reason( (int) $product_id, false );
+        if ( $block ) {
+            wc_add_notice( $block, 'error' );
+            return false;
+        }
+
         $names = $_POST['cw_names'] ?? [];
         if ( empty( $names ) ) {
             wc_add_notice( 'Details are required.', 'error' );
@@ -554,11 +698,19 @@ class CW_Shop {
     }
 
     public function display_custom_data_in_cart($d,$i){
+        $is_claim = ! empty( $i['cw_staged_id'] ) || ! empty( $i['cw_claim_code'] );
         if(isset($i['cw_participants'])) foreach($i['cw_participants'] as $n=>$fs) foreach($fs as $f) {
             if ( isset( $f['label'], $f['value'] ) && $f['label'] === 'Name' && strcasecmp( trim( (string) $f['value'] ), 'Self' ) === 0 ) {
                 continue;
             }
-            $d[]=['key'=>"Entry $n: ".$f['label'],'value'=>$f['value']];
+            $label_lc = strtolower( trim( (string) ( $f['label'] ?? '' ) ) );
+            if ( $is_claim && in_array( $label_lc, [ 'name', 'submission code' ], true ) ) {
+                continue;
+            }
+            $label = ( $is_claim && count( $i['cw_participants'] ) <= 1 )
+                ? $f['label']
+                : "Entry $n: " . $f['label'];
+            $d[]=['key'=>$label,'value'=>$f['value']];
         }
         if(isset($i['cw_addons_meta'])) foreach($i['cw_addons_meta'] as $a) $d[]=['key'=>'Add-on','value'=>$a['title'].' (+'.wc_price($a['total_cost']).')'];
         return $d;

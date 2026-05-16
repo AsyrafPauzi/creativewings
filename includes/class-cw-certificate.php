@@ -12,8 +12,17 @@ class CW_Certificate {
     const BATCH_SIZE   = 15;
     const BATCH_DELAY  = 300; // 5 minutes between batches.
 
+    /**
+     * Metabox defers certificate action forms to admin_footer (nested forms break product Publish).
+     *
+     * @var array<string, mixed>|null
+     */
+    private static $footer_forms_context = null;
+
     public function __construct() {
         add_action( 'add_meta_boxes', [ $this, 'register_metabox' ] );
+        add_action( 'admin_footer-post.php', [ $this, 'render_external_forms' ] );
+        add_action( 'admin_footer-post-new.php', [ $this, 'render_external_forms' ] );
         add_action( 'save_post_product', [ $this, 'save_product_cert_settings' ], 25, 2 );
         add_action( 'admin_post_cw_start_cert_batch', [ $this, 'handle_start_batch' ] );
         add_action( 'admin_post_cw_cert_preview', [ $this, 'handle_preview' ] );
@@ -383,6 +392,14 @@ class CW_Certificate {
         $batch    = get_post_meta( $post->ID, 'cw_cert_batch_status', true );
         $eligible = $enabled ? count( self::get_eligible_entry_ids( $post->ID, false ) ) : 0;
 
+        self::$footer_forms_context = [
+            'post_id'  => (int) $post->ID,
+            'template' => (string) $template,
+            'enabled'  => $enabled,
+            'eligible' => (int) $eligible,
+            'batch'    => is_array( $batch ) ? $batch : [],
+        ];
+
         wp_nonce_field( 'cw_cert_settings', 'cw_cert_settings_nonce' );
         ?>
         <p>
@@ -436,24 +453,19 @@ class CW_Certificate {
         <hr>
         <h4><?php esc_html_e( 'Test certificate email', 'creativewings-core' ); ?></h4>
         <p class="description"><?php esc_html_e( 'Save the product after changing template or name position, then send a test to your inbox.', 'creativewings-core' ); ?></p>
-        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="max-width:480px;">
-            <?php wp_nonce_field( 'cw_send_cert_test_email' ); ?>
-            <input type="hidden" name="action" value="cw_send_cert_test_email">
-            <input type="hidden" name="campaign_id" value="<?php echo (int) $post->ID; ?>">
-            <p>
-                <label for="cw_cert_test_email"><?php esc_html_e( 'Send test to email', 'creativewings-core' ); ?></label><br>
-                <input type="email" id="cw_cert_test_email" name="test_email" class="regular-text" required
-                    placeholder="admin@example.com" value="<?php echo esc_attr( wp_get_current_user()->user_email ); ?>">
-            </p>
-            <p>
-                <label for="cw_cert_test_name"><?php esc_html_e( 'Name on certificate', 'creativewings-core' ); ?></label><br>
-                <input type="text" id="cw_cert_test_name" name="test_name" class="regular-text" value="Test Participant">
-            </p>
-            <button type="submit" class="button" <?php disabled( ! $template ); ?>><?php esc_html_e( 'Send test certificate email', 'creativewings-core' ); ?></button>
-            <?php if ( ! $template ) : ?>
-                <p class="description"><?php esc_html_e( 'Upload a certificate template first.', 'creativewings-core' ); ?></p>
-            <?php endif; ?>
-        </form>
+        <p>
+            <label for="cw_cert_test_email"><?php esc_html_e( 'Send test to email', 'creativewings-core' ); ?></label><br>
+            <input type="email" id="cw_cert_test_email" form="cw-cert-test-email-form" name="test_email" class="regular-text" required
+                placeholder="admin@example.com" value="<?php echo esc_attr( wp_get_current_user()->user_email ); ?>">
+        </p>
+        <p>
+            <label for="cw_cert_test_name"><?php esc_html_e( 'Name on certificate', 'creativewings-core' ); ?></label><br>
+            <input type="text" id="cw_cert_test_name" form="cw-cert-test-email-form" name="test_name" class="regular-text" value="Test Participant">
+        </p>
+        <button type="submit" class="button" form="cw-cert-test-email-form" <?php disabled( ! $template ); ?>><?php esc_html_e( 'Send test certificate email', 'creativewings-core' ); ?></button>
+        <?php if ( ! $template ) : ?>
+            <p class="description"><?php esc_html_e( 'Upload a certificate template first.', 'creativewings-core' ); ?></p>
+        <?php endif; ?>
         <hr>
         <h4><?php esc_html_e( 'Send certificates by email (batched)', 'creativewings-core' ); ?></h4>
         <p><?php printf( esc_html__( '%d participants waiting (not emailed yet). Sends %d emails every %d minutes to avoid spam filters.', 'creativewings-core' ), (int) $eligible, self::BATCH_SIZE, (int) ( self::BATCH_DELAY / 60 ) ); ?></p>
@@ -462,24 +474,48 @@ class CW_Certificate {
             <?php printf( esc_html__( '%d sent, %d remaining', 'creativewings-core' ), (int) ( $batch['sent'] ?? 0 ), (int) ( $batch['remaining'] ?? 0 ) ); ?></p>
         <?php endif; ?>
         <?php if ( $enabled && $eligible > 0 ) : ?>
-        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-            <?php wp_nonce_field( 'cw_start_cert_batch' ); ?>
-            <input type="hidden" name="action" value="cw_start_cert_batch">
-            <input type="hidden" name="campaign_id" value="<?php echo (int) $post->ID; ?>">
-            <button type="submit" class="button button-primary"><?php esc_html_e( 'Start sending certificates', 'creativewings-core' ); ?></button>
-        </form>
+            <button type="submit" class="button button-primary" form="cw-cert-start-batch-form"><?php esc_html_e( 'Start sending certificates', 'creativewings-core' ); ?></button>
         <?php endif; ?>
         <?php if ( $enabled && $eligible === 0 && empty( $batch['running'] ) ) : ?>
             <p class="description"><?php esc_html_e( 'No pending recipients, or all already emailed. Check "Resend" below to email again.', 'creativewings-core' ); ?></p>
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-                <?php wp_nonce_field( 'cw_start_cert_batch' ); ?>
-                <input type="hidden" name="action" value="cw_start_cert_batch">
-                <input type="hidden" name="campaign_id" value="<?php echo (int) $post->ID; ?>">
-                <input type="hidden" name="resend" value="1">
-                <button type="submit" class="button"><?php esc_html_e( 'Resend to all participants', 'creativewings-core' ); ?></button>
-            </form>
+            <button type="submit" class="button" form="cw-cert-resend-batch-form"><?php esc_html_e( 'Resend to all participants', 'creativewings-core' ); ?></button>
         <?php endif; ?>
         <?php
+    }
+
+    /**
+     * Certificate email/batch actions must not nest inside #post — that breaks WooCommerce Publish.
+     */
+    public function render_external_forms() {
+        $ctx = self::$footer_forms_context;
+        if ( empty( $ctx['post_id'] ) ) {
+            return;
+        }
+
+        $post_id = (int) $ctx['post_id'];
+        $action  = esc_url( admin_url( 'admin-post.php' ) );
+        ?>
+        <form id="cw-cert-test-email-form" method="post" action="<?php echo $action; ?>" style="display:none;" aria-hidden="true">
+            <?php wp_nonce_field( 'cw_send_cert_test_email' ); ?>
+            <input type="hidden" name="action" value="cw_send_cert_test_email">
+            <input type="hidden" name="campaign_id" value="<?php echo $post_id; ?>">
+        </form>
+        <?php if ( ! empty( $ctx['enabled'] ) && (int) $ctx['eligible'] > 0 ) : ?>
+        <form id="cw-cert-start-batch-form" method="post" action="<?php echo $action; ?>" style="display:none;" aria-hidden="true">
+            <?php wp_nonce_field( 'cw_start_cert_batch' ); ?>
+            <input type="hidden" name="action" value="cw_start_cert_batch">
+            <input type="hidden" name="campaign_id" value="<?php echo $post_id; ?>">
+        </form>
+        <?php endif; ?>
+        <?php if ( ! empty( $ctx['enabled'] ) && 0 === (int) $ctx['eligible'] && empty( $ctx['batch']['running'] ) ) : ?>
+        <form id="cw-cert-resend-batch-form" method="post" action="<?php echo $action; ?>" style="display:none;" aria-hidden="true">
+            <?php wp_nonce_field( 'cw_start_cert_batch' ); ?>
+            <input type="hidden" name="action" value="cw_start_cert_batch">
+            <input type="hidden" name="campaign_id" value="<?php echo $post_id; ?>">
+            <input type="hidden" name="resend" value="1">
+        </form>
+        <?php endif;
+        self::$footer_forms_context = null;
     }
 
     public function save_product_cert_settings( $post_id, $post ) {
