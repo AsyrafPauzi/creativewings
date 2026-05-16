@@ -22,6 +22,44 @@ class CW_Claim_Flow {
         add_action( 'woocommerce_after_order_notes', [ $this, 'checkout_message_field' ] );
         add_action( 'woocommerce_checkout_update_order_meta', [ $this, 'save_checkout_message' ] );
         add_action( 'woocommerce_checkout_process', [ $this, 'validate_checkout_message' ] );
+        add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_checkout_editor' ], 20 );
+    }
+
+    public function enqueue_checkout_editor() {
+        if ( ! function_exists( 'is_checkout' ) || ! is_checkout() || is_order_received_page() ) {
+            return;
+        }
+        if ( ! $this->cart_needs_checkout_message() ) {
+            return;
+        }
+        wp_enqueue_editor();
+        wp_enqueue_script( 'jquery' );
+        wp_add_inline_script(
+            'jquery',
+            "jQuery(function($){
+                $('form.checkout').on('checkout_place_order', function(){
+                    if (typeof tinymce !== 'undefined') {
+                        tinymce.triggerSave();
+                    }
+                });
+            });"
+        );
+    }
+
+    private function cart_needs_checkout_message() {
+        if ( ! WC()->cart ) {
+            return false;
+        }
+        foreach ( WC()->cart->get_cart() as $item ) {
+            if ( empty( $item['cw_staged_id'] ) ) {
+                continue;
+            }
+            $pid = (int) $item['product_id'];
+            if ( get_post_meta( $pid, 'cw_enable_checkout_message', true ) === 'yes' ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public function register_endpoint() {
@@ -719,18 +757,37 @@ class CW_Claim_Flow {
             if ( get_post_meta( $pid, 'cw_enable_checkout_message', true ) !== 'yes' ) {
                 return;
             }
-            $label = get_post_meta( $pid, 'cw_checkout_message_label', true ) ?: __( 'Your message', 'creativewings-core' );
-            $req   = get_post_meta( $pid, 'cw_checkout_message_required', true ) === 'yes';
-            echo '<div class="cw-checkout-message-card">';
-            woocommerce_form_field(
+            $label   = get_post_meta( $pid, 'cw_checkout_message_label', true ) ?: __( 'Your message', 'creativewings-core' );
+            $req     = get_post_meta( $pid, 'cw_checkout_message_required', true ) === 'yes';
+            $content = WC()->checkout->get_value( 'cw_checkout_message' );
+            if ( ! is_string( $content ) ) {
+                $content = '';
+            }
+
+            echo '<div class="cw-checkout-message-card cw-checkout-rich-editor form-row form-row-wide">';
+            echo '<label for="cw_checkout_message" class="cw-rich-editor-label">';
+            echo esc_html( $label );
+            if ( $req ) {
+                echo ' <abbr class="required" title="' . esc_attr__( 'required', 'creativewings-core' ) . '">*</abbr>';
+            }
+            echo '</label>';
+
+            wp_editor(
+                $content,
                 'cw_checkout_message',
                 [
-                    'type'     => 'textarea',
-                    'class'    => [ 'form-row-wide', 'cw-checkout-message-field' ],
-                    'label'    => esc_html( $label ),
-                    'required' => $req,
-                ],
-                WC()->checkout->get_value( 'cw_checkout_message' )
+                    'textarea_name' => 'cw_checkout_message',
+                    'textarea_rows' => 8,
+                    'media_buttons' => false,
+                    'teeny'         => false,
+                    'quicktags'     => true,
+                    'tinymce'       => [
+                        'toolbar1' => 'formatselect,bold,italic,underline,|,bullist,numlist,|,link,unlink,|,undo,redo',
+                        'toolbar2' => '',
+                        'height'   => 180,
+                        'wpautop'  => true,
+                    ],
+                ]
             );
             echo '</div>';
             break;
@@ -748,17 +805,24 @@ class CW_Claim_Flow {
             $pid = (int) $item['product_id'];
             if ( get_post_meta( $pid, 'cw_enable_checkout_message', true ) === 'yes'
                 && get_post_meta( $pid, 'cw_checkout_message_required', true ) === 'yes'
-                && empty( $_POST['cw_checkout_message'] ) ) {
+                && $this->checkout_message_is_empty( $_POST['cw_checkout_message'] ?? '' ) ) {
                 wc_add_notice( __( 'Please enter your message.', 'creativewings-core' ), 'error' );
             }
         }
     }
 
+    /**
+     * @param string $raw Posted message (may contain HTML).
+     */
+    private function checkout_message_is_empty( $raw ) {
+        return '' === trim( wp_strip_all_tags( wp_unslash( (string) $raw ) ) );
+    }
+
     public function save_checkout_message( $order_id ) {
-        if ( empty( $_POST['cw_checkout_message'] ) ) {
+        if ( $this->checkout_message_is_empty( $_POST['cw_checkout_message'] ?? '' ) ) {
             return;
         }
-        $msg = sanitize_textarea_field( wp_unslash( $_POST['cw_checkout_message'] ) );
+        $msg = wp_kses_post( wp_unslash( $_POST['cw_checkout_message'] ) );
         update_post_meta( $order_id, 'cw_checkout_message', $msg );
         update_post_meta( $order_id, '_cw_campaign_product', '' );
 

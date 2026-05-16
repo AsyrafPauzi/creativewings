@@ -863,7 +863,10 @@ class CW_Shop {
             $msg = get_post_meta( $order_id, 'cw_checkout_message', true );
         }
         if ( $msg ) {
-            $fields[] = [ 'label' => get_post_meta( $product_id, 'cw_checkout_message_label', true ) ?: 'Message', 'value' => $msg ];
+            $fields[] = [
+                'label' => get_post_meta( $product_id, 'cw_checkout_message_label', true ) ?: 'Message',
+                'value' => wp_kses_post( $msg ),
+            ];
         }
 
         $entry_id = wp_insert_post( [

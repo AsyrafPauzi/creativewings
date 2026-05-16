@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Premium WooCommerce cart & checkout presentation for Creative Wings campaigns.
+ * Unified WooCommerce cart, checkout & shop presentation.
  */
 class CW_Checkout {
 
@@ -12,10 +12,18 @@ class CW_Checkout {
         add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_assets' ], 25 );
         add_filter( 'body_class', [ $this, 'body_class' ] );
 
-        add_action( 'woocommerce_before_checkout_form', [ $this, 'render_shell_open' ], 4 );
+        add_action( 'woocommerce_before_checkout_form', [ $this, 'render_checkout_shell_open' ], 4 );
         add_action( 'woocommerce_after_checkout_form', [ $this, 'render_shell_close' ], 99 );
-        add_action( 'woocommerce_before_cart', [ $this, 'render_shell_open' ], 4 );
+        add_action( 'woocommerce_before_cart', [ $this, 'render_cart_shell_open' ], 4 );
         add_action( 'woocommerce_after_cart', [ $this, 'render_shell_close' ], 99 );
+
+        add_action( 'woocommerce_before_main_content', [ $this, 'render_shop_shell_open' ], 4 );
+        add_action( 'woocommerce_after_main_content', [ $this, 'render_shell_close' ], 99 );
+
+        add_action( 'woocommerce_checkout_before_customer_details', [ $this, 'checkout_columns_open' ], 2 );
+        add_action( 'woocommerce_checkout_after_customer_details', [ $this, 'checkout_columns_sidebar_open' ], 8 );
+        add_action( 'woocommerce_checkout_after_order_review', [ $this, 'checkout_columns_close' ], 99 );
+        add_action( 'woocommerce_review_order_after_payment', [ $this, 'checkout_columns_close' ], 999 );
 
         add_action( 'woocommerce_checkout_before_order_review', [ $this, 'render_order_review_heading' ], 4 );
         add_filter( 'woocommerce_get_item_data', [ $this, 'polish_cart_item_data' ], 99, 2 );
@@ -24,7 +32,7 @@ class CW_Checkout {
     }
 
     public function enqueue_assets() {
-        if ( ! function_exists( 'is_checkout' ) || ( ! is_checkout() && ! is_cart() ) ) {
+        if ( ! $this->is_commerce_page() ) {
             return;
         }
 
@@ -42,44 +50,124 @@ class CW_Checkout {
         );
     }
 
+    private function is_commerce_page() {
+        if ( ! function_exists( 'is_woocommerce' ) ) {
+            return false;
+        }
+        return is_cart()
+            || is_checkout()
+            || is_shop()
+            || is_product()
+            || is_product_category()
+            || is_product_tag();
+    }
+
     /**
      * @param string[] $classes
      * @return string[]
      */
     public function body_class( $classes ) {
-        if ( ( function_exists( 'is_checkout' ) && is_checkout() ) || ( function_exists( 'is_cart' ) && is_cart() ) ) {
-            $classes[] = 'cw-checkout-page';
+        if ( $this->is_commerce_page() ) {
+            $classes[] = 'cw-commerce-page';
         }
         return $classes;
     }
 
-    public function render_shell_open() {
-        $is_checkout = function_exists( 'is_checkout' ) && is_checkout() && ! is_order_received_page();
-        $title       = $is_checkout
-            ? __( 'Complete your registration', 'creativewings-core' )
-            : __( 'Your cart', 'creativewings-core' );
-        $subtitle    = $is_checkout
-            ? __( 'Review your submission details and pay securely to confirm your child’s entry.', 'creativewings-core' )
-            : __( 'Review your campaign registration before checkout.', 'creativewings-core' );
+    private function render_shell_header( $eyebrow, $title, $subtitle ) {
         ?>
-        <div class="cw-checkout-shell" data-cw-checkout-shell>
-            <header class="cw-checkout-hero">
-                <p class="cw-checkout-eyebrow"><?php echo esc_html( $is_checkout ? __( 'Secure checkout', 'creativewings-core' ) : __( 'Cart', 'creativewings-core' ) ); ?></p>
-                <h1 class="cw-checkout-title"><?php echo esc_html( $title ); ?></h1>
-                <p class="cw-checkout-subtitle"><?php echo esc_html( $subtitle ); ?></p>
-            </header>
-            <div class="cw-checkout-layout">
+        <header class="cw-commerce-hero">
+            <p class="cw-commerce-eyebrow"><?php echo esc_html( $eyebrow ); ?></p>
+            <h1 class="cw-commerce-title"><?php echo esc_html( $title ); ?></h1>
+            <?php if ( $subtitle ) : ?>
+                <p class="cw-commerce-subtitle"><?php echo esc_html( $subtitle ); ?></p>
+            <?php endif; ?>
+        </header>
+        <?php
+    }
+
+    public function render_checkout_shell_open() {
+        if ( is_order_received_page() ) {
+            return;
+        }
+        ?>
+        <div class="cw-commerce-shell cw-commerce-shell--checkout">
+            <?php
+            $this->render_shell_header(
+                __( 'Secure checkout', 'creativewings-core' ),
+                __( 'Complete your registration', 'creativewings-core' ),
+                ''
+            );
+            ?>
+            <div class="cw-commerce-body">
+        <?php
+    }
+
+    public function render_cart_shell_open() {
+        ?>
+        <div class="cw-commerce-shell cw-commerce-shell--cart">
+            <?php
+            $this->render_shell_header(
+                __( 'Cart', 'creativewings-core' ),
+                __( 'Your cart', 'creativewings-core' ),
+                __( 'Review your campaign registration before checkout.', 'creativewings-core' )
+            );
+            ?>
+            <div class="cw-commerce-body cw-commerce-body--cart">
+        <?php
+    }
+
+    public function render_shop_shell_open() {
+        if ( is_product() ) {
+            return;
+        }
+        ?>
+        <div class="cw-commerce-shell cw-commerce-shell--shop">
+            <?php
+            $this->render_shell_header(
+                __( 'Campaigns', 'creativewings-core' ),
+                __( 'Explore activities & competitions', 'creativewings-core' ),
+                ''
+            );
+            ?>
+            <div class="cw-commerce-body cw-commerce-body--shop">
         <?php
     }
 
     public function render_shell_close() {
-        ?>
-            </div>
-        </div>
-        <?php
+        echo '</div></div>';
+    }
+
+    public function checkout_columns_open() {
+        echo '<div class="cw-checkout-grid"><div class="cw-checkout-grid__main">';
+    }
+
+    public function checkout_columns_sidebar_open() {
+        echo '</div><div class="cw-checkout-grid__sidebar">';
+    }
+
+    private static $checkout_columns_closed = false;
+
+    public function checkout_columns_close() {
+        if ( self::$checkout_columns_closed ) {
+            return;
+        }
+        self::$checkout_columns_closed = true;
+        echo '</div></div>';
     }
 
     public function render_order_review_heading() {
+        $has_claim = false;
+        if ( WC()->cart ) {
+            foreach ( WC()->cart->get_cart() as $item ) {
+                if ( ! empty( $item['cw_staged_id'] ) ) {
+                    $has_claim = true;
+                    break;
+                }
+            }
+        }
+        if ( ! $has_claim ) {
+            return;
+        }
         echo '<p class="cw-order-review-note">' . esc_html__( 'School-uploaded artwork is already linked to your submission code.', 'creativewings-core' ) . '</p>';
     }
 
@@ -93,9 +181,9 @@ class CW_Checkout {
             return $item_data;
         }
 
-        $is_claim   = ! empty( $cart_item['cw_staged_id'] ) || ! empty( $cart_item['cw_claim_code'] );
-        $seen       = [];
-        $polished   = [];
+        $is_claim = ! empty( $cart_item['cw_staged_id'] ) || ! empty( $cart_item['cw_claim_code'] );
+        $seen     = [];
+        $polished = [];
 
         foreach ( $item_data as $row ) {
             $label = (string) ( $row['name'] ?? $row['key'] ?? '' );
