@@ -1,0 +1,103 @@
+{
+  "version": "1.0",
+  "_comment": "PROJECT 002 — One Smile, One World (National Campaign 2026). Import via WooCommerce → Import CW Campaign. Add real school MOUs to schools[] before go-live.",
+  "campaign": {
+    "post_title": "One Smile, One World — 笑一笑，世界更美妙 (2026)",
+    "post_content": "<p><strong>One Smile, One World</strong> (PROJECT 002) is Malaysia's first national movement inviting students to recall the smile of someone they are grateful for — a parent, teacher, or anyone who made a difference — draw it, and share one heartfelt sentence.</p><p><em>10,000 Smiles. One Ecosystem.</em> · <em>笑一笑，世界更美妙</em></p><h3>In school (~1 hour)</h3><ol><li>Warm-up — mentor emotional story (5 min)</li><li>Guided awareness — recall a grateful person's smile (60 sec)</li><li>Drawing — ~35 min</li><li>Heartfelt message on artwork (5 min)</li><li>Mentor sharing — emotional management &amp; life wisdom (10 min)</li><li>Wrap-up — collect art, submission code for parent, gift pack, photo</li></ol><h3>After school (parents)</h3><p>Register on Creative Wings, enter the <strong>submission code</strong> from school, confirm the student's name, and complete registration. School sponsor coupon = free; public registration = RM 15.</p><h3>Year-end showcase</h3><p><strong>10,000 Smiles Showcase</strong> — national gallery exhibition targeted <strong>November 2026</strong>. Top smiles curated for the gallery wall.</p><p><strong>Hashtag:</strong> #OneSmileOneWorld · <strong>Organiser:</strong> Creative Wings · creativewings.asia</p>",
+    "product_cat_slug": "activities",
+    "main_category": "activities",
+    "regular_price": "15",
+    "cw_school_coupons_optional": true,
+    "cw_campaign_serial": "002",
+    "cw_total_prize_value": "10,000 Smiles National Gallery Showcase — Nov 2026",
+    "cw_event_mode": "physical",
+    "cw_location_details": "Nationwide — participating primary & secondary schools (Malaysia)",
+    "cw_submission_start": "2026-06-01",
+    "submission_deadline": "2026-10-31",
+    "cw_review_start": "2026-09-01",
+    "cw_final_event_date": "2026-11-15",
+    "cw_min_participants": 1,
+    "cw_max_participants": 10000,
+    "cw_enable_certificate": "yes",
+    "cw_enable_voting": "no",
+    "multiple_submissions": "false",
+    "cw_enable_checkout_message": "yes",
+    "cw_checkout_message_label": "This smile makes me want to say",
+    "cw_checkout_message_required": true,
+    "sdg_goals": [3, 4, 16],
+    "faq": [
+      {
+        "question": "Who can join One Smile, One World?",
+        "answer": "Primary and secondary students via participating schools nationwide. Adults and university students may register under the Public category. Parents complete online registration after the in-school session using the submission code from school."
+      },
+      {
+        "question": "What is a submission code?",
+        "answer": "A 13-digit code from your school PIC, e.g. 0020600100001 (campaign 002 + month + school + sequence). Parents enter this code in My Account → Link submission code."
+      },
+      {
+        "question": "Is there a fee?",
+        "answer": "Students from sponsor schools register free using the school WooCommerce coupon. Public or non-sponsored participants pay RM 15 on checkout."
+      },
+      {
+        "question": "What do I submit?",
+        "answer": "Your smiling-face artwork is uploaded at school by the PIC. Online you confirm the name, add your heartfelt message, and receive a digital participation certificate after completion."
+      },
+      {
+        "question": "When is the national gallery?",
+        "answer": "The 10,000 Smiles Showcase is targeted for November 2026. Top artworks may be featured on the national gallery wall."
+      },
+      {
+        "question": "Can I change my artwork after parent registration?",
+        "answer": "Before a parent claims your code, the school PIC can amend the submission using the same code at the staff upload link. After claim, contact Creative Wings admin for changes."
+      }
+    ],
+    "prizes": [
+      {
+        "prize_title": "Digital Participation Certificate",
+        "prize_description": "Issued to all students who complete registration on Creative Wings."
+      },
+      {
+        "prize_title": "National Gallery Feature",
+        "prize_description": "Selected smiles featured in the 10,000 Smiles Showcase (Nov 2026)."
+      },
+      {
+        "prize_title": "Year-End National Exhibition",
+        "prize_description": "Public exhibition of curated artworks — shopping mall / gallery venue (TBC)."
+      }
+    ],
+    "addons": [
+      {
+        "addon_title": "Angel Sponsor Code",
+        "addon_label": "Angel Sponsor Code (optional)",
+        "addon_type": "text",
+        "addon_opts": ""
+      }
+    ],
+    "custom_fields": [],
+    "age_brackets": [
+      {"label": "Primary", "min_age": 7, "max_age": 12, "product_cat_slug": "primary", "key": "primary"},
+      {"label": "Secondary", "min_age": 13, "max_age": 17, "product_cat_slug": "secondary", "key": "secondary"},
+      {"label": "University", "min_age": 18, "max_age": 24, "product_cat_slug": "university", "key": "university"},
+      {"label": "Public", "min_age": 25, "max_age": 99, "product_cat_slug": "public", "key": "public"}
+    ],
+    "schools": [
+      {
+        "school_code": "001",
+        "school_name": "Pilot School 001 (replace with MOU school)",
+        "coupon_code": "OSOW-2026-SCHOOL-001"
+      },
+      {
+        "school_code": "002",
+        "school_name": "Pilot School 002 (replace with MOU school)",
+        "coupon_code": "OSOW-2026-SCHOOL-002"
+      },
+      {
+        "school_code": "003",
+        "school_name": "Pilot School 003 (replace with MOU school)",
+        "coupon_code": "OSOW-2026-SCHOOL-003"
+      }
+    ],
+    "banner_image_url": "",
+    "cert_template_url": ""
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "version": "1.0",
+  "_comment": "Dummy campaign for testing JSON import. Import via WooCommerce → Import CW Campaign.",
+  "campaign": {
+    "post_title": "[TEST] One Smile, One World — Dummy Import",
+    "post_content": "<p><strong>Test campaign</strong> — safe to delete after QA.</p><p>Students draw a smiling face of someone they are grateful for, then parents claim with submission code at school.</p><ul><li>Campaign serial: <strong>099</strong></li><li>Example submission code: <strong>0990500100001</strong></li><li>School coupon: <strong>TEST-SCHOOL-001</strong> (100% off)</li><li>No coupon: pays RM 15</li></ul>",
+    "product_cat_slug": "activities",
+    "main_category": "activities",
+    "regular_price": "15",
+    "cw_school_coupons_optional": true,
+    "cw_campaign_serial": "099",
+    "cw_total_prize_value": "Test gallery showcase",
+    "cw_event_mode": "physical",
+    "cw_location_details": "Malaysia — test schools only",
+    "cw_submission_start": "2026-01-01",
+    "submission_deadline": "2026-12-31",
+    "cw_review_start": "2026-10-01",
+    "cw_final_event_date": "2026-11-15",
+    "cw_min_participants": 1,
+    "cw_max_participants": 500,
+    "cw_enable_certificate": "yes",
+    "cw_enable_voting": "no",
+    "multiple_submissions": "false",
+    "cw_enable_checkout_message": "yes",
+    "cw_checkout_message_label": "This smile makes me want to say",
+    "cw_checkout_message_required": false,
+    "sdg_goals": [3, 4, 16],
+    "faq": [
+      {
+        "question": "What is a submission code?",
+        "answer": "A 13-digit code from school, e.g. 0990500100001 (campaign + month + school + sequence)."
+      },
+      {
+        "question": "Do I need a coupon?",
+        "answer": "In-school students use the school sponsor coupon for free. Others pay RM 15."
+      }
+    ],
+    "prizes": [],
+    "addons": [],
+    "custom_fields": [],
+    "age_brackets": [
+      {"label": "Primary", "min_age": 7, "max_age": 12, "product_cat_slug": "primary", "key": "primary"},
+      {"label": "Secondary", "min_age": 13, "max_age": 17, "product_cat_slug": "secondary", "key": "secondary"},
+      {"label": "University", "min_age": 18, "max_age": 24, "product_cat_slug": "university", "key": "university"},
+      {"label": "Public", "min_age": 25, "max_age": 99, "product_cat_slug": "public", "key": "public"}
+    ],
+    "schools": [
+      {"school_code": "001", "school_name": "SK Test Alpha", "coupon_code": "TEST-SCHOOL-001"},
+      {"school_code": "002", "school_name": "SK Test Beta", "coupon_code": "TEST-SCHOOL-002"}
+    ],
+    "banner_image_url": "",
+    "cert_template_url": ""
+  }
+}

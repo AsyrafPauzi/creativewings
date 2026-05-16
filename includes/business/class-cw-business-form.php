@@ -79,6 +79,7 @@ class CW_Business_Form {
 
         $mode = 'create'; $edit_id = 0; $campaign = null; $meta = []; $current_cat_id = 0;
         $existing_fields = []; $existing_faqs = []; $existing_prizes = []; $existing_addons = []; $selected_sdgs_bool = [];
+        $existing_age_brackets = []; $existing_schools = [];
         $term = null; $parent_term = null;
 
         $edit_id_param = isset($_GET['edit_id']) ? intval($_GET['edit_id']) : $external_edit_id;
@@ -116,7 +117,18 @@ class CW_Business_Form {
                     $existing_fields[ $ek ]['type'] = $t;
                 }
                 $existing_fields = array_values( $existing_fields );
+                $existing_age_brackets = get_post_meta( $edit_id, 'cw_age_brackets', true );
+                $existing_schools      = get_post_meta( $edit_id, 'cw_school_sponsors', true );
+                if ( ! is_array( $existing_age_brackets ) ) {
+                    $existing_age_brackets = [];
+                }
+                if ( ! is_array( $existing_schools ) ) {
+                    $existing_schools = [];
+                }
             }
+        }
+        if ( empty( $existing_age_brackets ) ) {
+            $existing_age_brackets = get_option( 'cw_default_age_brackets', [] );
         }
 
         $val     = function($k) use ($meta) { return isset($meta[$k][0]) ? $meta[$k][0] : ''; };
@@ -326,6 +338,56 @@ class CW_Business_Form {
                                     </button>
                                     <?php endforeach; ?>
                                 </div>
+
+                                <p class="cw-mini-head" style="margin-top:28px;">Campaign code &amp; school sponsors</p>
+                                <div class="cw-field">
+                                    <label>Campaign serial (3 digits, e.g. 002)</label>
+                                    <input type="text" name="cw_campaign_serial" class="cw-input-dark" maxlength="3" pattern="\d{3}"
+                                        value="<?php echo esc_attr( $val('cw_campaign_serial') ); ?>" placeholder="002">
+                                </div>
+                                <div class="cw-toggle-box">
+                                    <div><label>School sponsor coupons optional</label><small>If yes, parents can pay full price without coupon</small></div>
+                                    <input type="checkbox" name="cw_school_coupons_optional" value="yes" <?php checked( $val('cw_school_coupons_optional') ?: 'yes', 'yes' ); ?>>
+                                </div>
+
+                                <p class="cw-mini-head" style="margin-top:20px;">Age categories (reusable brackets)</p>
+                                <button type="button" class="cww-rep-add" onclick="cwLoadDefaultAgeBrackets()"><i class="fas fa-download"></i> Load default brackets</button>
+                                <div id="cw-age-bracket-container" style="margin-top:10px;">
+                                    <?php $abidx = 0; foreach ( (array) $existing_age_brackets as $b ) { if ( ! is_array( $b ) ) continue; ?>
+                                    <div class="cww-rep-row">
+                                        <input type="text" name="cw_age_brackets[<?php echo $abidx; ?>][label]" value="<?php echo esc_attr( $b['label'] ?? '' ); ?>" placeholder="Label">
+                                        <input type="number" name="cw_age_brackets[<?php echo $abidx; ?>][min_age]" value="<?php echo esc_attr( $b['min_age'] ?? 0 ); ?>" placeholder="Min age" min="0">
+                                        <input type="number" name="cw_age_brackets[<?php echo $abidx; ?>][max_age]" value="<?php echo esc_attr( $b['max_age'] ?? 99 ); ?>" placeholder="Max age" min="0">
+                                        <input type="text" name="cw_age_brackets[<?php echo $abidx; ?>][product_cat_slug]" value="<?php echo esc_attr( $b['product_cat_slug'] ?? '' ); ?>" placeholder="Category slug">
+                                        <button type="button" class="cww-rep-del" onclick="this.closest('.cww-rep-row').remove()"><i class="fas fa-times"></i></button>
+                                    </div>
+                                    <?php $abidx++; } ?>
+                                </div>
+                                <button type="button" class="cww-rep-add" onclick="addAgeBracketRow()"><i class="fas fa-plus"></i> Add age bracket</button>
+
+                                <p class="cw-mini-head" style="margin-top:20px;">School sponsors (WooCommerce coupons)</p>
+                                <div id="cw-school-container">
+                                    <?php $sidx = 0; foreach ( (array) $existing_schools as $s ) { if ( ! is_array( $s ) ) continue; ?>
+                                    <div class="cww-rep-row">
+                                        <input type="text" name="cw_school_sponsors[<?php echo $sidx; ?>][school_code]" value="<?php echo esc_attr( $s['school_code'] ?? '' ); ?>" placeholder="School code 001" maxlength="3">
+                                        <input type="text" name="cw_school_sponsors[<?php echo $sidx; ?>][school_name]" value="<?php echo esc_attr( $s['school_name'] ?? '' ); ?>" placeholder="School name">
+                                        <input type="text" name="cw_school_sponsors[<?php echo $sidx; ?>][coupon_code]" value="<?php echo esc_attr( $s['coupon_code'] ?? '' ); ?>" placeholder="WC coupon code">
+                                        <button type="button" class="cww-rep-del" onclick="this.closest('.cww-rep-row').remove()"><i class="fas fa-times"></i></button>
+                                    </div>
+                                    <?php $sidx++; } ?>
+                                </div>
+                                <button type="button" class="cww-rep-add" onclick="addSchoolRow()"><i class="fas fa-plus"></i> Add school</button>
+
+                                <p class="cw-mini-head" style="margin-top:20px;">Checkout message (claim flow)</p>
+                                <div class="cw-toggle-box">
+                                    <div><label>Enable checkout message field</label></div>
+                                    <input type="checkbox" name="cw_enable_checkout_message" value="yes" <?php checked( $val('cw_enable_checkout_message'), 'yes' ); ?>>
+                                </div>
+                                <div class="cw-field">
+                                    <label>Message field label</label>
+                                    <input type="text" name="cw_checkout_message_label" class="cw-input-dark" value="<?php echo esc_attr( $val('cw_checkout_message_label') ); ?>" placeholder="Heartfelt message">
+                                </div>
+                                <label><input type="checkbox" name="cw_checkout_message_required" value="yes" <?php checked( $val('cw_checkout_message_required'), 'yes' ); ?>> Required</label>
 
                                 <!-- FAQs -->
                                 <p class="cw-mini-head" style="margin-top:28px;">FAQs</p>
@@ -661,6 +723,47 @@ class CW_Business_Form {
                     `<div class="cww-rep-row">
                         <input type="text" name="cw_faq[${id}][question]" placeholder="Question">
                         <input type="text" name="cw_faq[${id}][answer]" placeholder="Answer">
+                        <button type="button" class="cww-rep-del" onclick="this.closest('.cww-rep-row').remove()"><i class="fas fa-times"></i></button>
+                    </div>`
+                );
+            };
+
+            window.defaultAgeBrackets = <?php echo wp_json_encode( get_option( 'cw_default_age_brackets', [] ) ); ?>;
+
+            window.addAgeBracketRow = function() {
+                const id = Date.now();
+                document.getElementById('cw-age-bracket-container').insertAdjacentHTML('beforeend',
+                    `<div class="cww-rep-row">
+                        <input type="text" name="cw_age_brackets[${id}][label]" placeholder="Label">
+                        <input type="number" name="cw_age_brackets[${id}][min_age]" placeholder="Min age" min="0">
+                        <input type="number" name="cw_age_brackets[${id}][max_age]" placeholder="Max age" min="0">
+                        <input type="text" name="cw_age_brackets[${id}][product_cat_slug]" placeholder="Category slug">
+                        <button type="button" class="cww-rep-del" onclick="this.closest('.cww-rep-row').remove()"><i class="fas fa-times"></i></button>
+                    </div>`
+                );
+            };
+            window.cwLoadDefaultAgeBrackets = function() {
+                const c = document.getElementById('cw-age-bracket-container');
+                c.innerHTML = '';
+                (window.defaultAgeBrackets || []).forEach((b, i) => {
+                    c.insertAdjacentHTML('beforeend',
+                        `<div class="cww-rep-row">
+                            <input type="text" name="cw_age_brackets[${i}][label]" value="${b.label||''}" placeholder="Label">
+                            <input type="number" name="cw_age_brackets[${i}][min_age]" value="${b.min_age||0}" placeholder="Min age">
+                            <input type="number" name="cw_age_brackets[${i}][max_age]" value="${b.max_age||99}" placeholder="Max age">
+                            <input type="text" name="cw_age_brackets[${i}][product_cat_slug]" value="${b.product_cat_slug||''}" placeholder="Category slug">
+                            <button type="button" class="cww-rep-del" onclick="this.closest('.cww-rep-row').remove()"><i class="fas fa-times"></i></button>
+                        </div>`
+                    );
+                });
+            };
+            window.addSchoolRow = function() {
+                const id = Date.now();
+                document.getElementById('cw-school-container').insertAdjacentHTML('beforeend',
+                    `<div class="cww-rep-row">
+                        <input type="text" name="cw_school_sponsors[${id}][school_code]" placeholder="001" maxlength="3">
+                        <input type="text" name="cw_school_sponsors[${id}][school_name]" placeholder="School name">
+                        <input type="text" name="cw_school_sponsors[${id}][coupon_code]" placeholder="WC coupon code">
                         <button type="button" class="cww-rep-del" onclick="this.closest('.cww-rep-row').remove()"><i class="fas fa-times"></i></button>
                     </div>`
                 );

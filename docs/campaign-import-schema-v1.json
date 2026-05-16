@@ -1,0 +1,43 @@
+{
+  "version": "1.0",
+  "campaign": {
+    "post_title": "One Smile, One World — 2026",
+    "post_content": "<p>Malaysia's first national movement inviting students to draw a smile of someone they are grateful for.</p>",
+    "product_cat_slug": "activities",
+    "main_category": "activities",
+    "regular_price": "15",
+    "cw_school_coupons_optional": true,
+    "cw_campaign_serial": "002",
+    "cw_total_prize_value": "",
+    "cw_event_mode": "physical",
+    "cw_location_details": "Nationwide",
+    "cw_submission_start": "2026-06-01",
+    "submission_deadline": "2026-10-31",
+    "cw_review_start": "2026-09-01",
+    "cw_final_event_date": "2026-11-01",
+    "cw_min_participants": 1,
+    "cw_max_participants": 10000,
+    "cw_enable_certificate": "yes",
+    "cw_enable_voting": "no",
+    "multiple_submissions": "false",
+    "cw_enable_checkout_message": "yes",
+    "cw_checkout_message_label": "Heartfelt message",
+    "cw_checkout_message_required": true,
+    "sdg_goals": [3, 4, 16],
+    "faq": [],
+    "prizes": [],
+    "addons": [],
+    "custom_fields": [],
+    "age_brackets": [
+      {"label": "Primary", "min_age": 7, "max_age": 12, "product_cat_slug": "primary", "key": "primary"},
+      {"label": "Secondary", "min_age": 13, "max_age": 17, "product_cat_slug": "secondary", "key": "secondary"},
+      {"label": "University", "min_age": 18, "max_age": 24, "product_cat_slug": "university", "key": "university"},
+      {"label": "Public", "min_age": 0, "max_age": 99, "product_cat_slug": "public", "key": "public"}
+    ],
+    "schools": [
+      {"school_code": "001", "school_name": "SK Example", "coupon_code": "SPONSOR-SK001-2026"}
+    ],
+    "banner_image_url": "",
+    "cert_template_url": ""
+  }
+}

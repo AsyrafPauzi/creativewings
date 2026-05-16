@@ -15,6 +15,10 @@ class CW_Admin {
         
         add_filter( 'manage_cw_activity_entry_posts_columns', [ $this, 'entry_columns' ] );
         add_action( 'manage_cw_activity_entry_posts_custom_column', [ $this, 'render_entry_columns' ], 10, 2 );
+
+        add_filter( 'manage_edit-product_columns', [ $this, 'product_columns' ] );
+        add_action( 'manage_product_posts_custom_column', [ $this, 'render_product_columns' ], 10, 2 );
+        add_action( 'admin_footer', [ $this, 'product_list_copy_script' ] );
     }
 
     // 1. Register Meta Boxes
@@ -30,6 +34,112 @@ class CW_Admin {
                 'high'
             );
         }
+
+        add_meta_box(
+            'cw_school_upload_links',
+            __( 'School PIC upload links', 'creativewings-core' ),
+            [ $this, 'render_school_upload_metabox' ],
+            'product',
+            'side',
+            'default'
+        );
+    }
+
+    public function render_school_upload_metabox( $post ) {
+        $links = get_post_meta( $post->ID, 'cw_school_upload_links', true );
+        if ( ! is_array( $links ) || empty( $links ) ) {
+            if ( class_exists( 'CW_Staged_Submissions' ) ) {
+                $links = CW_Staged_Submissions::sync_school_upload_tokens( $post->ID );
+            }
+        }
+        $serial = get_post_meta( $post->ID, 'cw_campaign_serial', true );
+        if ( $serial ) {
+            echo '<p style="font-size:12px;"><strong>' . esc_html__( 'Campaign code:', 'creativewings-core' ) . '</strong> ' . esc_html( str_pad( preg_replace( '/\D/', '', (string) $serial ), 3, '0', STR_PAD_LEFT ) ) . '</p>';
+        }
+        if ( empty( $links ) ) {
+            echo '<p style="font-size:12px;">' . esc_html__( 'Add schools in the campaign wizard (Step 4), then save to generate PIC links.', 'creativewings-core' ) . '</p>';
+            return;
+        }
+        echo '<p style="font-size:12px;margin-bottom:8px;">' . esc_html__( 'Copy links for event PIC staff:', 'creativewings-core' ) . '</p>';
+        foreach ( $links as $row ) {
+            $label = trim( ( $row['school_code'] ?? '' ) . ' ' . ( $row['school_name'] ?? '' ) );
+            $url   = $row['url'] ?? '';
+            if ( ! $url ) {
+                continue;
+            }
+            echo '<div style="margin-bottom:10px;">';
+            echo '<strong style="display:block;font-size:11px;">' . esc_html( $label ) . '</strong>';
+            echo '<input type="text" readonly class="cw-pic-link-input" value="' . esc_attr( $url ) . '" style="width:100%;font-size:11px;margin:4px 0;" onclick="this.select()">';
+            echo '<button type="button" class="button button-small cw-copy-pic-link" data-url="' . esc_attr( $url ) . '">' . esc_html__( 'Copy', 'creativewings-core' ) . '</button>';
+            echo '</div>';
+        }
+    }
+
+    public function product_columns( $columns ) {
+        $new = [];
+        foreach ( $columns as $key => $label ) {
+            $new[ $key ] = $label;
+            if ( 'name' === $key ) {
+                $new['cw_pic_links'] = __( 'PIC staff links', 'creativewings-core' );
+            }
+        }
+        if ( ! isset( $new['cw_pic_links'] ) ) {
+            $new['cw_pic_links'] = __( 'PIC staff links', 'creativewings-core' );
+        }
+        return $new;
+    }
+
+    public function render_product_columns( $column, $post_id ) {
+        if ( 'cw_pic_links' !== $column ) {
+            return;
+        }
+        $links = get_post_meta( $post_id, 'cw_school_upload_links', true );
+        if ( empty( $links ) || ! is_array( $links ) ) {
+            echo '<span style="color:#94a3b8;font-size:11px;">' . esc_html__( 'Save campaign with schools to generate links.', 'creativewings-core' ) . '</span>';
+            return;
+        }
+        echo '<div class="cw-pic-links-col" style="max-width:320px;font-size:11px;line-height:1.5;">';
+        foreach ( $links as $row ) {
+            $url = $row['url'] ?? '';
+            if ( ! $url ) {
+                continue;
+            }
+            $label = esc_html( ( $row['school_code'] ?? '' ) . ( ! empty( $row['school_name'] ) ? ' — ' . $row['school_name'] : '' ) );
+            echo '<div style="margin-bottom:6px;">';
+            echo '<strong>' . $label . '</strong><br>';
+            echo '<input type="text" readonly value="' . esc_attr( $url ) . '" style="width:100%;font-size:10px;margin:2px 0;" onclick="this.select()"> ';
+            echo '<button type="button" class="button button-small cw-copy-pic-link" data-url="' . esc_attr( $url ) . '">' . esc_html__( 'Copy', 'creativewings-core' ) . '</button>';
+            echo '</div>';
+        }
+        echo '</div>';
+    }
+
+    public function product_list_copy_script() {
+        $screen = get_current_screen();
+        if ( ! $screen || 'edit-product' !== $screen->id ) {
+            return;
+        }
+        ?>
+        <script>
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.cw-copy-pic-link');
+            if (!btn) return;
+            e.preventDefault();
+            var url = btn.getAttribute('data-url') || '';
+            if (!url) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(function() {
+                    var t = btn.textContent;
+                    btn.textContent = 'Copied!';
+                    setTimeout(function() { btn.textContent = t; }, 1500);
+                });
+            } else {
+                var inp = btn.parentElement.querySelector('input');
+                if (inp) { inp.select(); document.execCommand('copy'); }
+            }
+        });
+        </script>
+        <?php
     }
 
     // 2. Render Meta Box HTML

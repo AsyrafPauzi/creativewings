@@ -240,6 +240,10 @@ class CW_Dashboard_Business {
         if ( isset($_GET['saved']) ) echo '<div class="cw-alert success">Campaign saved successfully!</div>';
         if ( isset($_GET['campaign_created']) ) echo '<div class="cw-alert success">New Campaign created successfully!</div>';
 
+        if ( current_user_can( 'manage_woocommerce' ) ) {
+            echo '<p style="margin:0 0 16px;"><a class="button" href="' . esc_url( admin_url( 'admin.php?page=cw-import-campaign' ) ) . '">' . esc_html__( 'Import campaign from JSON (admin)', 'creativewings-core' ) . '</a></p>';
+        }
+
         ?>
         <div class="cw-content-wrapper">
             <div class="cw-dash-header">

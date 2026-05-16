@@ -2,7 +2,7 @@
 /**
  * Plugin Name: CreativeWings Core Platform
  * Description: Complete ecosystem: Auth, Onboarding, Campaigns, Tournaments, and Business Logic.
- * Version: 10.3.9
+ * Version: 11.0.0
  * Author: CreativeWings Dev
  * Text Domain: creativewings-core
  * Domain Path: /languages
@@ -37,6 +37,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
         public $wallet;
         public $admin;
         public $dashboard_manager;
+        public $claim_flow;
 
         /**
          * Gets the main instance.
@@ -63,34 +64,15 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
         private function define_constants() {
             define( 'CW_PATH', plugin_dir_path( __FILE__ ) );
             define( 'CW_URL', plugin_dir_url( __FILE__ ) );
-            define( 'CW_VERSION', '10.6.3' );
+            define( 'CW_VERSION', '11.0.0' );
         }
 
         /**
          * Include required core files.
          */
         private function includes() {
-            // 1. Base Logic
-            require_once CW_PATH . 'includes/class-cw-activator.php';
-            require_once CW_PATH . 'includes/class-cw-roles.php';
-            require_once CW_PATH . 'includes/class-cw-post-types.php'; // NEW: Registers CPTs on init
-            require_once CW_PATH . 'includes/class-cw-auth.php';
-            require_once CW_PATH . 'includes/class-cw-users.php';
-            require_once CW_PATH . 'includes/class-cw-onboarding.php';
-            require_once CW_PATH . 'includes/class-cw-business.php';
-            require_once CW_PATH . 'includes/class-cw-shop.php';
-            require_once CW_PATH . 'includes/class-cw-shortcodes.php';
-            require_once CW_PATH . 'includes/class-cw-ajax.php';
-            require_once CW_PATH . 'includes/class-cw-wallet.php'; 
-            
-            // 2. Admin Management
-            require_once CW_PATH . 'includes/class-cw-admin.php'; 
-
-            // 3. Dashboard Modules
-            require_once CW_PATH . 'includes/dashboard/class-cw-dashboard-manager.php';
-            require_once CW_PATH . 'includes/dashboard/class-cw-dashboard-creator.php';
-            require_once CW_PATH . 'includes/dashboard/class-cw-dashboard-business.php';
-            require_once CW_PATH . 'includes/dashboard/class-cw-dashboard-contestant.php';
+            require_once CW_PATH . 'includes/class-cw-loader.php';
+            CW_Loader::init_core();
         }
 
         /**
@@ -103,8 +85,6 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             add_action( 'plugins_loaded', [ $this, 'init_plugin' ] );
             add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_assets' ] );
             
-            // CRITICAL FIX: Hook for certificate download handler
-            add_action( 'admin_post_cw_download_cert', [ $this, 'process_certificate_download' ] );
         }
 
         /**
@@ -114,6 +94,8 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             // Load Text Domain
             load_plugin_textdomain( 'creativewings-core', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
 
+            CW_Activator::maybe_upgrade();
+
             // WooCommerce Dependency Check
             if ( ! class_exists( 'WooCommerce' ) ) {
                 add_action( 'admin_notices', function() {
@@ -122,20 +104,38 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
                 return;
             }
 
-            // Instantiate Core Modules
+            if ( ! CW_Loader::init_woocommerce() ) {
+                return;
+            }
+
             $this->roles      = new CW_Roles();
-            $this->post_types = new CW_Post_Types(); // Registers menus immediately
+            $this->post_types = new CW_Post_Types();
             $this->users      = new CW_Users();
             $this->onboarding = new CW_Onboarding();
             $this->business   = new CW_Business();
+            new CW_Sponsor_Coupons();
+            new CW_Moderation();
+            new CW_Email();
+            new CW_Cron();
+            new CW_Export();
+            new CW_Campaign_Admin();
+            new CW_Certificate();
+            new CW_REST_API();
+            if ( CW_Loader::needs_school_upload() ) {
+                new CW_School_Upload();
+            }
+            if ( CW_Loader::needs_claim_flow() ) {
+                $this->claim_flow = new CW_Claim_Flow();
+            }
+            if ( is_admin() ) {
+                new CW_Campaign_Import();
+            }
             $this->shop       = new CW_Shop();
             $this->shortcodes = new CW_Shortcodes();
             $this->ajax       = new CW_Ajax();
             $this->auth       = new CW_Auth();
             $this->wallet     = new CW_Wallet();
-            $this->admin      = new CW_Admin(); // Handles Admin Columns/Metaboxes
-
-            // Initialize Dashboard Manager
+            $this->admin      = new CW_Admin();
             $this->dashboard_manager = new CW_Dashboard_Manager();
         }
 
@@ -219,68 +219,6 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             ]);
         }
         
-       /**
-         * Process Certificate Download (DYNAMIC PDF GENERATION)
-         */
-        public function process_certificate_download() {
-            $entry_id = intval($_GET['entry_id'] ?? 0);
-            $user_id = get_current_user_id();
-            
-            if (!$entry_id || !$user_id) wp_die('Missing Entry ID or not logged in.');
-            
-            $entry = get_post($entry_id);
-            $product_id = get_post_meta($entry_id, 'product_id', true);
-            
-            // Security Check: Does the user own the entry?
-            if (!$entry || (int)$entry->post_author !== (int)$user_id) wp_die('Access denied to this certificate.', 'Access Denied', ['response' => 403]);
-            
-            // Feature Check: Is the certificate enabled AND is the entry complete?
-            $cert_enabled = get_post_meta($product_id, 'cw_enable_certificate', true) === 'yes';
-            $is_completed = get_post_meta($entry_id, 'judge_score', true) !== '';
-            
-            if (!$cert_enabled || !$is_completed) {
-                wp_die('Certificate is not yet available or not enabled for this event.', 'Not Available', ['response' => 404]);
-            }
-            
-            // --- Download Variables ---
-            $participant_name = get_post_meta($entry_id, 'cw_participant_name', true) ?: 'Valued Participant';
-            $cert_url = get_post_meta($product_id, 'cw_cert_template', true);
-            
-            // Convert URL to file path
-            $file_path = str_replace(site_url('/'), ABSPATH, $cert_url);
-            
-            // Determine file name for the download
-            $ext = pathinfo($file_path, PATHINFO_EXTENSION);
-            $base_name = sanitize_file_name($participant_name . '_Certificate');
-            $file_name = $base_name . '.' . $ext; // Use the actual file extension
-
-            // Check if the file exists on the server
-            if (!file_exists($file_path)) {
-                wp_die('Certificate template file not found on server.', 'File Not Found', ['response' => 404]);
-            }
-            
-            // --- FINAL DOWNLOAD LOGIC (WORKING STATIC FILE) ---
-            
-            // Aggressively clean all output buffers
-            if (ob_get_level()) ob_end_clean();
-            
-            // Set headers for a forced download
-            // Assume PDF is the safest Content-Type for a certificate, but check file extension
-            $mime_type = 'application/pdf';
-            if (strtolower($ext) === 'png') $mime_type = 'image/png';
-            if (strtolower($ext) === 'jpg' || strtolower($ext) === 'jpeg') $mime_type = 'image/jpeg';
-            
-            header('Content-Type: ' . $mime_type); 
-            header('Content-Disposition: attachment; filename="' . $file_name . '"');
-            header('Content-Length: ' . filesize($file_path));
-            header('Expires: 0');
-            header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
-            header('Pragma: public');
-
-            // Send the file content
-            readfile($file_path);
-            exit;
-        }
     }
 
     /**

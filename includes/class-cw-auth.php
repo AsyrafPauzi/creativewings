@@ -58,6 +58,14 @@ class CW_Auth {
                     </div>
                     
                     <div class="cw-input-group-v2">
+                        <label class="cw-label">Full name</label>
+                        <div class="cw-input-icon-v2">
+                            <i class="fas fa-user"></i>
+                            <input type="text" name="cw_full_name" required placeholder="As shown on certificate" class="cw-input-text-v2" autocomplete="name">
+                        </div>
+                    </div>
+
+                    <div class="cw-input-group-v2">
                         <label class="cw-label">Email Address</label>
                         <div class="cw-input-icon-v2">
                             <i class="fas fa-envelope"></i>
@@ -84,11 +92,12 @@ class CW_Auth {
                 
 
                     <div class="cw-input-group-v2">
-                        <label class="cw-label">Birthdate</label>
+                        <label class="cw-label">Date of birth</label>
                         <div class="cw-input-icon-v2">
                             <i class="fas fa-calendar"></i>
                             <input type="text" id="birthdate" name="birthdate" required readonly placeholder="dd/mm/yyyy" class="cw-input-text-v2">
                         </div>
+                        <small style="color:#64748b;font-size:12px;">Used for age category when joining campaigns.</small>
                     </div>
 
                     <button type="submit" class="cw-btn-primary cw-btn-full">Sign Up</button>
@@ -224,6 +233,14 @@ class CW_Auth {
             wp_die( __('Security Check Failed', 'creativewings-core') );
         }
 
+        if ( class_exists( 'CW_Security' ) ) {
+            $rl = CW_Security::rate_limit( CW_Security::RATE_REGISTRATION, 10, 3600 );
+            if ( is_wp_error( $rl ) ) {
+                $this->redirect_with_error( 'reg_error', 'rate_limit' );
+                exit;
+            }
+        }
+
         // 2. Honeypot Check (Must be empty)
         if ( ! empty( $_POST['cw_hp_check'] ) ) {
             // Bots often fill this invisible field. If filled, we just pretend it worked but do nothing.
@@ -242,10 +259,11 @@ class CW_Auth {
         }
 
         // 4. Pattern Check (Bots often use Name + Number patterns)
-        $pass  = $_POST['creator_password'];
-        $dob   = sanitize_text_field( $_POST['birthdate'] );
+        $pass      = $_POST['creator_password'];
+        $full_name = sanitize_text_field( $_POST['cw_full_name'] ?? '' );
+        $birthdate = sanitize_text_field( $_POST['birthdate'] ?? '' );
 
-        if ( empty( $email ) || empty( $pass ) || empty( $dob ) ) {
+        if ( empty( $email ) || empty( $pass ) || empty( $full_name ) || empty( $birthdate ) ) {
             $this->redirect_with_error( 'reg_error', 'missing_fields' );
         }
 
@@ -264,8 +282,23 @@ class CW_Auth {
         $user_id  = wp_create_user( $username, $pass, $email );
 
         if ( ! is_wp_error( $user_id ) ) {
-            update_user_meta( $user_id, 'birthdate', $dob );
+            $parts = preg_split( '/\s+/', trim( $full_name ), 2 );
+            $first = $parts[0] ?? $full_name;
+            $last  = $parts[1] ?? '';
+
+            update_user_meta( $user_id, 'cw_full_name', $full_name );
+            update_user_meta( $user_id, 'birthdate', $birthdate );
+            update_user_meta( $user_id, 'first_name', $first );
+            update_user_meta( $user_id, 'last_name', $last );
             update_user_meta( $user_id, 'account_type', 'contestant' );
+
+            wp_update_user( [
+                'ID'           => $user_id,
+                'display_name' => $full_name,
+                'first_name'   => $first,
+                'last_name'    => $last,
+            ] );
+
             $user = new WP_User( $user_id );
             $user->set_role( 'contestant' ); 
 

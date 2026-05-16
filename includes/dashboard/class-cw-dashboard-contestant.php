@@ -118,10 +118,15 @@ class CW_Dashboard_Contestant {
         <?php
     }
 
+    public function render_link_submission() {
+        if ( function_exists( 'cw_core' ) && cw_core()->claim_flow ) {
+            cw_core()->claim_flow->render_endpoint();
+            return;
+        }
+        echo '<p>' . esc_html__( 'Link submission is unavailable.', 'creativewings-core' ) . '</p>';
+    }
+
     /* ==========================================================================
-       2. ACTIVITIES TAB (Third Screenshot - Nova UI)
-       ========================================================================== */
-/* ==========================================================================
        2. ACTIVITIES TAB (Third Screenshot - Nova UI)
        ========================================================================== */
     public function render_activities() {

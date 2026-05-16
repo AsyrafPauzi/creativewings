@@ -25,8 +25,10 @@ class CW_Business {
 
     private function includes() {
         // Ensure the folder 'includes/business/' exists
+        require_once CW_PATH . 'includes/business/class-cw-campaign-persistence.php';
         require_once CW_PATH . 'includes/business/class-cw-business-form.php';
         require_once CW_PATH . 'includes/business/class-cw-business-save.php';
+        require_once CW_PATH . 'includes/business/class-cw-campaign-import.php';
     }
 
     public static function get_sdg_map() {

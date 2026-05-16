@@ -35,11 +35,33 @@ class CW_Activator {
         // 5. Public Profile Rewrite Rule
         add_rewrite_rule( '^profile/([^/]+)/?$', 'index.php?cw_profile_id=$matches[1]', 'top' );
 
+        add_rewrite_rule( '^cw-school-upload/([^/]+)/?$', 'index.php?cw_school_upload_token=$matches[1]', 'top' );
+        add_rewrite_tag( '%cw_school_upload_token%', '([^&]+)' );
+
         // 6. Flush Rules
         flush_rewrite_rules();
     }
 
     public static function deactivate() {
+        flush_rewrite_rules();
+    }
+
+    /**
+     * Run on every load until DB version matches.
+     */
+    public static function maybe_upgrade() {
+        $target = '1.1.0';
+        $ver    = get_option( 'cw_db_version', '0' );
+        if ( version_compare( $ver, $target, '>=' ) ) {
+            return;
+        }
+        self::create_tables();
+        update_option( 'cw_db_version', $target );
+        if ( ! get_option( 'cw_webhook_secret' ) ) {
+            update_option( 'cw_webhook_secret', wp_generate_password( 32, false, false ) );
+        }
+        add_rewrite_rule( '^cw-school-upload/([^/]+)/?$', 'index.php?cw_school_upload_token=$matches[1]', 'top' );
+        add_rewrite_endpoint( 'cw-link-submission', EP_ROOT | EP_PAGES );
         flush_rewrite_rules();
     }
 
@@ -104,8 +126,77 @@ class CW_Activator {
             KEY view_date (view_date)
         ) $charset_collate;";
 
-        require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+        $staged = $wpdb->prefix . 'cw_staged_submissions';
+        $sql2   = "CREATE TABLE $staged (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            submission_code varchar(20) NOT NULL,
+            campaign_id bigint(20) unsigned NOT NULL,
+            school_code varchar(3) NOT NULL,
+            month_code varchar(2) NOT NULL,
+            seq_code varchar(6) NOT NULL,
+            student_name varchar(255) NOT NULL,
+            artwork_attachment_id bigint(20) unsigned DEFAULT 0,
+            status varchar(20) NOT NULL DEFAULT 'staged',
+            age_bracket_key varchar(64) DEFAULT '',
+            claimed_by_user_id bigint(20) unsigned DEFAULT NULL,
+            order_id bigint(20) unsigned DEFAULT NULL,
+            entry_id bigint(20) unsigned DEFAULT NULL,
+            checkout_message text,
+            moderation_status varchar(20) NOT NULL DEFAULT 'approved',
+            claim_reserved_by bigint(20) unsigned DEFAULT NULL,
+            claim_reserved_until datetime DEFAULT NULL,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY submission_campaign (submission_code, campaign_id),
+            KEY campaign_id (campaign_id),
+            KEY status (status),
+            KEY claimed_user_campaign (claimed_by_user_id, campaign_id),
+            KEY moderation_status (moderation_status)
+        ) $charset_collate;";
+
+        $tokens = $wpdb->prefix . 'cw_upload_tokens';
+        $sql3   = "CREATE TABLE $tokens (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            token varchar(64) NOT NULL,
+            campaign_id bigint(20) unsigned NOT NULL,
+            school_code varchar(3) NOT NULL,
+            expires_at datetime DEFAULT NULL,
+            created_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY token (token),
+            KEY campaign_school (campaign_id, school_code)
+        ) $charset_collate;";
+
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        $audit = $wpdb->prefix . 'cw_audit_log';
+        $sql4  = "CREATE TABLE $audit (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            action varchar(64) NOT NULL,
+            object_type varchar(32) NOT NULL,
+            object_id bigint(20) unsigned NOT NULL,
+            user_id bigint(20) unsigned DEFAULT 0,
+            details longtext,
+            ip_hash varchar(64) DEFAULT '',
+            created_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            KEY action (action),
+            KEY object_lookup (object_type, object_id)
+        ) $charset_collate;";
+
         dbDelta( $sql );
+        dbDelta( $sql2 );
+        dbDelta( $sql3 );
+        dbDelta( $sql4 );
+
+        if ( false === get_option( 'cw_default_age_brackets', false ) ) {
+            update_option( 'cw_default_age_brackets', [
+                [ 'label' => 'Primary', 'min_age' => 7, 'max_age' => 12, 'product_cat_slug' => 'primary', 'key' => 'primary' ],
+                [ 'label' => 'Secondary', 'min_age' => 13, 'max_age' => 17, 'product_cat_slug' => 'secondary', 'key' => 'secondary' ],
+                [ 'label' => 'University', 'min_age' => 18, 'max_age' => 24, 'product_cat_slug' => 'university', 'key' => 'university' ],
+                [ 'label' => 'Public', 'min_age' => 0, 'max_age' => 99, 'product_cat_slug' => 'public', 'key' => 'public' ],
+            ] );
+        }
     }
 }
 

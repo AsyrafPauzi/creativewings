@@ -51,10 +51,11 @@ class CW_Dashboard_Manager {
         } else {
             $role = 'contestant';
             $menu_items = [
-                'overview'   => ['icon' => 'fa-th-large', 'label' => 'Overview'],
-                'activities' => ['icon' => 'fa-running',  'label' => 'My Activities'],
-                'upgrade'    => ['icon' => 'fa-arrow-up', 'label' => 'Upgrade Account'],
-                'settings'   => ['icon' => 'fa-cog',      'label' => 'Settings'],
+                'overview'         => ['icon' => 'fa-th-large', 'label' => 'Overview'],
+                'link-submission'  => ['icon' => 'fa-link',     'label' => 'Link submission code'],
+                'activities'       => ['icon' => 'fa-running',  'label' => 'My Activities'],
+                'upgrade'          => ['icon' => 'fa-arrow-up', 'label' => 'Upgrade Account'],
+                'settings'         => ['icon' => 'fa-cog',      'label' => 'Settings'],
             ];
         }
 
@@ -213,6 +214,11 @@ class CW_Dashboard_Manager {
             switch ($tab) {
                 case 'overview': 
                     if ( $this->contestant_dashboard ) $this->contestant_dashboard->render_overview(); 
+                    break;
+                case 'link-submission':
+                    if ( $this->contestant_dashboard ) {
+                        $this->contestant_dashboard->render_link_submission();
+                    }
                     break;
                 case 'activities': 
                     if ( $this->contestant_dashboard ) $this->contestant_dashboard->render_activities(); 

@@ -21,6 +21,7 @@ class CW_Shop {
         // Display
         add_filter('woocommerce_get_item_data', [ $this, 'display_custom_data_in_cart' ], 10, 2);
         add_action('woocommerce_checkout_create_order_line_item', [ $this, 'save_custom_data_to_order' ], 10, 4);
+        add_filter('woocommerce_get_cart_item_from_session', [ $this, 'restore_claim_cart_session' ], 10, 2 );
         
         // Processing
         add_action('woocommerce_order_status_completed', [ $this, 'create_entries_from_order' ], 10, 1);
@@ -437,9 +438,23 @@ class CW_Shop {
         return $d;
     }
     
+    public function restore_claim_cart_session( $cart_item, $values ) {
+        foreach ( [ 'cw_staged_id', 'cw_claim_code', 'cw_age_bracket_key', 'cw_age_bracket_label' ] as $key ) {
+            if ( isset( $values[ $key ] ) ) {
+                $cart_item[ $key ] = $values[ $key ];
+            }
+        }
+        return $cart_item;
+    }
+
     public function save_custom_data_to_order($it,$k,$v,$o){
         if(isset($v['cw_participants'])) { $it->add_meta_data('_cw_participant_data',json_encode($v['cw_participants'])); }
         if(isset($v['cw_addons_meta'])) { $it->add_meta_data('_cw_addons_data',json_encode($v['cw_addons_meta'])); }
+        if ( ! empty( $v['cw_staged_id'] ) ) {
+            $it->add_meta_data( '_cw_staged_id', (int) $v['cw_staged_id'] );
+            $it->add_meta_data( '_cw_claim_code', sanitize_text_field( $v['cw_claim_code'] ?? '' ) );
+            $it->add_meta_data( '_cw_age_bracket_key', sanitize_text_field( $v['cw_age_bracket_key'] ?? '' ) );
+        }
     }
 
     // 6. CREATE ENTRIES (Logic for Certificates vs Artworks)
@@ -468,6 +483,13 @@ class CW_Shop {
                 }
             }
             $post_type = $is_activity ? 'cw_activity_entry' : 'cw_competition_entry';
+
+            $staged_id = (int) $item->get_meta( '_cw_staged_id' );
+            if ( $staged_id && class_exists( 'CW_Staged_Submissions' ) ) {
+                $this->create_entry_from_staged( $staged_id, $order_id, $user_id, $product_id, $item, $post_type );
+                continue;
+            }
+
             $meta_json = $item->get_meta( '_cw_participant_data' );
             
             if ( $meta_json ) {
@@ -512,6 +534,85 @@ class CW_Shop {
         }
         $order->update_meta_data( '_cw_entries_created', 'yes' );
         $order->save();
+    }
+
+    private function create_entry_from_staged( $staged_id, $order_id, $user_id, $product_id, $item, $post_type ) {
+        global $wpdb;
+        $row = $wpdb->get_row( $wpdb->prepare(
+            'SELECT * FROM ' . CW_Staged_Submissions::table() . ' WHERE id = %d',
+            $staged_id
+        ), ARRAY_A );
+
+        if ( ! $row || ( $row['status'] ?? '' ) === 'claimed' ) {
+            return;
+        }
+
+        global $wpdb;
+        $locked = $wpdb->query(
+            $wpdb->prepare(
+                'UPDATE ' . CW_Staged_Submissions::table() . ' SET status = %s, claimed_by_user_id = %d, order_id = %d, updated_at = %s WHERE id = %d AND status = %s',
+                'claimed',
+                (int) $user_id,
+                (int) $order_id,
+                current_time( 'mysql' ),
+                (int) $staged_id,
+                'staged'
+            )
+        );
+        if ( ! $locked ) {
+            return;
+        }
+
+        $name = $row['student_name'];
+        $art_url = $row['artwork_attachment_id'] ? wp_get_attachment_url( (int) $row['artwork_attachment_id'] ) : '';
+
+        $fields = [
+            [ 'label' => 'Name', 'value' => $name ],
+            [ 'label' => 'Submission code', 'value' => $row['submission_code'] ],
+        ];
+        $msg = $row['checkout_message'] ?? '';
+        if ( ! $msg ) {
+            $msg = get_post_meta( $order_id, 'cw_checkout_message', true );
+        }
+        if ( $msg ) {
+            $fields[] = [ 'label' => get_post_meta( $product_id, 'cw_checkout_message_label', true ) ?: 'Message', 'value' => $msg ];
+        }
+
+        $entry_id = wp_insert_post( [
+            'post_title'  => $item->get_name() . ' - ' . $name,
+            'post_type'   => $post_type,
+            'post_status' => 'publish',
+            'post_author' => $user_id,
+        ] );
+
+        if ( is_wp_error( $entry_id ) ) {
+            return;
+        }
+
+        update_post_meta( $entry_id, 'order_id', $order_id );
+        update_post_meta( $entry_id, 'product_id', $product_id );
+        update_post_meta( $entry_id, 'customer_id', $user_id );
+        update_post_meta( $entry_id, 'cw_participant_name', $name );
+        update_post_meta( $entry_id, 'participant_details', $fields );
+        update_post_meta( $entry_id, 'cw_submission_code', $row['submission_code'] );
+        update_post_meta( $entry_id, 'cw_age_bracket_key', $row['age_bracket_key'] ?? $item->get_meta( '_cw_age_bracket_key' ) );
+
+        if ( $art_url ) {
+            update_post_meta( $entry_id, 'upload_document', $art_url );
+        }
+
+        if ( $post_type === 'cw_competition_entry' ) {
+            update_post_meta( $entry_id, 'vote_count', 0 );
+            update_post_meta( $entry_id, 'judge_score', 0 );
+        }
+
+        CW_Staged_Submissions::update( $staged_id, [ 'entry_id' => $entry_id ] );
+
+        if ( class_exists( 'CW_Audit_Log' ) ) {
+            CW_Audit_Log::log( 'staged_claimed', 'staged', $staged_id, [ 'order_id' => $order_id, 'entry_id' => $entry_id ] );
+        }
+        do_action( 'cw_staged_claimed', $user_id, $row, $product_id );
+        do_action( 'cw_order_entry_created', $user_id, $entry_id, $product_id, $order_id );
     }
 
     public function redirect_to_checkout( $url ) { return wc_get_checkout_url(); }
