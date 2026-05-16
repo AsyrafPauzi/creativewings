@@ -16,6 +16,7 @@ class CW_Loader {
         require_once CW_PATH . 'includes/class-cw-roles.php';
         require_once CW_PATH . 'includes/class-cw-post-types.php';
         require_once CW_PATH . 'includes/class-cw-submission-code.php';
+        require_once CW_PATH . 'includes/class-cw-campaign-fields.php';
         require_once CW_PATH . 'includes/class-cw-staged-submissions.php';
         require_once CW_PATH . 'includes/class-cw-pending-parent-link.php';
         require_once CW_PATH . 'includes/class-cw-email.php';

@@ -43,6 +43,11 @@ class CW_Staged_Submissions {
         }
         $mod = $mod ?: 'approved';
 
+        $field_data = isset( $data['field_data'] ) ? $data['field_data'] : '';
+        if ( is_array( $field_data ) ) {
+            $field_data = wp_json_encode( array_values( $field_data ) );
+        }
+
         $wpdb->insert(
             self::table(),
             [
@@ -53,20 +58,24 @@ class CW_Staged_Submissions {
                 'seq_code'              => $data['seq_code'],
                 'student_name'          => $data['student_name'],
                 'artwork_attachment_id' => (int) ( $data['artwork_attachment_id'] ?? 0 ),
+                'field_data'            => $field_data,
                 'status'                => 'staged',
                 'age_bracket_key'       => $data['age_bracket_key'] ?? '',
                 'moderation_status'     => sanitize_key( $mod ),
                 'created_at'            => $now,
                 'updated_at'            => $now,
             ],
-            [ '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s' ]
+            [ '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s' ]
         );
         return $wpdb->insert_id;
     }
 
     public static function update( $id, array $data ) {
         global $wpdb;
-        $allowed = [ 'student_name', 'artwork_attachment_id', 'status', 'claimed_by_user_id', 'order_id', 'entry_id', 'checkout_message', 'age_bracket_key', 'moderation_status', 'claim_reserved_by', 'claim_reserved_until' ];
+        if ( isset( $data['field_data'] ) && is_array( $data['field_data'] ) ) {
+            $data['field_data'] = wp_json_encode( array_values( $data['field_data'] ) );
+        }
+        $allowed = [ 'student_name', 'artwork_attachment_id', 'field_data', 'status', 'claimed_by_user_id', 'order_id', 'entry_id', 'checkout_message', 'age_bracket_key', 'moderation_status', 'claim_reserved_by', 'claim_reserved_until' ];
         $update  = [ 'updated_at' => current_time( 'mysql' ) ];
         $formats = [ '%s' ];
 

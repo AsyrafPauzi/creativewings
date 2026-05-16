@@ -43,12 +43,25 @@ class CW_School_Upload {
 
         status_header( 200 );
         nocache_headers();
-        $this->render_page( $token, $campaign, $school_code, $prefill );
+        $this->render_page( $token, $campaign, $school_code, $prefill, $campaign_id );
         exit;
     }
 
-    private function render_page( $token, $campaign, $school_code, $prefill ) {
+    private function render_page( $token, $campaign, $school_code, $prefill, $campaign_id ) {
         $claimed_block = $prefill && ( $prefill['status'] ?? '' ) === 'claimed';
+        $upload_fields = class_exists( 'CW_Campaign_Fields' )
+            ? CW_Campaign_Fields::get_pic_upload_fields( $campaign_id )
+            : [];
+        $has_configured = class_exists( 'CW_Campaign_Fields' )
+            ? CW_Campaign_Fields::campaign_has_configured_pic_uploads( $campaign_id )
+            : true;
+        $stored_fields = ( is_array( $prefill ) && class_exists( 'CW_Campaign_Fields' ) )
+            ? CW_Campaign_Fields::decode_staged_field_data( $prefill )
+            : [];
+        $stored_by_index = [];
+        foreach ( $stored_fields as $item ) {
+            $stored_by_index[ (string) ( $item['index'] ?? '' ) ] = $item;
+        }
         ?>
         <!DOCTYPE html>
         <html <?php language_attributes(); ?>>
@@ -86,6 +99,8 @@ class CW_School_Upload {
 
             <?php if ( $claimed_block ) : ?>
                 <div class="alert alert-warn"><?php esc_html_e( 'This submission is already claimed by a parent. Contact Creative Wings admin to make changes.', 'creativewings-core' ); ?></div>
+            <?php elseif ( ! $has_configured ) : ?>
+                <div class="alert alert-warn"><?php esc_html_e( 'This campaign has no image upload field yet. The organizer must add an Image Upload (or Document Upload) field in Step 5 — Participant Form Fields before school staff can upload.', 'creativewings-core' ); ?></div>
             <?php else : ?>
             <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" enctype="multipart/form-data">
                 <?php wp_nonce_field( 'cw_staff_submission', 'cw_staff_nonce' ); ?>
@@ -101,12 +116,37 @@ class CW_School_Upload {
                 <input type="text" name="student_name" required
                     value="<?php echo esc_attr( is_array( $prefill ) ? ( $prefill['student_name'] ?? '' ) : '' ); ?>">
 
-                <label><?php esc_html_e( 'Artwork image', 'creativewings-core' ); ?></label>
-                <input type="file" name="artwork" accept="image/*" <?php echo $prefill ? '' : 'required'; ?>>
                 <?php
-                if ( $prefill && ! empty( $prefill['artwork_attachment_id'] ) ) {
-                    echo wp_get_attachment_image( (int) $prefill['artwork_attachment_id'], 'medium', false, [ 'class' => 'preview' ] );
-                }
+                $primary_key = CW_Campaign_Fields::get_primary_artwork_field_key( $campaign_id );
+                foreach ( $upload_fields as $idx => $field ) :
+                    $label    = trim( (string) ( $field['label'] ?? __( 'Upload', 'creativewings-core' ) ) );
+                    $type     = strtolower( (string) ( $field['type'] ?? 'media' ) );
+                    $required = ! empty( $field['required'] );
+                    $input    = 'cw_field_' . $idx;
+                    $stored   = $stored_by_index[ (string) $idx ] ?? null;
+                    $aid      = ! empty( $stored['attachment_id'] ) ? (int) $stored['attachment_id'] : 0;
+                    if ( ! $aid && $prefill && (string) $idx === (string) $primary_key && ! empty( $prefill['artwork_attachment_id'] ) ) {
+                        $aid = (int) $prefill['artwork_attachment_id'];
+                    }
+                    $accept = ( 'media' === $type ) ? 'image/*' : '.pdf,.doc,.docx,.zip,image/*';
+                    ?>
+                    <label>
+                        <?php echo esc_html( $label ); ?>
+                        <?php if ( $required ) : ?>
+                            <span style="color:#b91c1c">*</span>
+                        <?php endif; ?>
+                    </label>
+                    <input type="file" name="<?php echo esc_attr( $input ); ?>" accept="<?php echo esc_attr( $accept ); ?>" <?php echo ( $required && ! $aid ) ? 'required' : ''; ?>>
+                    <?php
+                    if ( $aid && 'media' === $type ) {
+                        echo wp_get_attachment_image( $aid, 'medium', false, [ 'class' => 'preview' ] );
+                    } elseif ( $aid ) {
+                        $url = wp_get_attachment_url( $aid );
+                        if ( $url ) {
+                            echo '<p class="sub"><a href="' . esc_url( $url ) . '" target="_blank" rel="noopener">' . esc_html__( 'View current file', 'creativewings-core' ) . '</a></p>';
+                        }
+                    }
+                endforeach;
                 ?>
 
                 <button type="submit" class="btn"><?php esc_html_e( 'Save submission', 'creativewings-core' ); ?></button>
@@ -165,22 +205,70 @@ class CW_School_Upload {
             exit;
         }
 
-        $attachment_id = $existing ? (int) $existing['artwork_attachment_id'] : 0;
-        if ( ! empty( $_FILES['artwork']['name'] ) ) {
-            $aid = class_exists( 'CW_Security' ) ? CW_Security::handle_image_upload( 'artwork' ) : 0;
-            if ( is_wp_error( $aid ) ) {
-                wp_safe_redirect( add_query_arg( 'error', rawurlencode( $aid->get_error_message() ), $base ) );
-                exit;
-            }
-            $attachment_id = (int) $aid;
-        }
-
-        if ( ! $attachment_id ) {
-            wp_safe_redirect( add_query_arg( 'error', rawurlencode( 'Artwork image is required.' ), $base ) );
+        if ( ! class_exists( 'CW_Campaign_Fields' ) || ! CW_Campaign_Fields::campaign_has_configured_pic_uploads( $campaign_id ) ) {
+            wp_safe_redirect( add_query_arg( 'error', rawurlencode( __( 'This campaign has no upload fields configured.', 'creativewings-core' ) ), $base ) );
             exit;
         }
 
-        $name = sanitize_text_field( $_POST['student_name'] ?? '' );
+        $upload_fields = CW_Campaign_Fields::get_pic_upload_fields( $campaign_id );
+        $primary_key   = CW_Campaign_Fields::get_primary_artwork_field_key( $campaign_id );
+        $stored_by     = [];
+        if ( $existing ) {
+            foreach ( CW_Campaign_Fields::decode_staged_field_data( $existing ) as $item ) {
+                $stored_by[ (string) ( $item['index'] ?? '' ) ] = $item;
+            }
+        }
+
+        $field_data = [];
+        foreach ( $upload_fields as $idx => $field ) {
+            $input_key = 'cw_field_' . $idx;
+            $type      = strtolower( (string) ( $field['type'] ?? 'media' ) );
+            $label     = trim( (string) ( $field['label'] ?? __( 'Upload', 'creativewings-core' ) ) );
+            $aid       = 0;
+            if ( ! empty( $stored_by[ (string) $idx ]['attachment_id'] ) ) {
+                $aid = (int) $stored_by[ (string) $idx ]['attachment_id'];
+            }
+            if ( ! empty( $_FILES[ $input_key ]['name'] ) ) {
+                $uploaded = class_exists( 'CW_Security' )
+                    ? CW_Security::handle_field_upload( $input_key, $type )
+                    : 0;
+                if ( is_wp_error( $uploaded ) ) {
+                    wp_safe_redirect( add_query_arg( 'error', rawurlencode( $uploaded->get_error_message() ), $base ) );
+                    exit;
+                }
+                $aid = (int) $uploaded;
+            }
+            if ( ! empty( $field['required'] ) && ! $aid ) {
+                wp_safe_redirect( add_query_arg( 'error', rawurlencode( sprintf( __( '%s is required.', 'creativewings-core' ), $label ) ), $base ) );
+                exit;
+            }
+            if ( $aid ) {
+                $field_data[] = [
+                    'index'         => $idx,
+                    'label'         => $label,
+                    'type'          => $type,
+                    'attachment_id' => $aid,
+                    'value'         => wp_get_attachment_url( $aid ) ?: '',
+                ];
+            }
+        }
+
+        $attachment_id = 0;
+        if ( null !== $primary_key ) {
+            foreach ( $field_data as $item ) {
+                if ( (string) ( $item['index'] ?? '' ) === (string) $primary_key ) {
+                    $attachment_id = (int) ( $item['attachment_id'] ?? 0 );
+                    break;
+                }
+            }
+        }
+
+        if ( ! $attachment_id ) {
+            wp_safe_redirect( add_query_arg( 'error', rawurlencode( __( 'Primary artwork image is required.', 'creativewings-core' ) ), $base ) );
+            exit;
+        }
+
+        $name    = sanitize_text_field( $_POST['student_name'] ?? '' );
         $payload = [
             'submission_code'       => $parsed['normalized'],
             'campaign_id'           => $campaign_id,
@@ -189,6 +277,7 @@ class CW_School_Upload {
             'seq_code'              => $parsed['seq'],
             'student_name'          => $name,
             'artwork_attachment_id' => $attachment_id,
+            'field_data'            => $field_data,
         ];
 
         if ( $existing ) {
@@ -196,12 +285,10 @@ class CW_School_Upload {
             CW_Staged_Submissions::update( $sid, [
                 'student_name'          => $name,
                 'artwork_attachment_id' => $attachment_id,
+                'field_data'            => $field_data,
             ] );
             if ( class_exists( 'CW_Audit_Log' ) ) {
                 CW_Audit_Log::log( 'staged_update', 'staged', $sid, [ 'code' => $parsed['normalized'] ] );
-            }
-            if ( class_exists( 'CW_Pending_Parent_Link' ) ) {
-                CW_Pending_Parent_Link::on_staged_uploaded( $sid, $campaign_id, $parsed['normalized'] );
             }
         } else {
             $sid = (int) CW_Staged_Submissions::insert( $payload );

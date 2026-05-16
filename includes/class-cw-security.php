@@ -95,4 +95,31 @@ class CW_Security {
         $aid = media_handle_upload( $file_key, 0 );
         return is_wp_error( $aid ) ? $aid : (int) $aid;
     }
+
+    /**
+     * @return int|WP_Error Attachment ID.
+     */
+    public static function handle_field_upload( $file_key, $field_type = 'media', $max_bytes = 5242880 ) {
+        $type = strtolower( (string) $field_type );
+        if ( 'media' === $type ) {
+            return self::handle_image_upload( $file_key, $max_bytes );
+        }
+        if ( empty( $_FILES[ $file_key ]['name'] ) ) {
+            return new WP_Error( 'no_file', __( 'No file uploaded.', 'creativewings-core' ) );
+        }
+        $file = $_FILES[ $file_key ];
+        if ( ! empty( $file['size'] ) && (int) $file['size'] > $max_bytes ) {
+            return new WP_Error( 'file_large', __( 'File must be 5MB or smaller.', 'creativewings-core' ) );
+        }
+        $check   = wp_check_filetype_and_ext( $file['tmp_name'], $file['name'] );
+        $allowed = [ 'pdf', 'doc', 'docx', 'zip', 'jpg', 'jpeg', 'png' ];
+        if ( empty( $check['ext'] ) || ! in_array( strtolower( $check['ext'] ), $allowed, true ) ) {
+            return new WP_Error( 'file_type', __( 'Invalid file type for this field.', 'creativewings-core' ) );
+        }
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        $aid = media_handle_upload( $file_key, 0 );
+        return is_wp_error( $aid ) ? $aid : (int) $aid;
+    }
 }

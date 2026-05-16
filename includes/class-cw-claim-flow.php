@@ -147,9 +147,12 @@ class CW_Claim_Flow {
             <?php foreach ( $pending as $p ) :
                 $campaign_id = (int) $p['campaign_id'];
                 $staged      = CW_Staged_Submissions::get_by_code( $p['submission_code'], $campaign_id );
+                $has_artwork = class_exists( 'CW_Campaign_Fields' )
+                    ? CW_Campaign_Fields::staged_has_required_uploads( $staged, $campaign_id )
+                    : (int) ( $staged['artwork_attachment_id'] ?? 0 ) > 0;
                 $ready       = $staged
                     && ( $staged['status'] ?? '' ) === 'staged'
-                    && (int) ( $staged['artwork_attachment_id'] ?? 0 ) > 0
+                    && $has_artwork
                     && ( $staged['moderation_status'] ?? 'approved' ) === 'approved';
                 ?>
                 <div class="cw-pending-card" style="border:1px solid #ddd;padding:1em;margin:1em 0;border-radius:4px">
@@ -197,7 +200,12 @@ class CW_Claim_Flow {
         }
 
         $row = CW_Staged_Submissions::get_by_code( $pending['submission_code'], $campaign_id );
-        if ( ! $row || (int) ( $row['artwork_attachment_id'] ?? 0 ) < 1 ) {
+        $has_artwork = $row && (
+            class_exists( 'CW_Campaign_Fields' )
+                ? CW_Campaign_Fields::staged_has_required_uploads( $row, $campaign_id )
+                : (int) ( $row['artwork_attachment_id'] ?? 0 ) > 0
+        );
+        if ( ! $has_artwork ) {
             wp_safe_redirect( add_query_arg( 'step', 'waiting', $base ) );
             exit;
         }

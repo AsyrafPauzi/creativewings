@@ -51,7 +51,7 @@ class CW_Activator {
      * Run on every load until DB version matches.
      */
     public static function maybe_upgrade() {
-        $target = '1.2.0';
+        $target = '1.3.0';
         $ver    = get_option( 'cw_db_version', '0' );
         if ( version_compare( $ver, $target, '>=' ) ) {
             return;
@@ -174,6 +174,7 @@ class CW_Activator {
             moderation_status varchar(20) NOT NULL DEFAULT 'approved',
             claim_reserved_by bigint(20) unsigned DEFAULT NULL,
             claim_reserved_until datetime DEFAULT NULL,
+            field_data longtext,
             created_at datetime NOT NULL,
             updated_at datetime NOT NULL,
             PRIMARY KEY (id),

@@ -126,7 +126,12 @@ class CW_Pending_Parent_Link {
         }
 
         $row = CW_Staged_Submissions::get_by_code( $parsed['normalized'], $campaign_id );
-        if ( ! $row || (int) ( $row['artwork_attachment_id'] ?? 0 ) < 1 ) {
+        $ready = $row && (
+            class_exists( 'CW_Campaign_Fields' )
+                ? CW_Campaign_Fields::staged_has_required_uploads( $row, $campaign_id )
+                : (int) ( $row['artwork_attachment_id'] ?? 0 ) > 0
+        );
+        if ( ! $ready ) {
             return;
         }
         if ( ( $row['status'] ?? '' ) === 'claimed' ) {

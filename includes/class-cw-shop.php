@@ -599,12 +599,18 @@ class CW_Shop {
         }
 
         $name = $row['student_name'];
-        $art_url = $row['artwork_attachment_id'] ? wp_get_attachment_url( (int) $row['artwork_attachment_id'] ) : '';
+        $campaign_id = (int) ( $row['campaign_id'] ?? 0 );
+        $art_aid = class_exists( 'CW_Campaign_Fields' )
+            ? CW_Campaign_Fields::get_primary_artwork_attachment_id( $row, $campaign_id )
+            : (int) ( $row['artwork_attachment_id'] ?? 0 );
+        $art_url = $art_aid ? wp_get_attachment_url( $art_aid ) : '';
 
-        $fields = [
-            [ 'label' => 'Name', 'value' => $name ],
-            [ 'label' => 'Submission code', 'value' => $row['submission_code'] ],
-        ];
+        $fields = class_exists( 'CW_Campaign_Fields' )
+            ? CW_Campaign_Fields::build_participant_details_from_staged( $row )
+            : [
+                [ 'label' => 'Name', 'value' => $name ],
+                [ 'label' => 'Submission code', 'value' => $row['submission_code'] ],
+            ];
         $msg = $row['checkout_message'] ?? '';
         if ( ! $msg ) {
             $msg = get_post_meta( $order_id, 'cw_checkout_message', true );
