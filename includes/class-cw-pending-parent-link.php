@@ -99,6 +99,23 @@ class CW_Pending_Parent_Link {
         );
     }
 
+    /**
+     * Remove a pending link only if it belongs to the user (wrong code entered).
+     */
+    public static function delete_for_user_by_id( $user_id, $pending_id ) {
+        global $wpdb;
+        $row = $wpdb->get_row( $wpdb->prepare(
+            'SELECT * FROM ' . self::table() . ' WHERE id = %d AND user_id = %d',
+            (int) $pending_id,
+            (int) $user_id
+        ), ARRAY_A );
+        if ( ! $row ) {
+            return false;
+        }
+        $wpdb->delete( self::table(), [ 'id' => (int) $row['id'] ], [ '%d' ] );
+        return true;
+    }
+
     public static function delete_by_code( $code, $campaign_id ) {
         global $wpdb;
         $parsed = CW_Submission_Code::parse( $code );

@@ -41,9 +41,8 @@ class CW_Dashboard_Contestant {
         ?>
         <div class="cw-content-wrapper">
              <div class="cw-dash-header">
-                 <h2 style="font-size:32px; font-weight:800;">Welcome back, <?php echo esc_html($u->first_name ?: $u->display_name); ?></h2>
-                 <p style="font-size:16px; color:#64748b;">Here's what's happening with your activities.</p>
-                 <a href="<?php echo esc_url($activities_url); ?>" style="font-size:14px; color:var(--cw-primary); text-decoration:none;">View All Activities →</a>
+                 <h2>Welcome back, <?php echo esc_html($u->first_name ?: $u->display_name); ?></h2>
+                 <p>Here's what's happening with your activities. <a href="<?php echo esc_url($activities_url); ?>" style="font-weight:600;color:var(--cw-primary);text-decoration:none;">View All Activities →</a></p>
              </div>
             
             <div class="cw-stats-container">

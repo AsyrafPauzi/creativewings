@@ -859,14 +859,16 @@ input.cw-input-text-v2 { padding-left: 42px !important; }
    11. DASHBOARD HEADER (Shared)
    ========================================= */
 .cw-dash-header { margin-bottom: 28px; }
-.cw-dash-header h1 {
-    font-size: 26px;
+.cw-dash-header h1,
+.cw-dash-header h2 {
+    font-size: 28px;
     font-weight: 800;
     color: var(--cw-text);
-    margin: 0 0 4px;
+    margin: 0 0 8px;
     letter-spacing: -0.4px;
+    line-height: 1.2;
 }
-.cw-dash-header p { color: var(--cw-text-soft); font-size: 14px; margin: 0; }
+.cw-dash-header p { color: var(--cw-text-soft); font-size: 14px; margin: 0; line-height: 1.55; max-width: 640px; }
 .cw-subtitle-header { font-size: 14px; color: var(--cw-text-soft); margin-top: 4px; }
 
 .cw-portfolio-header {

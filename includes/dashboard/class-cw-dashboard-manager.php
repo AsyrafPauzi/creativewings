@@ -23,7 +23,7 @@ class CW_Dashboard_Manager {
         }
 
         $user = wp_get_current_user();
-        $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'overview';
+        $current_tab = isset( $_GET['tab'] ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : 'overview';
         $role = '';
         $menu_items = [];
         
@@ -31,6 +31,15 @@ class CW_Dashboard_Manager {
 
         // Define Menus based on Role (FINAL STRUCTURE)
         $role = class_exists( 'CW_Roles' ) ? CW_Roles::get_dashboard_role( $user ) : 'contestant';
+
+        // Claim flow redirects may use WC endpoint URLs; portal tabs use ?tab=link-submission.
+        if ( 'contestant' === $role && 'overview' === $current_tab ) {
+            if ( ! empty( $_GET['step'] ) || ! empty( $_GET['claim_token'] ) || ! empty( $_GET['linked'] ) ) {
+                $current_tab = 'link-submission';
+            } elseif ( function_exists( 'is_wc_endpoint_url' ) && is_wc_endpoint_url( 'cw-link-submission' ) ) {
+                $current_tab = 'link-submission';
+            }
+        }
 
         if ( 'business' === $role ) {
             $menu_items = [

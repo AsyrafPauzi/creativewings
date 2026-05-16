@@ -11,6 +11,8 @@ class CW_School_Upload {
         add_action( 'admin_post_nopriv_cw_staff_submission_save', [ $this, 'handle_save' ] );
         add_action( 'admin_post_cw_staff_submission_save', [ $this, 'handle_save' ] );
         add_action( 'admin_post_cw_generate_upload_token', [ $this, 'handle_generate_token' ] );
+        add_action( 'wp_ajax_nopriv_cw_pic_lookup_code', [ $this, 'ajax_lookup_code' ] );
+        add_action( 'wp_ajax_cw_pic_lookup_code', [ $this, 'ajax_lookup_code' ] );
     }
 
     public function query_vars( $vars ) {
@@ -83,6 +85,13 @@ class CW_School_Upload {
                 .alert-success{background:#ecfdf5;color:#047857}
                 .alert-warn{background:#fffbeb;color:#b45309}
                 .preview{max-width:200px;margin-top:10px;border-radius:8px}
+                .cw-code-status{display:none;margin:8px 0 4px;font-size:13px;padding:10px 12px;border-radius:8px}
+                .cw-code-status.is-visible{display:block}
+                .cw-code-status.info{background:#eff6ff;color:#1d4ed8}
+                .cw-code-status.success{background:#ecfdf5;color:#047857}
+                .cw-code-status.warn{background:#fffbeb;color:#b45309}
+                .cw-code-status.error{background:#fef2f2;color:#b91c1c}
+                .cw-code-status.loading{background:#f8fafc;color:#64748b}
             </style>
         </head>
         <body>
@@ -107,13 +116,14 @@ class CW_School_Upload {
                 <input type="hidden" name="action" value="cw_staff_submission_save">
                 <input type="hidden" name="token" value="<?php echo esc_attr( $token ); ?>">
 
-                <label><?php esc_html_e( 'Submission code (13-14 digits)', 'creativewings-core' ); ?></label>
-                <input type="text" name="submission_code" required minlength="13" maxlength="14" inputmode="numeric"
+                <label for="cw-submission-code"><?php esc_html_e( 'Submission code (13-14 digits)', 'creativewings-core' ); ?></label>
+                <input type="text" id="cw-submission-code" name="submission_code" required minlength="13" maxlength="14" inputmode="numeric" autocomplete="off"
                     value="<?php echo esc_attr( is_array( $prefill ) ? ( $prefill['submission_code'] ?? '' ) : '' ); ?>"
                     placeholder="0020500100001">
+                <div id="cw-code-status" class="cw-code-status" role="status" aria-live="polite"></div>
 
-                <label><?php esc_html_e( 'Student name', 'creativewings-core' ); ?></label>
-                <input type="text" name="student_name" required
+                <label for="cw-student-name"><?php esc_html_e( 'Student name', 'creativewings-core' ); ?></label>
+                <input type="text" id="cw-student-name" name="student_name" required
                     value="<?php echo esc_attr( is_array( $prefill ) ? ( $prefill['student_name'] ?? '' ) : '' ); ?>">
 
                 <?php
@@ -136,7 +146,12 @@ class CW_School_Upload {
                             <span style="color:#b91c1c">*</span>
                         <?php endif; ?>
                     </label>
-                    <input type="file" name="<?php echo esc_attr( $input ); ?>" accept="<?php echo esc_attr( $accept ); ?>" <?php echo ( $required && ! $aid ) ? 'required' : ''; ?>>
+                    <input type="file" class="cw-field-file" name="<?php echo esc_attr( $input ); ?>" accept="<?php echo esc_attr( $accept ); ?>"
+                        data-field-index="<?php echo esc_attr( (string) $idx ); ?>"
+                        data-field-type="<?php echo esc_attr( $type ); ?>"
+                        data-required="<?php echo $required ? '1' : '0'; ?>"
+                        <?php echo ( $required && ! $aid ) ? 'required' : ''; ?>>
+                    <div class="cw-field-preview" id="cw-preview-<?php echo esc_attr( (string) $idx ); ?>">
                     <?php
                     if ( $aid && 'media' === $type ) {
                         echo wp_get_attachment_image( $aid, 'medium', false, [ 'class' => 'preview' ] );
@@ -146,16 +161,281 @@ class CW_School_Upload {
                             echo '<p class="sub"><a href="' . esc_url( $url ) . '" target="_blank" rel="noopener">' . esc_html__( 'View current file', 'creativewings-core' ) . '</a></p>';
                         }
                     }
-                endforeach;
-                ?>
+                    ?>
+                    </div>
+                <?php endforeach; ?>
 
-                <button type="submit" class="btn"><?php esc_html_e( 'Save submission', 'creativewings-core' ); ?></button>
+                <button type="submit" class="btn" id="cw-save-btn"><?php esc_html_e( 'Save submission', 'creativewings-core' ); ?></button>
             </form>
+            <?php $this->render_lookup_script( $token, $school_code ); ?>
             <?php endif; ?>
         </div>
         </body>
         </html>
         <?php
+    }
+
+    private function render_lookup_script( $token, $school_code ) {
+        $cfg = [
+            'ajaxUrl'    => admin_url( 'admin-ajax.php' ),
+            'nonce'      => wp_create_nonce( 'cw_pic_lookup' ),
+            'token'      => $token,
+            'debounceMs' => 2000,
+            'i18n'       => [
+                'checking'  => __( 'Checking code…', 'creativewings-core' ),
+                'available' => __( 'This code is available — you can enter a new submission.', 'creativewings-core' ),
+                'exists'    => __( 'Existing submission loaded. Review the details below before saving.', 'creativewings-core' ),
+                'claimed'   => __( 'This code is already claimed by a parent and cannot be edited here.', 'creativewings-core' ),
+                'network'   => __( 'Could not check code. Try again.', 'creativewings-core' ),
+                'viewFile'  => __( 'View current file', 'creativewings-core' ),
+            ],
+        ];
+        ?>
+        <script>
+        (function(){
+            var cfg = <?php echo wp_json_encode( $cfg ); ?>;
+            var codeInput = document.getElementById('cw-submission-code');
+            var nameInput = document.getElementById('cw-student-name');
+            var statusEl = document.getElementById('cw-code-status');
+            var saveBtn = document.getElementById('cw-save-btn');
+            var timer = null;
+            var lastReq = 0;
+
+            function setStatus(kind, text) {
+                statusEl.className = 'cw-code-status is-visible ' + (kind || 'info');
+                statusEl.textContent = text || '';
+            }
+            function hideStatus() {
+                statusEl.className = 'cw-code-status';
+                statusEl.textContent = '';
+            }
+            function clearPreviews() {
+                document.querySelectorAll('.cw-field-preview').forEach(function(el){ el.innerHTML = ''; });
+                document.querySelectorAll('.cw-field-file').forEach(function(inp){
+                    inp.value = '';
+                    if (inp.getAttribute('data-required') === '1') {
+                        inp.setAttribute('required', 'required');
+                    } else {
+                        inp.removeAttribute('required');
+                    }
+                });
+            }
+            function renderPreviews(fields) {
+                clearPreviews();
+                if (!fields || !fields.length) return;
+                fields.forEach(function(f){
+                    var box = document.getElementById('cw-preview-' + f.index);
+                    var inp = document.querySelector('.cw-field-file[data-field-index="' + f.index + '"]');
+                    if (!box) return;
+                    if (f.preview_html) {
+                        box.innerHTML = f.preview_html;
+                    } else if (f.url && f.type === 'media') {
+                        var img = document.createElement('img');
+                        img.src = f.url;
+                        img.className = 'preview';
+                        img.alt = '';
+                        box.appendChild(img);
+                    } else if (f.url) {
+                        var p = document.createElement('p');
+                        p.className = 'sub';
+                        var a = document.createElement('a');
+                        a.href = f.url;
+                        a.target = '_blank';
+                        a.rel = 'noopener';
+                        a.textContent = cfg.i18n.viewFile;
+                        p.appendChild(a);
+                        box.appendChild(p);
+                    }
+                    if (inp && (f.attachment_id || f.url)) {
+                        inp.removeAttribute('required');
+                    }
+                });
+            }
+            function applyLookup(payload) {
+                if (!payload || !payload.ok) {
+                    setStatus('error', (payload && payload.message) ? payload.message : cfg.i18n.network);
+                    return;
+                }
+                if (payload.status === 'available') {
+                    nameInput.value = '';
+                    clearPreviews();
+                    setStatus('success', payload.message || cfg.i18n.available);
+                    if (saveBtn) saveBtn.disabled = false;
+                    return;
+                }
+                if (payload.status === 'exists' && payload.data) {
+                    nameInput.value = payload.data.student_name || '';
+                    renderPreviews(payload.data.fields || []);
+                    setStatus('info', payload.message || cfg.i18n.exists);
+                    if (saveBtn) saveBtn.disabled = false;
+                    return;
+                }
+                if (payload.status === 'claimed') {
+                    if (payload.data && payload.data.student_name) {
+                        nameInput.value = payload.data.student_name;
+                    }
+                    renderPreviews(payload.data ? (payload.data.fields || []) : []);
+                    setStatus('warn', payload.message || cfg.i18n.claimed);
+                    if (saveBtn) saveBtn.disabled = true;
+                    return;
+                }
+                nameInput.value = '';
+                clearPreviews();
+                setStatus('error', payload.message || '');
+                if (saveBtn) saveBtn.disabled = false;
+            }
+            function lookupCode() {
+                var raw = (codeInput.value || '').replace(/\s+/g, '');
+                if (raw.length < 13) {
+                    hideStatus();
+                    if (saveBtn) saveBtn.disabled = false;
+                    return;
+                }
+                var reqId = ++lastReq;
+                setStatus('loading', cfg.i18n.checking);
+                var body = new URLSearchParams();
+                body.append('action', 'cw_pic_lookup_code');
+                body.append('nonce', cfg.nonce);
+                body.append('token', cfg.token);
+                body.append('code', raw);
+                fetch(cfg.ajaxUrl, { method: 'POST', credentials: 'same-origin', body: body })
+                    .then(function(r){ return r.json(); })
+                    .then(function(json){
+                        if (reqId !== lastReq) return;
+                        applyLookup(json);
+                    })
+                    .catch(function(){
+                        if (reqId !== lastReq) return;
+                        setStatus('error', cfg.i18n.network);
+                    });
+            }
+            if (codeInput) {
+                codeInput.addEventListener('input', function(){
+                    clearTimeout(timer);
+                    timer = setTimeout(lookupCode, cfg.debounceMs);
+                });
+                codeInput.addEventListener('blur', function(){
+                    var raw = (codeInput.value || '').replace(/\s+/g, '');
+                    if (raw.length >= 13) lookupCode();
+                });
+                if ((codeInput.value || '').replace(/\s+/g, '').length >= 13) {
+                    setTimeout(lookupCode, 300);
+                }
+            }
+        })();
+        </script>
+        <?php
+    }
+
+    public function ajax_lookup_code() {
+        if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'cw_pic_lookup' ) ) {
+            wp_send_json( [ 'ok' => false, 'status' => 'invalid', 'message' => __( 'Security check failed.', 'creativewings-core' ) ], 403 );
+        }
+
+        $token = sanitize_text_field( wp_unslash( $_POST['token'] ?? '' ) );
+        $row   = CW_Staged_Submissions::get_token( $token );
+        if ( ! $row ) {
+            wp_send_json( [ 'ok' => false, 'status' => 'invalid', 'message' => __( 'Invalid upload link.', 'creativewings-core' ) ], 403 );
+        }
+
+        if ( class_exists( 'CW_Security' ) ) {
+            $rl = CW_Security::rate_limit( 'cw_rate_pic_lookup_' . $token, 120, 3600 );
+            if ( is_wp_error( $rl ) ) {
+                wp_send_json( [ 'ok' => false, 'status' => 'invalid', 'message' => $rl->get_error_message() ], 429 );
+            }
+        }
+
+        $campaign_id = (int) $row['campaign_id'];
+        $school_code = $row['school_code'];
+        $parsed      = CW_Submission_Code::parse( sanitize_text_field( wp_unslash( $_POST['code'] ?? '' ) ) );
+
+        if ( ! $parsed['valid'] ) {
+            wp_send_json( [ 'ok' => true, 'status' => 'invalid', 'message' => $parsed['error'] ] );
+        }
+
+        if ( $parsed['school'] !== $school_code ) {
+            wp_send_json( [
+                'ok'      => true,
+                'status'  => 'school',
+                'message' => __( 'School code in this number does not match this upload link.', 'creativewings-core' ),
+            ] );
+        }
+
+        if ( ! CW_Submission_Code::matches_campaign_serial( $parsed, $campaign_id ) ) {
+            wp_send_json( [
+                'ok'      => true,
+                'status'  => 'campaign',
+                'message' => __( 'Campaign code does not match this campaign.', 'creativewings-core' ),
+            ] );
+        }
+
+        $existing = CW_Staged_Submissions::get_by_code( $parsed['normalized'], $campaign_id );
+        if ( ! $existing ) {
+            wp_send_json( [
+                'ok'      => true,
+                'status'  => 'available',
+                'message' => __( 'This code is available — you can enter a new submission.', 'creativewings-core' ),
+            ] );
+        }
+
+        $fields_out = $this->format_lookup_fields( $existing, $campaign_id );
+
+        $data = [
+            'submission_code' => $existing['submission_code'],
+            'student_name'    => $existing['student_name'] ?? '',
+            'status'          => $existing['status'] ?? '',
+            'fields'          => $fields_out,
+        ];
+
+        if ( ( $existing['status'] ?? '' ) === 'claimed' ) {
+            wp_send_json( [
+                'ok'      => true,
+                'status'  => 'claimed',
+                'message' => __( 'This code is already claimed by a parent and cannot be edited here.', 'creativewings-core' ),
+                'data'    => $data,
+            ] );
+        }
+
+        wp_send_json( [
+            'ok'      => true,
+            'status'  => 'exists',
+            'message' => __( 'Existing submission loaded. Review the details below before saving.', 'creativewings-core' ),
+            'data'    => $data,
+        ] );
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function format_lookup_fields( array $existing, $campaign_id ) {
+        $fields_out = [];
+        if ( ! class_exists( 'CW_Campaign_Fields' ) ) {
+            return $fields_out;
+        }
+        $primary_key = CW_Campaign_Fields::get_primary_artwork_field_key( $campaign_id );
+        foreach ( CW_Campaign_Fields::decode_staged_field_data( $existing ) as $item ) {
+            $idx  = (string) ( $item['index'] ?? '' );
+            $aid  = (int) ( $item['attachment_id'] ?? 0 );
+            $type = strtolower( (string) ( $item['type'] ?? 'media' ) );
+            $url  = $aid ? wp_get_attachment_url( $aid ) : (string) ( $item['value'] ?? '' );
+            if ( ! $aid && $idx === (string) $primary_key && ! empty( $existing['artwork_attachment_id'] ) ) {
+                $aid = (int) $existing['artwork_attachment_id'];
+                $url = wp_get_attachment_url( $aid ) ?: $url;
+            }
+            $preview_html = '';
+            if ( $aid && 'media' === $type ) {
+                $preview_html = wp_get_attachment_image( $aid, 'medium', false, [ 'class' => 'preview' ] );
+            }
+            $fields_out[] = [
+                'index'         => $idx,
+                'label'         => (string) ( $item['label'] ?? '' ),
+                'type'          => $type,
+                'attachment_id' => $aid,
+                'url'           => $url,
+                'preview_html'  => $preview_html,
+            ];
+        }
+        return $fields_out;
     }
 
     public function handle_save() {

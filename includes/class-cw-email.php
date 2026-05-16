@@ -25,8 +25,9 @@ class CW_Email {
         if ( ! $user ) {
             return;
         }
-        $link = wc_get_account_endpoint_url( 'cw-link-submission' );
-        $link = add_query_arg( 'step', 'waiting', $link );
+        $link = ( function_exists( 'cw_core' ) && cw_core()->claim_flow )
+            ? cw_core()->claim_flow->get_link_submission_url( [ 'step' => 'waiting' ] )
+            : add_query_arg( 'step', 'waiting', wc_get_account_endpoint_url( 'cw-link-submission' ) );
         $title = get_the_title( $campaign_id );
         $body  = sprintf(
             '<p>%s</p><p><strong>%s</strong> — %s</p><p><a href="%s">%s</a></p>',
