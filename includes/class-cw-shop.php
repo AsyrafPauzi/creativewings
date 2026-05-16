@@ -12,7 +12,7 @@ class CW_Shop {
         add_action('woocommerce_before_add_to_cart_button', [ $this, 'render_dynamic_fields' ]);
         
         // Validation & Cart
-        add_filter('woocommerce_add_to_cart_validation', [ $this, 'validate_dynamic_data' ], 10, 3);
+        add_filter( 'woocommerce_add_to_cart_validation', [ $this, 'validate_dynamic_data' ], 10, 6 );
         add_filter('woocommerce_add_cart_item_data', [ $this, 'save_custom_data_to_cart' ], 10, 2);
         
         // Price Calculation
@@ -36,11 +36,57 @@ class CW_Shop {
     }
 
     public function check_deadline_status( $is_purchasable, $product ) {
-        $deadline = get_post_meta( $product->get_id(), 'submission_deadline', true );
-        if ( $deadline && time() > strtotime( $deadline . ' 23:59:59' ) ) {
+        if ( ! $product ) {
+            return $is_purchasable;
+        }
+
+        $reason = self::get_registration_block_reason( (int) $product->get_id(), ! empty( $GLOBALS['cw_claim_checkout_flow'] ) );
+        if ( $reason ) {
             return false;
         }
+
         return $is_purchasable;
+    }
+
+    /**
+     * Why a campaign cannot be checked out (null = no plugin block; WC may still reject).
+     *
+     * @param int  $product_id Campaign product ID.
+     * @param bool $school_claim Parent completing after school PIC upload (skips public open date).
+     * @return string|null
+     */
+    public static function get_registration_block_reason( $product_id, $school_claim = false ) {
+        $product_id = (int) $product_id;
+        if ( $product_id <= 0 ) {
+            return __( 'Campaign not found.', 'creativewings-core' );
+        }
+
+        $status = get_post_status( $product_id );
+        if ( ! $status || 'publish' !== $status ) {
+            return __( 'This campaign is not published yet. Ask the organiser to publish it in WooCommerce.', 'creativewings-core' );
+        }
+
+        $deadline = get_post_meta( $product_id, 'submission_deadline', true );
+        if ( $deadline && time() > strtotime( $deadline . ' 23:59:59' ) ) {
+            return sprintf(
+                /* translators: %s: formatted date */
+                __( 'Registration is closed — the submission deadline was %s.', 'creativewings-core' ),
+                date_i18n( 'j M Y', strtotime( $deadline ) )
+            );
+        }
+
+        if ( ! $school_claim ) {
+            $start = get_post_meta( $product_id, 'cw_submission_start', true );
+            if ( $start && time() < strtotime( $start . ' 00:00:00' ) ) {
+                return sprintf(
+                    /* translators: %s: formatted date */
+                    __( 'Registration opens on %s.', 'creativewings-core' ),
+                    date_i18n( 'j M Y', strtotime( $start ) )
+                );
+            }
+        }
+
+        return null;
     }
 
     public function calculate_cart_totals( $cart ) {
@@ -348,9 +394,20 @@ class CW_Shop {
     }
 
     // 3. VALIDATION
-    public function validate_dynamic_data($passed, $product_id, $qty) {
+    public function validate_dynamic_data( $passed, $product_id, $qty, $variation_id = 0, $variations = [], $cart_item_data = [] ) {
+        // School PIC + parent claim flow adds via admin-post with staged meta, not product form POST.
+        if ( ! empty( $cart_item_data['cw_staged_id'] ) || ! empty( $cart_item_data['cw_claim_code'] ) ) {
+            return $passed;
+        }
+        if ( ! empty( $GLOBALS['cw_claim_checkout_flow'] ) ) {
+            return $passed;
+        }
+
         $names = $_POST['cw_names'] ?? [];
-        if(empty($names)) { wc_add_notice('Details are required.', 'error'); return false; }
+        if ( empty( $names ) ) {
+            wc_add_notice( 'Details are required.', 'error' );
+            return false;
+        }
         return $passed;
     }
     
@@ -383,6 +440,10 @@ class CW_Shop {
 
     // 4. SAVE CART (Retain Session Logic)
     public function save_custom_data_to_cart($d,$id){ 
+        if ( ! empty( $d['cw_staged_id'] ) && ! empty( $d['cw_claim_code'] ) ) {
+            return $this->merge_claim_staged_cart_data( $d, (int) $d['cw_staged_id'], (int) $id );
+        }
+
         $f = get_post_meta( $id, 'cw_custom_fields', true );
         $f = is_array( $f ) ? array_values( $f ) : [];
         $post = isset( $_POST['cw_data'] ) && is_array( $_POST['cw_data'] ) ? wp_unslash( $_POST['cw_data'] ) : [];
@@ -455,6 +516,40 @@ class CW_Shop {
                 }
             }
         }
+        return $d;
+    }
+
+    /**
+     * Cart line for parent claim after school upload (no product-page POST fields).
+     *
+     * @param array<string, mixed> $d
+     * @return array<string, mixed>
+     */
+    private function merge_claim_staged_cart_data( array $d, $staged_id, $product_id ) {
+        global $wpdb;
+        if ( ! class_exists( 'CW_Staged_Submissions' ) ) {
+            return $d;
+        }
+        $row = $wpdb->get_row( $wpdb->prepare(
+            'SELECT * FROM ' . CW_Staged_Submissions::table() . ' WHERE id = %d AND campaign_id = %d',
+            $staged_id,
+            $product_id
+        ), ARRAY_A );
+        if ( ! $row ) {
+            return $d;
+        }
+
+        $participant = class_exists( 'CW_Campaign_Fields' )
+            ? CW_Campaign_Fields::build_participant_details_from_staged( $row )
+            : [
+                [ 'label' => 'Name', 'value' => $row['student_name'] ?? '' ],
+                [ 'label' => 'Submission code', 'value' => $row['submission_code'] ?? '' ],
+            ];
+
+        $d['cw_participants']  = [ $participant ];
+        $d['cw_addons_meta']   = $d['cw_addons_meta'] ?? [];
+        $d['cw_addons_total']  = $d['cw_addons_total'] ?? 0;
+
         return $d;
     }
 

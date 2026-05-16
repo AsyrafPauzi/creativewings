@@ -537,24 +537,136 @@ class CW_Claim_Flow {
             CW_Audit_Log::log( 'claim_checkout_start', 'staged', $staged_id, [ 'code' => $row['submission_code'] ] );
         }
 
+        $cart_ready = $this->ensure_wc_cart_loaded();
+        if ( is_wp_error( $cart_ready ) ) {
+            wp_safe_redirect( add_query_arg( 'error', rawurlencode( $cart_ready->get_error_message() ), $this->get_link_submission_url() ) );
+            exit;
+        }
+
+        $product_id = (int) $row['campaign_id'];
+        $product    = wc_get_product( $product_id );
+        if ( ! $product ) {
+            wp_safe_redirect( add_query_arg( 'error', rawurlencode( __( 'Campaign not found.', 'creativewings-core' ) ), $this->get_link_submission_url() ) );
+            exit;
+        }
+
+        $block = class_exists( 'CW_Shop' ) ? CW_Shop::get_registration_block_reason( $product_id, true ) : null;
+        if ( $block ) {
+            wp_safe_redirect( add_query_arg( 'error', rawurlencode( $block ), $this->get_link_submission_url() ) );
+            exit;
+        }
+
         WC()->cart->empty_cart();
-        WC()->cart->add_to_cart(
-            (int) $row['campaign_id'],
-            1,
-            0,
-            [],
-            [
-                'cw_staged_id'         => $staged_id,
-                'cw_claim_code'        => $row['submission_code'],
-                'cw_age_bracket_key'   => $bracket['key'],
-                'cw_age_bracket_label' => $bracket['label'],
-                'unique_key'           => 'cw_claim_' . $staged_id,
-            ]
-        );
+
+        $cart_item_data = [
+            'cw_staged_id'         => $staged_id,
+            'cw_claim_code'        => $row['submission_code'],
+            'cw_age_bracket_key'   => $bracket['key'],
+            'cw_age_bracket_label' => $bracket['label'],
+            'unique_key'           => 'cw_claim_' . $staged_id,
+        ];
+
+        $GLOBALS['cw_claim_checkout_flow'] = true;
+        if ( ! $product->is_purchasable() ) {
+            unset( $GLOBALS['cw_claim_checkout_flow'] );
+            $msg = __( 'This campaign cannot be added to the cart. Check that it is published and has a price set.', 'creativewings-core' );
+            wp_safe_redirect( add_query_arg( 'error', rawurlencode( $msg ), $this->get_link_submission_url() ) );
+            exit;
+        }
+
+        $added = WC()->cart->add_to_cart( $product_id, 1, 0, [], $cart_item_data );
+        unset( $GLOBALS['cw_claim_checkout_flow'] );
+
+        if ( ! $added ) {
+            $msg = __( 'Could not add this campaign to your cart. Please try again.', 'creativewings-core' );
+            if ( function_exists( 'wc_get_notices' ) ) {
+                $errors = wc_get_notices( 'error' );
+                if ( ! empty( $errors[0]['notice'] ) ) {
+                    $msg = wp_strip_all_tags( $errors[0]['notice'] );
+                }
+                wc_clear_notices();
+            }
+            wp_safe_redirect( add_query_arg( 'error', rawurlencode( $msg ), $this->get_link_submission_url() ) );
+            exit;
+        }
+
+        WC()->cart->calculate_totals();
+        $this->persist_wc_cart_session();
 
         CW_Security::clear_claim_session( $uid );
         wp_safe_redirect( wc_get_checkout_url() );
         exit;
+    }
+
+    /**
+     * WooCommerce cart is not initialized on admin-post.php; load it before checkout redirect.
+     *
+     * @return true|WP_Error
+     */
+    private function ensure_wc_cart_loaded() {
+        if ( ! function_exists( 'WC' ) || ! WC() ) {
+            return new WP_Error( 'no_wc', __( 'WooCommerce is not available.', 'creativewings-core' ) );
+        }
+
+        $this->load_wc_frontend_functions();
+
+        if ( null === WC()->cart ) {
+            if ( is_callable( [ WC(), 'initialize_session' ] ) ) {
+                WC()->initialize_session();
+            }
+            if ( is_callable( [ WC(), 'initialize_cart' ] ) ) {
+                WC()->initialize_cart();
+            } elseif ( function_exists( 'wc_load_cart' ) ) {
+                wc_load_cart();
+            }
+        }
+
+        if ( ! WC()->cart || ! WC()->cart instanceof WC_Cart ) {
+            return new WP_Error( 'no_cart', __( 'Could not load the shopping cart. Please try again.', 'creativewings-core' ) );
+        }
+
+        return true;
+    }
+
+    /**
+     * admin-post.php does not load storefront helpers; add_to_cart() needs wc_add_notice().
+     */
+    private function load_wc_frontend_functions() {
+        if ( function_exists( 'wc_add_notice' ) ) {
+            return;
+        }
+
+        if ( is_callable( [ WC(), 'frontend_includes' ] ) ) {
+            WC()->frontend_includes();
+        }
+
+        if ( function_exists( 'wc_add_notice' ) ) {
+            return;
+        }
+
+        if ( ! defined( 'WC_ABSPATH' ) ) {
+            return;
+        }
+
+        $files = [
+            'includes/wc-notice-functions.php',
+            'includes/wc-template-functions.php',
+        ];
+        foreach ( $files as $file ) {
+            $path = WC_ABSPATH . $file;
+            if ( is_readable( $path ) ) {
+                include_once $path;
+            }
+        }
+    }
+
+    private function persist_wc_cart_session() {
+        if ( WC()->cart && is_callable( [ WC()->cart, 'set_session' ] ) ) {
+            WC()->cart->set_session();
+        }
+        if ( WC()->session && is_callable( [ WC()->session, 'save_data' ] ) ) {
+            WC()->session->save_data();
+        }
     }
 
     public function display_claim_cart( $item_data, $cart_item ) {
