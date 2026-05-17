@@ -701,8 +701,12 @@ class CW_Dashboard_Business {
         $per_page   = 9;
         $paged      = max(1, intval($_GET['entries_page'] ?? 1));
 
+        $entry_types = class_exists( 'CW_Shop' )
+            ? CW_Shop::entry_post_types()
+            : [ 'cw_competition_entry', 'cw_activity_entry' ];
+
         $args = [
-            'post_type'      => 'cw_competition_entry',
+            'post_type'      => $entry_types,
             'posts_per_page' => -1,
             'meta_query'     => [[
                 'key'     => 'product_id',

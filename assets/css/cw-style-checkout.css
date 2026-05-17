@@ -130,6 +130,27 @@ body.cw-commerce-page .cw-checkout-grid__sidebar #payment {
     position: sticky;
     top: 24px;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+}
+
+.cw-checkout-grid__sidebar > .cw-order-review-stack,
+.cw-checkout-grid__sidebar .cw-order-review-stack #order_review_heading,
+.cw-checkout-grid__sidebar .cw-order-review-stack #order_review {
+    width: 100% !important;
+    max-width: 100% !important;
+    float: none !important;
+    clear: both !important;
+    display: block !important;
+    box-sizing: border-box;
+}
+
+/* Full-width claim notice below coupon */
+.cw-checkout-claim-notice {
+    width: 100%;
+    margin: 0 0 20px;
 }
 
 body.cw-commerce-page.woocommerce-checkout form.woocommerce-checkout > h3#order_review_heading,
@@ -168,7 +189,19 @@ body.cw-commerce-page.woocommerce-checkout #payment .place-order {
 }
 
 .cw-commerce-shell #customer_details {
-    display: block;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0;
+}
+
+/* WooCommerce always outputs col-2 for shipping; hide when empty or unused */
+.cw-commerce-shell #customer_details .col-2:empty,
+body.cw-checkout-no-shipping-col .cw-commerce-shell #customer_details .col-2,
+body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
+    display: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 0 !important;
 }
 
 /* ── Cards (shared) ── */
@@ -176,7 +209,6 @@ body.cw-commerce-page.woocommerce-checkout #payment .place-order {
 .cw-commerce-shell .col2-set .col-1,
 .cw-commerce-shell .col2-set .col-2,
 .cw-commerce-shell #order_review,
-.cw-commerce-shell .cw-checkout-grid__sidebar > #order_review_heading,
 .cw-commerce-shell .woocommerce-cart-form,
 .cw-commerce-shell .cart-collaterals .cart_totals {
     background: var(--cw-surface, #fff);
@@ -205,7 +237,7 @@ body.cw-commerce-page.woocommerce-checkout #payment .place-order {
 }
 
 .cw-commerce-shell #order_review_heading {
-    margin: 0 0 12px;
+    margin: 0;
     padding: 0;
     font-size: 1.05rem;
     font-weight: 700;
@@ -225,14 +257,56 @@ body.cw-commerce-page.woocommerce-checkout #payment .place-order {
     box-shadow: none;
 }
 
-.cw-checkout-grid__sidebar #order_review {
-    border-radius: var(--cw-radius, 14px) var(--cw-radius, 14px) 0 0;
-    border-bottom: none;
+/* Unified "Your order" card (heading + table + payment, no gap) */
+.cw-order-review-stack {
+    width: 100%;
+    background: var(--cw-surface, #fff);
+    border: 1px solid var(--cw-border, #e8edf2);
+    border-radius: var(--cw-radius, 14px);
+    box-shadow: var(--cw-shadow, 0 2px 12px rgba(0, 0, 0, 0.06));
+    overflow: hidden;
 }
 
-/* Info note */
+.cw-order-review-stack #order_review_heading {
+    margin: 0;
+    padding: 20px 24px 12px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--cw-text, #1a2332);
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--cw-border, #e8edf2);
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.cw-order-review-stack #order_review {
+    margin: 0;
+    padding: 16px 24px 8px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.cw-order-review-stack #order_review .shop_table {
+    margin: 0;
+    border: none;
+}
+
+.cw-order-review-stack #payment {
+    margin: 0;
+    padding: 16px 24px 22px;
+    background: transparent;
+    border: none;
+    border-top: 1px solid var(--cw-border, #e8edf2);
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* Info note (full width above "Your order") */
 .cw-order-review-note {
-    margin: 0 0 14px;
+    margin: 0;
     padding: 11px 14px;
     font-size: 13px;
     line-height: 1.45;
@@ -242,11 +316,10 @@ body.cw-commerce-page.woocommerce-checkout #payment .place-order {
     border-left: 3px solid var(--cw-primary, #006599);
 }
 
-/* Section headings */
+/* Section headings (billing/shipping only; order review uses .cw-order-review-stack) */
 .cw-commerce-shell .woocommerce-billing-fields > h3,
 .cw-commerce-shell .woocommerce-shipping-fields > h3,
-.cw-commerce-shell .woocommerce-additional-fields > h3,
-.cw-commerce-shell #order_review_heading {
+.cw-commerce-shell .woocommerce-additional-fields > h3 {
     font-size: 1rem;
     font-weight: 700;
     color: var(--cw-text, #1a2332);
@@ -670,9 +743,42 @@ body.cw-commerce-page.single-product .woocommerce-product-gallery {
     gap: 24px !important;
 }
 
-/* Coupon toggle */
+/* Coupon toggle — fix icon overlapping "Have a coupon?" text */
 .cw-commerce-shell .woocommerce-form-coupon-toggle {
     margin-bottom: 16px;
+}
+
+.cw-commerce-shell .woocommerce-form-coupon-toggle .woocommerce-info,
+.cw-commerce-shell .woocommerce-form-coupon-toggle .woocommerce-info a.showcoupon {
+    position: relative;
+    display: block;
+    margin: 0;
+    padding: 12px 16px 12px 44px !important;
+    text-indent: 0 !important;
+    line-height: 1.5;
+    background: var(--cw-surface, #fff) !important;
+    border: 1px solid var(--cw-border, #e8edf2) !important;
+    border-radius: var(--cw-radius-sm, 8px) !important;
+    color: var(--cw-text-soft, #64748b) !important;
+    box-shadow: none;
+}
+
+.cw-commerce-shell .woocommerce-form-coupon-toggle .woocommerce-info::before {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    margin: 0;
+    text-indent: 0;
+}
+
+.cw-commerce-shell .woocommerce-form-coupon-toggle .woocommerce-info a.showcoupon {
+    display: inline;
+    padding: 0 !important;
+    background: none !important;
+    border: none !important;
+    color: var(--cw-primary, #006599) !important;
+    font-weight: 600;
 }
 
 .cw-commerce-shell .checkout_coupon {

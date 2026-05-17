@@ -23,9 +23,10 @@ class CW_Shop {
         add_action('woocommerce_checkout_create_order_line_item', [ $this, 'save_custom_data_to_order' ], 10, 4);
         add_filter('woocommerce_get_cart_item_from_session', [ $this, 'restore_claim_cart_session' ], 10, 2 );
         
-        // Processing
-        add_action('woocommerce_order_status_completed', [ $this, 'create_entries_from_order' ], 10, 1);
-        add_action('woocommerce_order_status_processing', [ $this, 'create_entries_from_order' ], 10, 1);
+        // Processing — create entries when payment succeeds (incl. free / coupon checkouts).
+        add_action( 'woocommerce_payment_complete', [ $this, 'create_entries_from_order' ], 10, 1 );
+        add_action( 'woocommerce_order_status_completed', [ $this, 'create_entries_from_order' ], 10, 1 );
+        add_action( 'woocommerce_order_status_processing', [ $this, 'create_entries_from_order' ], 10, 1 );
         
         // UI
         add_filter('woocommerce_add_to_cart_redirect', [ $this, 'redirect_to_checkout' ]);
@@ -735,12 +736,54 @@ class CW_Shop {
         }
     }
 
+    /**
+     * Entry post types used across dashboards (both competition + activity campaigns).
+     *
+     * @return string[]
+     */
+    public static function entry_post_types() {
+        return [ 'cw_competition_entry', 'cw_activity_entry' ];
+    }
+
+    /**
+     * Resolve which entry CPT a campaign product should use.
+     */
+    public static function get_entry_post_type_for_product( $product_id ) {
+        $product_id = (int) $product_id;
+        if ( ! $product_id ) {
+            return 'cw_competition_entry';
+        }
+
+        $terms = get_the_terms( $product_id, 'product_cat' );
+        if ( $terms && ! is_wp_error( $terms ) ) {
+            foreach ( $terms as $term ) {
+                if ( $term->slug === 'activities' ) {
+                    return 'cw_activity_entry';
+                }
+                if ( $term->parent ) {
+                    $parent = get_term( $term->parent, 'product_cat' );
+                    if ( $parent && ! is_wp_error( $parent ) && $parent->slug === 'activities' ) {
+                        return 'cw_activity_entry';
+                    }
+                }
+            }
+        }
+
+        return 'cw_competition_entry';
+    }
+
     // 6. CREATE ENTRIES (Logic for Certificates vs Artworks)
     public function create_entries_from_order( $order_id ) {
         $order = wc_get_order( $order_id );
         if ( ! $order ) return;
 
-        $existing_entries = get_posts([ 'post_type' => ['cw_activity_entry', 'cw_competition_entry'], 'meta_key' => 'order_id', 'meta_value' => $order_id, 'numberposts'=> 1 ]);
+        $existing_entries = get_posts( [
+            'post_type'   => self::entry_post_types(),
+            'meta_key'    => 'order_id',
+            'meta_value'  => $order_id,
+            'numberposts' => 1,
+            'fields'      => 'ids',
+        ] );
         if ( ! empty( $existing_entries ) ) return; 
 
         if ( ! add_post_meta( $order_id, '_cw_entry_lock', 'processing', true ) ) return;
@@ -751,16 +794,8 @@ class CW_Shop {
         foreach ( $order->get_items() as $item ) {
             $product_id = $item->get_product_id();
             
-            // Check Type
-            $is_activity = false;
-            $terms = get_the_terms( $product_id, 'product_cat' );
-            if ( $terms && ! is_wp_error( $terms ) ) {
-                foreach ( $terms as $term ) {
-                    if ( $term->slug === 'activities' ) { $is_activity = true; break; }
-                    if ( $term->parent ) { $parent = get_term( $term->parent, 'product_cat' ); if ( $parent && $parent->slug === 'activities' ) { $is_activity = true; break; } }
-                }
-            }
-            $post_type = $is_activity ? 'cw_activity_entry' : 'cw_competition_entry';
+            $post_type   = self::get_entry_post_type_for_product( $product_id );
+            $is_activity = ( 'cw_activity_entry' === $post_type );
 
             $staged_id = (int) $item->get_meta( '_cw_staged_id' );
             if ( $staged_id && class_exists( 'CW_Staged_Submissions' ) ) {

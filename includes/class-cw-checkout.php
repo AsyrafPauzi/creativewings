@@ -21,14 +21,17 @@ class CW_Checkout {
         add_action( 'woocommerce_after_main_content', [ $this, 'render_shell_close' ], 99 );
 
         add_action( 'woocommerce_checkout_before_customer_details', [ $this, 'checkout_columns_open' ], 2 );
+        add_action( 'woocommerce_before_checkout_form', [ $this, 'render_claim_order_notice' ], 15 );
         add_action( 'woocommerce_checkout_after_customer_details', [ $this, 'checkout_columns_sidebar_open' ], 8 );
+        add_action( 'woocommerce_checkout_after_customer_details', [ $this, 'order_review_stack_open' ], 9 );
+        add_action( 'woocommerce_checkout_after_order_review', [ $this, 'order_review_stack_close' ], 5 );
         add_action( 'woocommerce_checkout_after_order_review', [ $this, 'checkout_columns_close' ], 99 );
         add_action( 'woocommerce_review_order_after_payment', [ $this, 'checkout_columns_close' ], 999 );
 
-        add_action( 'woocommerce_checkout_before_order_review', [ $this, 'render_order_review_heading' ], 4 );
         add_filter( 'woocommerce_get_item_data', [ $this, 'polish_cart_item_data' ], 99, 2 );
         add_filter( 'woocommerce_form_field_args', [ $this, 'form_field_args' ], 10, 3 );
         add_filter( 'woocommerce_checkout_fields', [ $this, 'checkout_field_classes' ] );
+        add_filter( 'woocommerce_checkout_fields', [ $this, 'maybe_hide_shipping_fields' ], 20 );
     }
 
     public function enqueue_assets() {
@@ -69,6 +72,14 @@ class CW_Checkout {
     public function body_class( $classes ) {
         if ( $this->is_commerce_page() ) {
             $classes[] = 'cw-commerce-page';
+        }
+        if ( function_exists( 'is_checkout' ) && is_checkout() && ! is_order_received_page() ) {
+            if ( $this->cart_has_school_claim() ) {
+                $classes[] = 'cw-checkout-school-claim';
+            }
+            if ( WC()->cart && ! WC()->cart->needs_shipping_address() ) {
+                $classes[] = 'cw-checkout-no-shipping-col';
+            }
         }
         return $classes;
     }
@@ -155,20 +166,52 @@ class CW_Checkout {
         echo '</div></div>';
     }
 
-    public function render_order_review_heading() {
-        $has_claim = false;
-        if ( WC()->cart ) {
-            foreach ( WC()->cart->get_cart() as $item ) {
-                if ( ! empty( $item['cw_staged_id'] ) ) {
-                    $has_claim = true;
-                    break;
-                }
-            }
-        }
-        if ( ! $has_claim ) {
+    /**
+     * Claim-flow info note — rendered at top of order sidebar (above "Your order").
+     */
+    public function render_claim_order_notice() {
+        if ( is_order_received_page() || ! $this->cart_has_school_claim() ) {
             return;
         }
+        echo '<div class="cw-checkout-claim-notice">';
         echo '<p class="cw-order-review-note">' . esc_html__( 'School-uploaded artwork is already linked to your submission code.', 'creativewings-core' ) . '</p>';
+        echo '</div>';
+    }
+
+    public function order_review_stack_open() {
+        echo '<div class="cw-order-review-stack">';
+    }
+
+    public function order_review_stack_close() {
+        echo '</div>';
+    }
+
+    private function cart_has_school_claim() {
+        if ( ! WC()->cart ) {
+            return false;
+        }
+        foreach ( WC()->cart->get_cart() as $item ) {
+            if ( ! empty( $item['cw_staged_id'] ) ) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Drop empty shipping column when cart does not need a separate shipping address.
+     *
+     * @param array<string, array<string, mixed>> $fields
+     * @return array<string, array<string, mixed>>
+     */
+    public function maybe_hide_shipping_fields( $fields ) {
+        if ( ! function_exists( 'is_checkout' ) || ! is_checkout() ) {
+            return $fields;
+        }
+        if ( WC()->cart && ! WC()->cart->needs_shipping_address() ) {
+            unset( $fields['shipping'] );
+        }
+        return $fields;
     }
 
     /**
