@@ -174,6 +174,17 @@ class CW_Staged_Submissions {
     }
 
     /**
+     * PIC upload URL with submission code prefilled (for QR labels).
+     */
+    public static function get_pic_qr_url( $campaign_id, $school_code, $submission_code ) {
+        $code = preg_replace( '/\s+/', '', (string) $submission_code );
+        if ( '' === $code ) {
+            return self::get_upload_url( $campaign_id, $school_code );
+        }
+        return add_query_arg( 'code', $code, self::get_upload_url( $campaign_id, $school_code ) );
+    }
+
+    /**
      * Ensure upload tokens exist for all configured schools; cache on product meta.
      *
      * @return array<int, array{school_code:string, school_name:string, url:string}>

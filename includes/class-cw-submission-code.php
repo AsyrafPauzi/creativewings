@@ -47,11 +47,41 @@ class CW_Submission_Code {
     }
 
     public static function matches_campaign_serial( $parsed, $campaign_id ) {
-        $serial = get_post_meta( $campaign_id, 'cw_campaign_serial', true );
+        $serial = self::campaign_serial( $campaign_id );
+        return isset( $parsed['campaign'] ) && $parsed['campaign'] === $serial;
+    }
+
+    public static function campaign_serial( $campaign_id ) {
+        $serial = get_post_meta( (int) $campaign_id, 'cw_campaign_serial', true );
         if ( ! $serial ) {
             $serial = str_pad( (string) $campaign_id, 3, '0', STR_PAD_LEFT );
         }
-        $serial = str_pad( preg_replace( '/\D/', '', (string) $serial ), 3, '0', STR_PAD_LEFT );
-        return isset( $parsed['campaign'] ) && $parsed['campaign'] === substr( $serial, -3 );
+        return str_pad( preg_replace( '/\D/', '', (string) $serial ), 3, '0', STR_PAD_LEFT );
+    }
+
+    public static function pad_school( $school ) {
+        return str_pad( preg_replace( '/\D/', '', (string) $school ), 3, '0', STR_PAD_LEFT );
+    }
+
+    public static function pad_month( $month ) {
+        return str_pad( preg_replace( '/\D/', '', (string) $month ), 2, '0', STR_PAD_LEFT );
+    }
+
+    /**
+     * @param int $seq Sequence number (1+).
+     */
+    public static function format_sequence( $seq ) {
+        $seq = max( 1, (int) $seq );
+        return str_pad( (string) $seq, $seq > 99999 ? 6 : 5, '0', STR_PAD_LEFT );
+    }
+
+    /**
+     * Build a submission code: CCC + MM + SSS + SEQ.
+     */
+    public static function build( $campaign_id, $month, $school, $seq ) {
+        return self::campaign_serial( $campaign_id )
+            . self::pad_month( $month )
+            . self::pad_school( $school )
+            . self::format_sequence( $seq );
     }
 }

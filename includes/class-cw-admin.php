@@ -60,7 +60,8 @@ class CW_Admin {
             echo '<p style="font-size:12px;">' . esc_html__( 'Add schools in the campaign wizard (Step 4), then save to generate PIC links.', 'creativewings-core' ) . '</p>';
             return;
         }
-        echo '<p style="font-size:12px;margin-bottom:8px;">' . esc_html__( 'Copy links for event PIC staff:', 'creativewings-core' ) . '</p>';
+        echo '<p style="font-size:12px;margin-bottom:8px;">' . esc_html__( 'For per-student QR labels (scan → code prefilled), open the campaign editor → Campaign tools → Bulk QR codes.', 'creativewings-core' ) . '</p>';
+        echo '<p style="font-size:12px;margin-bottom:8px;">' . esc_html__( 'General school links (manual code entry):', 'creativewings-core' ) . '</p>';
         foreach ( $links as $row ) {
             $label = trim( ( $row['school_code'] ?? '' ) . ' ' . ( $row['school_name'] ?? '' ) );
             $url   = $row['url'] ?? '';

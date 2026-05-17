@@ -8,6 +8,7 @@ class CW_Campaign_Admin {
     public function __construct() {
         add_action( 'add_meta_boxes', [ $this, 'metaboxes' ] );
         add_action( 'admin_post_cw_bulk_codes', [ $this, 'render_bulk_codes' ] );
+        add_action( 'admin_post_cw_bulk_qr', [ $this, 'render_bulk_qr' ] );
         add_action( 'save_post_product', [ $this, 'ensure_woocommerce_product_defaults' ], 5, 2 );
         add_action( 'save_post_product', [ $this, 'save_product_flags' ], 20, 2 );
         add_filter( 'redirect_post_location', [ $this, 'fix_product_save_redirect' ], 99, 2 );
@@ -214,12 +215,67 @@ class CW_Campaign_Admin {
             'cw_bulk_codes'
         );
         echo '<p><a class="button" href="' . esc_url( $export ) . '">' . esc_html__( 'Export all submissions (CSV)', 'creativewings-core' ) . '</a></p>';
-        echo '<p><a class="button" href="' . esc_url( $bulk ) . '" target="_blank">' . esc_html__( 'Print bulk code sheet (50 codes)', 'creativewings-core' ) . '</a></p>';
-        echo '<p class="description">' . esc_html__( 'Adjust school/month/start/count in URL after opening bulk sheet, or use query args.', 'creativewings-core' ) . '</p>';
+        echo '<p><a class="button" href="' . esc_url( $bulk ) . '" target="_blank">' . esc_html__( 'Print code list (no QR)', 'creativewings-core' ) . '</a></p>';
+
+        $schools = get_post_meta( $pid, 'cw_school_sponsors', true );
+        if ( ! is_array( $schools ) ) {
+            $schools = [];
+        }
+        if ( class_exists( 'CW_Staged_Submissions' ) ) {
+            CW_Staged_Submissions::sync_school_upload_tokens( $pid );
+        }
+
+        echo '<h4 style="margin-top:20px;">' . esc_html__( 'Bulk QR codes for PIC scan', 'creativewings-core' ) . '</h4>';
+        echo '<p class="description">' . esc_html__( 'Print one QR per student. PIC scans the QR — the upload form opens with the submission ID filled in (no typing).', 'creativewings-core' ) . '</p>';
+
+        if ( empty( $schools ) ) {
+            echo '<p class="description">' . esc_html__( 'Add schools in the campaign wizard (Step 4), then save this product.', 'creativewings-core' ) . '</p>';
+        } else {
+            ?>
+            <form method="get" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" target="_blank" style="max-width:520px;margin:12px 0 20px;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+                <?php wp_nonce_field( 'cw_bulk_qr' ); ?>
+                <input type="hidden" name="action" value="cw_bulk_qr">
+                <input type="hidden" name="campaign_id" value="<?php echo (int) $pid; ?>">
+                <p style="margin:0 0 8px;">
+                    <label for="cw-bulk-qr-school" style="font-weight:600;"><?php esc_html_e( 'School', 'creativewings-core' ); ?></label><br>
+                    <select name="school" id="cw-bulk-qr-school" style="width:100%;margin-top:4px;">
+                        <?php
+                        foreach ( $schools as $s ) {
+                            if ( empty( $s['school_code'] ) ) {
+                                continue;
+                            }
+                            $sc = CW_Submission_Code::pad_school( $s['school_code'] );
+                            $label = trim( $sc . ' — ' . ( $s['school_name'] ?? '' ) );
+                            echo '<option value="' . esc_attr( $sc ) . '">' . esc_html( $label ) . '</option>';
+                        }
+                        ?>
+                    </select>
+                </p>
+                <p style="margin:0 0 8px;display:flex;gap:10px;">
+                    <span style="flex:1;">
+                        <label for="cw-bulk-qr-month" style="font-weight:600;"><?php esc_html_e( 'Month (MM)', 'creativewings-core' ); ?></label><br>
+                        <input type="text" name="month" id="cw-bulk-qr-month" value="<?php echo esc_attr( gmdate( 'm' ) ); ?>" maxlength="2" style="width:100%;margin-top:4px;">
+                    </span>
+                    <span style="flex:1;">
+                        <label for="cw-bulk-qr-start" style="font-weight:600;"><?php esc_html_e( 'Start #', 'creativewings-core' ); ?></label><br>
+                        <input type="number" name="start" id="cw-bulk-qr-start" value="1" min="1" style="width:100%;margin-top:4px;">
+                    </span>
+                    <span style="flex:1;">
+                        <label for="cw-bulk-qr-count" style="font-weight:600;"><?php esc_html_e( 'How many', 'creativewings-core' ); ?></label><br>
+                        <input type="number" name="count" id="cw-bulk-qr-count" value="50" min="1" max="500" style="width:100%;margin-top:4px;">
+                    </span>
+                </p>
+                <p style="margin:12px 0 0;">
+                    <button type="submit" class="button button-primary"><?php esc_html_e( 'Open printable QR sheet', 'creativewings-core' ); ?></button>
+                </p>
+            </form>
+            <?php
+        }
 
         $links = get_post_meta( $pid, 'cw_school_upload_links', true );
         if ( is_array( $links ) && ! empty( $links ) ) {
-            echo '<h4>' . esc_html__( 'PIC links + QR', 'creativewings-core' ) . '</h4>';
+            echo '<h4>' . esc_html__( 'School PIC link (general)', 'creativewings-core' ) . '</h4>';
+            echo '<p class="description">' . esc_html__( 'Optional: one link per school if staff type codes manually. Prefer per-student QR sheets above.', 'creativewings-core' ) . '</p>';
             foreach ( $links as $row ) {
                 $url = $row['url'] ?? '';
                 if ( ! $url ) {
@@ -254,13 +310,91 @@ class CW_Campaign_Admin {
         echo '<h1>' . esc_html( $title ) . '</h1>';
         echo '<p>School ' . esc_html( $school ) . ' · Month ' . esc_html( $month ) . '</p>';
         echo '<table><thead><tr><th>#</th><th>Submission code</th><th>Student name</th></tr></thead><tbody>';
+        $campaign_id = (int) ( $_GET['campaign_id'] ?? 0 );
         for ( $i = 0; $i < $count; $i++ ) {
             $seq  = $start + $i;
-            $seqs = str_pad( (string) $seq, $seq > 99999 ? 6 : 5, '0', STR_PAD_LEFT );
-            $code = $serial . $month . $school . $seqs;
+            $code = class_exists( 'CW_Submission_Code' )
+                ? CW_Submission_Code::build( $campaign_id, $month, $school, $seq )
+                : $serial . $month . $school . str_pad( (string) $seq, $seq > 99999 ? 6 : 5, '0', STR_PAD_LEFT );
             echo '<tr><td>' . ( $i + 1 ) . '</td><td><strong>' . esc_html( $code ) . '</strong></td><td style="width:40%"></td></tr>';
         }
         echo '</tbody></table></body></html>';
+        exit;
+    }
+
+    /**
+     * Printable grid: one QR per submission code (scan → PIC form with code prefilled).
+     */
+    public function render_bulk_qr() {
+        if ( ! current_user_can( 'manage_woocommerce' ) && ! current_user_can( 'edit_products' ) ) {
+            wp_die( esc_html__( 'Unauthorized', 'creativewings-core' ), '', [ 'response' => 403 ] );
+        }
+        check_admin_referer( 'cw_bulk_qr' );
+
+        $campaign_id = (int) ( $_GET['campaign_id'] ?? 0 );
+        $school      = CW_Submission_Code::pad_school( sanitize_text_field( $_GET['school'] ?? '001' ) );
+        $month       = CW_Submission_Code::pad_month( sanitize_text_field( $_GET['month'] ?? gmdate( 'm' ) ) );
+        $start       = max( 1, (int) ( $_GET['start'] ?? 1 ) );
+        $count       = min( 500, max( 1, (int) ( $_GET['count'] ?? 50 ) ) );
+        $title       = get_the_title( $campaign_id );
+        $school_name = '';
+
+        $sponsors = get_post_meta( $campaign_id, 'cw_school_sponsors', true );
+        if ( is_array( $sponsors ) ) {
+            foreach ( $sponsors as $s ) {
+                if ( CW_Submission_Code::pad_school( $s['school_code'] ?? '' ) === $school ) {
+                    $school_name = sanitize_text_field( $s['school_name'] ?? '' );
+                    break;
+                }
+            }
+        }
+
+        if ( ! class_exists( 'CW_Staged_Submissions' ) ) {
+            wp_die( esc_html__( 'Upload module not available.', 'creativewings-core' ), '', [ 'response' => 500 ] );
+        }
+
+        header( 'Content-Type: text/html; charset=utf-8' );
+        echo '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
+        echo '<title>' . esc_html__( 'PIC QR codes', 'creativewings-core' ) . '</title>';
+        echo '<style>
+            body{font-family:system-ui,sans-serif;padding:16px;margin:0;color:#0f172a}
+            h1{font-size:20px;margin:0 0 6px}
+            .meta{color:#64748b;font-size:14px;margin-bottom:16px}
+            .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+            .card{border:1px solid #cbd5e1;border-radius:10px;padding:10px;text-align:center;page-break-inside:avoid;background:#fff}
+            .card img{width:120px;height:120px;display:block;margin:0 auto 8px}
+            .code{font-size:11px;font-weight:700;letter-spacing:.03em;word-break:break-all}
+            .seq{color:#64748b;font-size:11px;margin-top:4px}
+            .name{margin-top:6px;min-height:18px;font-size:11px;border-bottom:1px dashed #cbd5e1}
+            @media print{.no-print{display:none}body{padding:8px}.grid{gap:8px}}
+        </style></head><body>';
+        echo '<p class="no-print"><button type="button" onclick="window.print()">' . esc_html__( 'Print', 'creativewings-core' ) . '</button></p>';
+        echo '<h1>' . esc_html( $title ) . '</h1>';
+        echo '<p class="meta">' . esc_html(
+            sprintf(
+                /* translators: 1: school code, 2: school name, 3: month */
+                __( 'School %1$s %2$s · Month %3$s · Scan QR to open PIC upload with ID filled in', 'creativewings-core' ),
+                $school,
+                $school_name,
+                $month
+            )
+        ) . '</p>';
+        echo '<div class="grid">';
+
+        for ( $i = 0; $i < $count; $i++ ) {
+            $seq      = $start + $i;
+            $code     = CW_Submission_Code::build( $campaign_id, $month, $school, $seq );
+            $pic_url  = CW_Staged_Submissions::get_pic_qr_url( $campaign_id, $school, $code );
+            $qr_src   = 'https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=8&data=' . rawurlencode( $pic_url );
+            echo '<div class="card">';
+            echo '<img src="' . esc_url( $qr_src ) . '" width="120" height="120" alt="">';
+            echo '<div class="code">' . esc_html( $code ) . '</div>';
+            echo '<div class="seq">#' . esc_html( (string) ( $i + 1 ) ) . '</div>';
+            echo '<div class="name">' . esc_html__( 'Student:', 'creativewings-core' ) . ' ________________</div>';
+            echo '</div>';
+        }
+
+        echo '</div></body></html>';
         exit;
     }
 }

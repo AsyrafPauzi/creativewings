@@ -35,22 +35,39 @@ class CW_School_Upload {
         $school_code = $row['school_code'];
         $campaign    = get_post( $campaign_id );
 
-        $prefill = null;
+        $prefill     = null;
+        $qr_code     = '';
+        $from_qr     = false;
         if ( ! empty( $_GET['code'] ) ) {
-            $prefill = CW_Staged_Submissions::get_by_code(
-                sanitize_text_field( wp_unslash( $_GET['code'] ) ),
-                $campaign_id
-            );
+            $raw     = sanitize_text_field( wp_unslash( $_GET['code'] ) );
+            $qr_code = preg_replace( '/\s+/', '', $raw );
+            $from_qr = true;
+            $prefill = CW_Staged_Submissions::get_by_code( $qr_code, $campaign_id );
+            if ( ! $prefill && $qr_code ) {
+                $prefill = [
+                    'submission_code' => $qr_code,
+                    'student_name'    => '',
+                    'status'          => 'staged',
+                ];
+            }
         }
 
         status_header( 200 );
         nocache_headers();
-        $this->render_page( $token, $campaign, $school_code, $prefill, $campaign_id );
+        $this->render_page( $token, $campaign, $school_code, $prefill, $campaign_id, $from_qr, $qr_code );
         exit;
     }
 
-    private function render_page( $token, $campaign, $school_code, $prefill, $campaign_id ) {
+    private function render_page( $token, $campaign, $school_code, $prefill, $campaign_id, $from_qr = false, $qr_code = '' ) {
         $claimed_block = $prefill && ( $prefill['status'] ?? '' ) === 'claimed';
+        $code_value    = $qr_code ?: ( is_array( $prefill ) ? ( $prefill['submission_code'] ?? '' ) : '' );
+        $code_mismatch = false;
+        if ( $from_qr && $code_value && class_exists( 'CW_Submission_Code' ) ) {
+            $parsed = CW_Submission_Code::parse( $code_value );
+            if ( $parsed['valid'] && ( $parsed['school'] ?? '' ) !== $school_code ) {
+                $code_mismatch = true;
+            }
+        }
         $upload_fields = class_exists( 'CW_Campaign_Fields' )
             ? CW_Campaign_Fields::get_pic_upload_fields( $campaign_id )
             : [];
@@ -84,7 +101,23 @@ class CW_School_Upload {
                 .alert-error{background:#fef2f2;color:#b91c1c}
                 .alert-success{background:#ecfdf5;color:#047857}
                 .alert-warn{background:#fffbeb;color:#b45309}
-                .preview{max-width:200px;margin-top:10px;border-radius:8px}
+                .preview{max-width:100%;max-height:220px;margin-top:10px;border-radius:8px;display:block;object-fit:contain}
+                .cw-pic-upload{margin-bottom:8px}
+                .cw-pic-upload-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+                .cw-pic-btn{flex:1;min-width:140px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 14px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:1.5px solid #cbd5e1;background:#f8fafc;color:#0f172a;transition:background .15s,border-color .15s}
+                .cw-pic-btn:hover{background:#eff6ff;border-color:#006599;color:#006599}
+                .cw-pic-btn i{font-size:15px}
+                .cw-pic-btn--primary{background:#006599;border-color:#006599;color:#fff}
+                .cw-pic-btn--primary:hover{background:#005580;color:#fff}
+                .cw-pic-hint{font-size:12px;color:#64748b;margin:6px 0 0}
+                .cw-field-file{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+                .cw-camera-modal{position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.75);display:none;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
+                .cw-camera-modal.is-open{display:flex}
+                .cw-camera-panel{background:#fff;border-radius:12px;max-width:480px;width:100%;padding:16px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+                .cw-camera-panel video{width:100%;border-radius:8px;background:#000;max-height:60vh}
+                .cw-camera-panel canvas{display:none}
+                .cw-camera-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+                .cw-camera-actions .cw-pic-btn{flex:1}
                 .cw-code-status{display:none;margin:8px 0 4px;font-size:13px;padding:10px 12px;border-radius:8px}
                 .cw-code-status.is-visible{display:block}
                 .cw-code-status.info{background:#eff6ff;color:#1d4ed8}
@@ -92,6 +125,7 @@ class CW_School_Upload {
                 .cw-code-status.warn{background:#fffbeb;color:#b45309}
                 .cw-code-status.error{background:#fef2f2;color:#b91c1c}
                 .cw-code-status.loading{background:#f8fafc;color:#64748b}
+                input.cw-code-from-qr{background:#f0f9ff;border-color:#7dd3fc;color:#0c4a6e;font-weight:600;letter-spacing:.04em}
             </style>
         </head>
         <body>
@@ -116,10 +150,20 @@ class CW_School_Upload {
                 <input type="hidden" name="action" value="cw_staff_submission_save">
                 <input type="hidden" name="token" value="<?php echo esc_attr( $token ); ?>">
 
+                <?php if ( $from_qr && $code_value && ! $code_mismatch ) : ?>
+                <div class="alert alert-success" style="margin-bottom:14px;">
+                    <?php esc_html_e( 'Submission ID loaded from QR scan. Confirm the student name and upload artwork below.', 'creativewings-core' ); ?>
+                </div>
+                <?php elseif ( $code_mismatch ) : ?>
+                <div class="alert alert-error">
+                    <?php esc_html_e( 'This QR code is for a different school than this upload link. Ask your organizer for the correct school link.', 'creativewings-core' ); ?>
+                </div>
+                <?php endif; ?>
                 <label for="cw-submission-code"><?php esc_html_e( 'Submission code (13-14 digits)', 'creativewings-core' ); ?></label>
                 <input type="text" id="cw-submission-code" name="submission_code" required minlength="13" maxlength="14" inputmode="numeric" autocomplete="off"
-                    value="<?php echo esc_attr( is_array( $prefill ) ? ( $prefill['submission_code'] ?? '' ) : '' ); ?>"
-                    placeholder="0020500100001">
+                    value="<?php echo esc_attr( $code_value ); ?>"
+                    placeholder="0020500100001"
+                    <?php echo ( $from_qr && $code_value && ! $code_mismatch ) ? 'readonly class="cw-code-from-qr"' : ''; ?>>
                 <div id="cw-code-status" class="cw-code-status" role="status" aria-live="polite"></div>
 
                 <label for="cw-student-name"><?php esc_html_e( 'Student name', 'creativewings-core' ); ?></label>
@@ -138,19 +182,42 @@ class CW_School_Upload {
                     if ( ! $aid && $prefill && (string) $idx === (string) $primary_key && ! empty( $prefill['artwork_attachment_id'] ) ) {
                         $aid = (int) $prefill['artwork_attachment_id'];
                     }
-                    $accept = ( 'media' === $type ) ? 'image/*' : '.pdf,.doc,.docx,.zip,image/*';
+                    $accept   = ( 'media' === $type ) ? 'image/*' : '.pdf,.doc,.docx,.zip,image/*';
+                    $is_media = ( 'media' === $type );
+                    $file_id  = 'cw-file-' . $idx;
                     ?>
+                    <div class="cw-pic-upload" data-field-index="<?php echo esc_attr( (string) $idx ); ?>">
                     <label>
                         <?php echo esc_html( $label ); ?>
                         <?php if ( $required ) : ?>
                             <span style="color:#b91c1c">*</span>
                         <?php endif; ?>
                     </label>
-                    <input type="file" class="cw-field-file" name="<?php echo esc_attr( $input ); ?>" accept="<?php echo esc_attr( $accept ); ?>"
+                    <input type="file" class="cw-field-file" id="<?php echo esc_attr( $file_id ); ?>" name="<?php echo esc_attr( $input ); ?>" accept="<?php echo esc_attr( $accept ); ?>"
                         data-field-index="<?php echo esc_attr( (string) $idx ); ?>"
                         data-field-type="<?php echo esc_attr( $type ); ?>"
                         data-required="<?php echo $required ? '1' : '0'; ?>"
                         <?php echo ( $required && ! $aid ) ? 'required' : ''; ?>>
+                    <div class="cw-pic-upload-actions">
+                        <?php if ( $is_media ) : ?>
+                        <button type="button" class="cw-pic-btn cw-pic-btn--primary cw-pic-open-camera" data-target="<?php echo esc_attr( $file_id ); ?>">
+                            <i class="fas fa-camera" aria-hidden="true"></i>
+                            <?php esc_html_e( 'Take photo', 'creativewings-core' ); ?>
+                        </button>
+                        <button type="button" class="cw-pic-btn cw-pic-open-gallery" data-target="<?php echo esc_attr( $file_id ); ?>">
+                            <i class="fas fa-image" aria-hidden="true"></i>
+                            <?php esc_html_e( 'Choose image', 'creativewings-core' ); ?>
+                        </button>
+                        <?php else : ?>
+                        <button type="button" class="cw-pic-btn cw-pic-btn--primary cw-pic-open-gallery" data-target="<?php echo esc_attr( $file_id ); ?>">
+                            <i class="fas fa-upload" aria-hidden="true"></i>
+                            <?php esc_html_e( 'Choose file', 'creativewings-core' ); ?>
+                        </button>
+                        <?php endif; ?>
+                    </div>
+                    <?php if ( $is_media ) : ?>
+                    <p class="cw-pic-hint"><?php esc_html_e( 'Use your camera or pick a photo already saved on this device.', 'creativewings-core' ); ?></p>
+                    <?php endif; ?>
                     <div class="cw-field-preview" id="cw-preview-<?php echo esc_attr( (string) $idx ); ?>">
                     <?php
                     if ( $aid && 'media' === $type ) {
@@ -163,11 +230,14 @@ class CW_School_Upload {
                     }
                     ?>
                     </div>
+                    </div>
                 <?php endforeach; ?>
 
                 <button type="submit" class="btn" id="cw-save-btn"><?php esc_html_e( 'Save submission', 'creativewings-core' ); ?></button>
             </form>
-            <?php $this->render_lookup_script( $token, $school_code ); ?>
+            <?php $this->render_camera_modal(); ?>
+            <?php $this->render_lookup_script( $token, $school_code, $from_qr && $code_value && ! $code_mismatch ); ?>
+            <?php $this->render_upload_script(); ?>
             <?php endif; ?>
         </div>
         </body>
@@ -175,12 +245,13 @@ class CW_School_Upload {
         <?php
     }
 
-    private function render_lookup_script( $token, $school_code ) {
+    private function render_lookup_script( $token, $school_code, $auto_lookup = false ) {
         $cfg = [
-            'ajaxUrl'    => admin_url( 'admin-ajax.php' ),
-            'nonce'      => wp_create_nonce( 'cw_pic_lookup' ),
-            'token'      => $token,
-            'debounceMs' => 2000,
+            'ajaxUrl'     => admin_url( 'admin-ajax.php' ),
+            'nonce'       => wp_create_nonce( 'cw_pic_lookup' ),
+            'token'       => $token,
+            'debounceMs'  => 2000,
+            'autoLookup'  => (bool) $auto_lookup,
             'i18n'       => [
                 'checking'  => __( 'Checking code…', 'creativewings-core' ),
                 'available' => __( 'This code is available — you can enter a new submission.', 'creativewings-core' ),
@@ -321,6 +392,192 @@ class CW_School_Upload {
                 if ((codeInput.value || '').replace(/\s+/g, '').length >= 13) {
                     setTimeout(lookupCode, 300);
                 }
+            }
+            if (cfg.autoLookup && codeInput && (codeInput.value || '').replace(/\s+/g, '').length >= 13) {
+                setTimeout(lookupCode, 200);
+            }
+        })();
+        </script>
+        <?php
+    }
+
+    private function render_camera_modal() {
+        ?>
+        <div id="cw-camera-modal" class="cw-camera-modal" aria-hidden="true">
+            <div class="cw-camera-panel" role="dialog" aria-modal="true" aria-labelledby="cw-camera-title">
+                <h2 id="cw-camera-title" style="margin:0 0 12px;font-size:18px;"><?php esc_html_e( 'Take a photo', 'creativewings-core' ); ?></h2>
+                <video id="cw-camera-video" playsinline autoplay muted></video>
+                <canvas id="cw-camera-canvas"></canvas>
+                <div class="cw-camera-actions">
+                    <button type="button" class="cw-pic-btn cw-pic-btn--primary" id="cw-camera-capture">
+                        <i class="fas fa-camera" aria-hidden="true"></i>
+                        <?php esc_html_e( 'Capture', 'creativewings-core' ); ?>
+                    </button>
+                    <button type="button" class="cw-pic-btn" id="cw-camera-cancel">
+                        <?php esc_html_e( 'Cancel', 'creativewings-core' ); ?>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+
+    private function render_upload_script() {
+        $i18n = [
+            'cameraError' => __( 'Could not access the camera. Try “Choose image” instead.', 'creativewings-core' ),
+            'fileChosen'  => __( 'File selected. Save submission when ready.', 'creativewings-core' ),
+        ];
+        ?>
+        <script>
+        (function(){
+            var i18n = <?php echo wp_json_encode( $i18n ); ?>;
+            var modal = document.getElementById('cw-camera-modal');
+            var video = document.getElementById('cw-camera-video');
+            var canvas = document.getElementById('cw-camera-canvas');
+            var activeInput = null;
+            var stream = null;
+
+            function assignFile(input, file) {
+                if (!input || !file) return;
+                try {
+                    var dt = new DataTransfer();
+                    dt.items.add(file);
+                    input.files = dt.files;
+                } catch (e) {
+                    return;
+                }
+                input.removeAttribute('required');
+                updatePreview(input, file);
+            }
+
+            function updatePreview(input, file) {
+                var idx = input.getAttribute('data-field-index');
+                var box = document.getElementById('cw-preview-' + idx);
+                if (!box) return;
+                box.innerHTML = '';
+                var type = (input.getAttribute('data-field-type') || '').toLowerCase();
+                if (file && file.type && file.type.indexOf('image/') === 0) {
+                    var img = document.createElement('img');
+                    img.className = 'preview';
+                    img.alt = '';
+                    img.src = URL.createObjectURL(file);
+                    box.appendChild(img);
+                } else if (file) {
+                    var p = document.createElement('p');
+                    p.className = 'sub';
+                    p.textContent = file.name + ' — ' + i18n.fileChosen;
+                    box.appendChild(p);
+                }
+            }
+
+            function stopStream() {
+                if (stream) {
+                    stream.getTracks().forEach(function(t){ t.stop(); });
+                    stream = null;
+                }
+                if (video) video.srcObject = null;
+            }
+
+            function closeModal() {
+                if (!modal) return;
+                modal.classList.remove('is-open');
+                modal.setAttribute('aria-hidden', 'true');
+                stopStream();
+                activeInput = null;
+            }
+
+            function openModal(input) {
+                activeInput = input;
+                if (!modal || !video || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    openNativeCamera(input);
+                    return;
+                }
+                stopStream();
+                navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { ideal: 'environment' } },
+                    audio: false
+                }).then(function(s){
+                    stream = s;
+                    video.srcObject = s;
+                    modal.classList.add('is-open');
+                    modal.setAttribute('aria-hidden', 'false');
+                }).catch(function(){
+                    openNativeCamera(input);
+                });
+            }
+
+            function openNativeCamera(input) {
+                var cam = document.createElement('input');
+                cam.type = 'file';
+                cam.accept = 'image/*';
+                cam.setAttribute('capture', 'environment');
+                cam.style.cssText = 'position:absolute;left:-9999px;';
+                document.body.appendChild(cam);
+                cam.addEventListener('change', function(){
+                    if (cam.files && cam.files[0]) {
+                        assignFile(input, cam.files[0]);
+                    }
+                    cam.remove();
+                });
+                cam.click();
+            }
+
+            function capturePhoto() {
+                if (!activeInput || !video || !canvas) return;
+                var w = video.videoWidth || 1280;
+                var h = video.videoHeight || 720;
+                if (!w || !h) return;
+                canvas.width = w;
+                canvas.height = h;
+                var ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, w, h);
+                canvas.toBlob(function(blob){
+                    if (!blob) return;
+                    var name = 'photo-' + Date.now() + '.jpg';
+                    var file = new File([blob], name, { type: 'image/jpeg' });
+                    assignFile(activeInput, file);
+                    closeModal();
+                }, 'image/jpeg', 0.92);
+            }
+
+            document.querySelectorAll('.cw-pic-open-gallery').forEach(function(btn){
+                btn.addEventListener('click', function(){
+                    var id = btn.getAttribute('data-target');
+                    var input = id ? document.getElementById(id) : null;
+                    if (input) input.click();
+                });
+            });
+
+            document.querySelectorAll('.cw-pic-open-camera').forEach(function(btn){
+                btn.addEventListener('click', function(){
+                    var id = btn.getAttribute('data-target');
+                    var input = id ? document.getElementById(id) : null;
+                    if (!input) return;
+                    var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+                    if (isMobile) {
+                        openNativeCamera(input);
+                    } else {
+                        openModal(input);
+                    }
+                });
+            });
+
+            document.querySelectorAll('.cw-field-file').forEach(function(input){
+                input.addEventListener('change', function(){
+                    if (input.files && input.files[0]) {
+                        assignFile(input, input.files[0]);
+                    }
+                });
+            });
+
+            var capBtn = document.getElementById('cw-camera-capture');
+            var cancelBtn = document.getElementById('cw-camera-cancel');
+            if (capBtn) capBtn.addEventListener('click', capturePhoto);
+            if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+            if (modal) {
+                modal.addEventListener('click', function(e){
+                    if (e.target === modal) closeModal();
+                });
             }
         })();
         </script>
