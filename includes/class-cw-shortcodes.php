@@ -549,6 +549,38 @@ class CW_Shortcodes {
         // ── Cover image ───────────────────────────────────────────────────────
         $thumb = get_the_post_thumbnail_url($pid, 'full');
 
+        // ── Product image gallery (WooCommerce) ───────────────────────────────
+        $gallery_ids = method_exists( $wcp, 'get_gallery_image_ids' ) ? (array) $wcp->get_gallery_image_ids() : [];
+        $gallery_images = [];
+        foreach ( $gallery_ids as $gid ) {
+            $full  = wp_get_attachment_image_url( (int) $gid, 'full' );
+            $thumb_url = wp_get_attachment_image_url( (int) $gid, 'medium_large' );
+            if ( ! $full ) {
+                continue;
+            }
+            $gallery_images[] = [
+                'id'     => (int) $gid,
+                'full'   => $full,
+                'thumb'  => $thumb_url ?: $full,
+                'alt'    => trim( (string) get_post_meta( (int) $gid, '_wp_attachment_image_alt', true ) ),
+            ];
+        }
+
+        // ── KPI progress (admin toggle + target) ──────────────────────────────
+        $kpi_show   = ( $g('cw_kpi_show_progress') === 'yes' );
+        $kpi_target = (int) $g('cw_kpi_target');
+        $kpi_label  = trim( (string) $g('cw_kpi_label') );
+        if ( $kpi_label === '' ) {
+            $kpi_label = __( 'participated', 'creativewings-core' );
+        }
+        $kpi_count   = 0;
+        $kpi_percent = 0;
+        $kpi_visible = $kpi_show && $kpi_target > 0;
+        if ( $kpi_visible && class_exists( 'CW_Campaign_Admin' ) ) {
+            $kpi_count   = (int) CW_Campaign_Admin::get_participant_count( $pid );
+            $kpi_percent = $kpi_target > 0 ? min( 100, round( ( $kpi_count / $kpi_target ) * 100, 1 ) ) : 0;
+        }
+
         // ── Already joined ────────────────────────────────────────────────────
         $uid        = get_current_user_id();
         $already    = false;
@@ -659,15 +691,44 @@ class CW_Shortcodes {
                         <div class="cwd-hero-stat"><i class="fas <?php echo esc_attr($loc_icon); ?>"></i> <?php echo esc_html($location); ?></div>
                     </div>
 
-                    <!-- SDG icons (only here, max 6) -->
-                    <?php if ( ! empty($active_sdgs) ): ?>
-                    <div class="cwd-hero-sdg">
-                        <?php foreach ( array_slice($active_sdgs, 0, 6) as $sg ):
-                            $pad = str_pad($sg['num'], 2, '0', STR_PAD_LEFT); ?>
-                        <img src="<?php echo esc_url($sdg_base.'E_WEB_'.$pad.'.png'); ?>"
-                             alt="SDG <?php echo $sg['num']; ?>" title="<?php echo esc_attr($sg['name']); ?>"
-                             class="cwd-hero-sdg-icon" loading="lazy">
-                        <?php endforeach; ?>
+                    <!-- SDG icons + compact KPI progress (compact strip) -->
+                    <?php
+                    $kpi_state = $kpi_percent >= 100 ? 'done' : ( $kpi_percent >= 50 ? 'mid' : 'start' );
+                    $has_sdg   = ! empty( $active_sdgs );
+                    if ( $has_sdg || $kpi_visible ): ?>
+                    <div class="cwd-hero-meta">
+                        <?php if ( $has_sdg ): ?>
+                        <div class="cwd-hero-sdg" aria-label="<?php esc_attr_e( 'Sustainable Development Goals', 'creativewings-core' ); ?>">
+                            <?php foreach ( array_slice( $active_sdgs, 0, 6 ) as $sg ):
+                                $pad = str_pad( $sg['num'], 2, '0', STR_PAD_LEFT ); ?>
+                            <img src="<?php echo esc_url( $sdg_base . 'E_WEB_' . $pad . '.png' ); ?>"
+                                 alt="SDG <?php echo (int) $sg['num']; ?>" title="<?php echo esc_attr( $sg['name'] ); ?>"
+                                 class="cwd-hero-sdg-icon" loading="lazy">
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ( $kpi_visible ): ?>
+                        <div class="cwd-hero-kpi cwd-kpi-state-<?php echo esc_attr( $kpi_state ); ?>"
+                             role="progressbar"
+                             aria-valuenow="<?php echo esc_attr( (string) (int) $kpi_percent ); ?>"
+                             aria-valuemin="0" aria-valuemax="100"
+                             aria-label="<?php esc_attr_e( 'Campaign progress', 'creativewings-core' ); ?>"
+                             title="<?php echo esc_attr( sprintf( __( '%1$s of %2$s %3$s · %4$s%%', 'creativewings-core' ), number_format_i18n( $kpi_count ), number_format_i18n( $kpi_target ), $kpi_label, (string) $kpi_percent ) ); ?>">
+                            <div class="cwd-hero-kpi-top">
+                                <span class="cwd-hero-kpi-text">
+                                    <i class="fas fa-bullseye"></i>
+                                    <strong><?php echo esc_html( number_format_i18n( $kpi_count ) ); ?></strong>
+                                    <span class="cwd-hero-kpi-of">/ <?php echo esc_html( number_format_i18n( $kpi_target ) ); ?></span>
+                                    <span class="cwd-hero-kpi-label"><?php echo esc_html( $kpi_label ); ?></span>
+                                </span>
+                                <span class="cwd-hero-kpi-percent"><?php echo (int) $kpi_percent; ?>%</span>
+                            </div>
+                            <div class="cwd-hero-kpi-bar">
+                                <span class="cwd-hero-kpi-fill" style="width: <?php echo esc_attr( (string) $kpi_percent ); ?>%;"></span>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -900,6 +961,27 @@ class CW_Shortcodes {
                 <!-- ── RIGHT MAIN CONTENT ── -->
                 <main class="cwd-main">
 
+                    <!-- GALLERY (WooCommerce product image gallery) -->
+                    <?php if ( ! empty( $gallery_images ) ): ?>
+                    <section class="cwd-section cwd-gallery-section">
+                        <h2 class="cwd-section-title"><i class="fas fa-images"></i> Gallery</h2>
+                        <div class="cwd-gallery-grid" id="cwd-gallery-grid">
+                            <?php foreach ( $gallery_images as $idx => $img ): ?>
+                            <button type="button"
+                                class="cwd-gallery-item"
+                                data-cwd-gallery-index="<?php echo (int) $idx; ?>"
+                                data-full="<?php echo esc_url( $img['full'] ); ?>"
+                                aria-label="<?php echo esc_attr( $img['alt'] ?: 'Open image ' . ( $idx + 1 ) ); ?>">
+                                <img src="<?php echo esc_url( $img['thumb'] ); ?>"
+                                     alt="<?php echo esc_attr( $img['alt'] ); ?>"
+                                     loading="lazy">
+                                <span class="cwd-gallery-zoom-icon" aria-hidden="true"><i class="fas fa-search-plus"></i></span>
+                            </button>
+                            <?php endforeach; ?>
+                        </div>
+                    </section>
+                    <?php endif; ?>
+
                     <!-- About -->
                     <?php $content = get_post_field('post_content', $pid);
                     if ( $content ): ?>
@@ -997,6 +1079,83 @@ class CW_Shortcodes {
             <!-- ════════════════ END BODY ════════════════ -->
 
         </div><!-- .cwd-wrap -->
+
+        <?php if ( ! empty( $gallery_images ) ): ?>
+        <!-- ═════════════════ PRODUCT GALLERY LIGHTBOX ═════════════════ -->
+        <div id="cwd-gallery-lightbox" class="cwd-gallery-lightbox" style="display:none;" role="dialog" aria-modal="true" aria-label="Image viewer"
+             onclick="if(event.target===this)cwdGalleryClose()">
+            <button type="button" class="cwd-gallery-lb-close" aria-label="Close" onclick="cwdGalleryClose()">&times;</button>
+            <button type="button" class="cwd-gallery-lb-nav cwd-gallery-lb-prev" aria-label="Previous image" onclick="cwdGalleryStep(-1)"><i class="fas fa-chevron-left"></i></button>
+            <figure class="cwd-gallery-lb-figure">
+                <img id="cwd-gallery-lb-img" src="" alt="">
+                <figcaption class="cwd-gallery-lb-counter" id="cwd-gallery-lb-counter"></figcaption>
+            </figure>
+            <button type="button" class="cwd-gallery-lb-nav cwd-gallery-lb-next" aria-label="Next image" onclick="cwdGalleryStep(1)"><i class="fas fa-chevron-right"></i></button>
+        </div>
+        <script>
+        (function(){
+            var images = <?php echo wp_json_encode( array_values( array_map( function( $i ) {
+                return [ 'full' => $i['full'], 'alt' => $i['alt'] ];
+            }, $gallery_images ) ) ); ?>;
+            var current = 0;
+            function open(i) {
+                if (!images.length) return;
+                current = ((i % images.length) + images.length) % images.length;
+                var lb = document.getElementById('cwd-gallery-lightbox');
+                var img = document.getElementById('cwd-gallery-lb-img');
+                var counter = document.getElementById('cwd-gallery-lb-counter');
+                if (!lb || !img) return;
+                img.src = images[current].full;
+                img.alt = images[current].alt || '';
+                if (counter) counter.textContent = (current + 1) + ' / ' + images.length;
+                lb.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+                var prev = lb.querySelector('.cwd-gallery-lb-prev');
+                var next = lb.querySelector('.cwd-gallery-lb-next');
+                if (prev) prev.style.visibility = images.length > 1 ? 'visible' : 'hidden';
+                if (next) next.style.visibility = images.length > 1 ? 'visible' : 'hidden';
+            }
+            function close() {
+                var lb = document.getElementById('cwd-gallery-lightbox');
+                if (lb) lb.style.display = 'none';
+                document.body.style.overflow = '';
+            }
+            function step(d) { open(current + d); }
+            window.cwdGalleryClose = close;
+            window.cwdGalleryStep  = step;
+            var grid = document.getElementById('cwd-gallery-grid');
+            if (grid) {
+                grid.addEventListener('click', function(e){
+                    var t = e.target.closest('.cwd-gallery-item');
+                    if (!t) return;
+                    e.preventDefault();
+                    open(parseInt(t.getAttribute('data-cwd-gallery-index'), 10) || 0);
+                });
+            }
+            document.addEventListener('keydown', function(e){
+                var lb = document.getElementById('cwd-gallery-lightbox');
+                if (!lb || lb.style.display === 'none') return;
+                if (e.key === 'Escape')      close();
+                else if (e.key === 'ArrowLeft')  step(-1);
+                else if (e.key === 'ArrowRight') step(1);
+            });
+            // Touch swipe support
+            var touchStartX = null;
+            var lbEl = document.getElementById('cwd-gallery-lightbox');
+            if (lbEl) {
+                lbEl.addEventListener('touchstart', function(e){
+                    if (e.touches.length === 1) touchStartX = e.touches[0].clientX;
+                }, { passive: true });
+                lbEl.addEventListener('touchend', function(e){
+                    if (touchStartX === null) return;
+                    var dx = (e.changedTouches[0].clientX || 0) - touchStartX;
+                    touchStartX = null;
+                    if (Math.abs(dx) > 40) step(dx < 0 ? 1 : -1);
+                });
+            }
+        })();
+        </script>
+        <?php endif; ?>
 
         <?php if ( $voting_enabled ):
             // Resolve visitor IP for "already voted" check

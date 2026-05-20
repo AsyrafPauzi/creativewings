@@ -119,11 +119,39 @@ class CW_Campaign_Admin {
         if ( wp_is_post_autosave( $post_id ) || ! current_user_can( 'edit_post', $post_id ) ) {
             return;
         }
+        if ( ! isset( $_POST['cw_product_flags_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['cw_product_flags_nonce'] ) ), 'cw_product_flags' ) ) {
+            return;
+        }
         if ( isset( $_POST['cw_enable_moderation'] ) ) {
             update_post_meta( $post_id, 'cw_enable_moderation', 'yes' );
         } else {
             delete_post_meta( $post_id, 'cw_enable_moderation' );
         }
+
+        if ( isset( $_POST['cw_kpi_show_progress'] ) ) {
+            update_post_meta( $post_id, 'cw_kpi_show_progress', 'yes' );
+        } else {
+            delete_post_meta( $post_id, 'cw_kpi_show_progress' );
+        }
+
+        if ( isset( $_POST['cw_kpi_target'] ) ) {
+            $target = max( 0, (int) $_POST['cw_kpi_target'] );
+            if ( $target > 0 ) {
+                update_post_meta( $post_id, 'cw_kpi_target', $target );
+            } else {
+                delete_post_meta( $post_id, 'cw_kpi_target' );
+            }
+        }
+
+        if ( isset( $_POST['cw_kpi_label'] ) ) {
+            $label = sanitize_text_field( wp_unslash( $_POST['cw_kpi_label'] ) );
+            if ( $label !== '' ) {
+                update_post_meta( $post_id, 'cw_kpi_label', $label );
+            } else {
+                delete_post_meta( $post_id, 'cw_kpi_label' );
+            }
+        }
+
         if ( class_exists( 'CW_Campaign_Resolver' ) ) {
             CW_Campaign_Resolver::flush_serial_cache( $post_id );
         }
@@ -166,26 +194,73 @@ class CW_Campaign_Admin {
             $revenue = (float) CW_Wallet::get_product_earnings( $campaign_id );
         }
         return [
-            'staged'  => $staged,
-            'claimed' => $claimed,
-            'pending' => $pending,
-            'total'   => $staged + $claimed,
-            'revenue' => $revenue,
+            'staged'      => $staged,
+            'claimed'     => $claimed,
+            'pending'     => $pending,
+            'total'       => $staged + $claimed,
+            'revenue'     => $revenue,
+            'participants'=> self::get_participant_count( (int) $campaign_id ),
         ];
+    }
+
+    /**
+     * Number of individual participants who completed checkout for a campaign.
+     *
+     * Each cw_activity_entry / cw_competition_entry post = one participant
+     * (entries are created during order processing in CW_Shop::create_entries_for_order).
+     * This gives a stable "people joined" count for both free and paid campaigns.
+     *
+     * @param int $campaign_id WooCommerce product ID.
+     * @return int
+     */
+    public static function get_participant_count( $campaign_id ) {
+        $campaign_id = (int) $campaign_id;
+        if ( ! $campaign_id ) {
+            return 0;
+        }
+        global $wpdb;
+        $sql = "SELECT COUNT(p.ID)
+                FROM {$wpdb->posts} p
+                INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = 'product_id'
+                WHERE p.post_type IN ('cw_activity_entry','cw_competition_entry')
+                  AND p.post_status = 'publish'
+                  AND pm.meta_value = %s";
+        return (int) $wpdb->get_var( $wpdb->prepare( $sql, (string) $campaign_id ) );
     }
 
     public function render_kpis( $post ) {
         $k = self::get_kpis( $post->ID );
         echo '<ul style="margin:0;font-size:13px;line-height:1.8;">';
+        echo '<li><strong>' . esc_html__( 'Participants', 'creativewings-core' ) . ':</strong> ' . (int) $k['participants'] . '</li>';
         echo '<li><strong>' . esc_html__( 'Staged', 'creativewings-core' ) . ':</strong> ' . (int) $k['staged'] . '</li>';
         echo '<li><strong>' . esc_html__( 'Claimed', 'creativewings-core' ) . ':</strong> ' . (int) $k['claimed'] . '</li>';
         echo '<li><strong>' . esc_html__( 'Moderation pending', 'creativewings-core' ) . ':</strong> ' . (int) $k['pending'] . '</li>';
         echo '<li><strong>' . esc_html__( 'Revenue (est.)', 'creativewings-core' ) . ':</strong> RM ' . esc_html( number_format( $k['revenue'], 2 ) ) . '</li>';
         echo '</ul>';
         wp_nonce_field( 'cw_product_flags', 'cw_product_flags_nonce' );
+
         $mod = get_post_meta( $post->ID, 'cw_enable_moderation', true ) === 'yes';
-        echo '<p><label><input type="checkbox" name="cw_enable_moderation" value="1" ' . checked( $mod, true, false ) . '> ';
+        echo '<p style="margin:14px 0 4px;"><label><input type="checkbox" name="cw_enable_moderation" value="1" ' . checked( $mod, true, false ) . '> ';
         echo esc_html__( 'Require artwork moderation before gallery', 'creativewings-core' ) . '</label></p>';
+
+        $kpi_on     = get_post_meta( $post->ID, 'cw_kpi_show_progress', true ) === 'yes';
+        $kpi_target = (int) get_post_meta( $post->ID, 'cw_kpi_target', true );
+        $kpi_label  = (string) get_post_meta( $post->ID, 'cw_kpi_label', true );
+
+        echo '<hr style="margin:14px 0 10px;border:none;border-top:1px solid #e2e8f0;">';
+        echo '<p style="margin:0 0 6px;"><label style="font-weight:600;">';
+        echo '<input type="checkbox" name="cw_kpi_show_progress" value="1" ' . checked( $kpi_on, true, false ) . '> ';
+        echo esc_html__( 'Display KPI progress on product page', 'creativewings-core' ) . '</label></p>';
+
+        echo '<p style="margin:6px 0 2px;font-size:12px;color:#475569;">' . esc_html__( 'Target number of submissions (the goal)', 'creativewings-core' ) . '</p>';
+        echo '<p style="margin:0 0 6px;"><input type="number" name="cw_kpi_target" min="0" step="1" value="' . esc_attr( (string) $kpi_target ) . '" style="width:100%;" placeholder="e.g. 100"></p>';
+
+        echo '<p style="margin:6px 0 2px;font-size:12px;color:#475569;">' . esc_html__( 'Label (optional, e.g. "participated")', 'creativewings-core' ) . '</p>';
+        echo '<p style="margin:0 0 6px;"><input type="text" name="cw_kpi_label" value="' . esc_attr( $kpi_label ) . '" style="width:100%;" placeholder="participated"></p>';
+
+        echo '<p class="description" style="margin:6px 0 0;font-size:11px;color:#64748b;">';
+        echo esc_html__( 'Each completed checkout / registration linked to this campaign increases the count automatically.', 'creativewings-core' );
+        echo '</p>';
     }
 
     public function render_tools( $post ) {
@@ -226,25 +301,32 @@ class CW_Campaign_Admin {
         }
 
         echo '<h4 style="margin-top:20px;">' . esc_html__( 'Bulk QR codes for PIC scan', 'creativewings-core' ) . '</h4>';
-        echo '<p class="description">' . esc_html__( 'Print one QR per student. PIC scans the QR — the upload form opens with the submission ID filled in (no typing).', 'creativewings-core' ) . '</p>';
+        echo '<p class="description">' . esc_html__( 'Print QR tiles for posters — scan opens PIC upload with submission ID filled in.', 'creativewings-core' ) . '</p>';
 
         if ( empty( $schools ) ) {
             echo '<p class="description">' . esc_html__( 'Add schools in the campaign wizard (Step 4), then save this product.', 'creativewings-core' ) . '</p>';
         } else {
+            $qr_base = wp_nonce_url(
+                add_query_arg(
+                    [
+                        'action'      => 'cw_bulk_qr',
+                        'campaign_id' => (int) $pid,
+                    ],
+                    admin_url( 'admin-post.php' )
+                ),
+                'cw_bulk_qr'
+            );
             ?>
-            <form method="get" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" target="_blank" style="max-width:520px;margin:12px 0 20px;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
-                <?php wp_nonce_field( 'cw_bulk_qr' ); ?>
-                <input type="hidden" name="action" value="cw_bulk_qr">
-                <input type="hidden" name="campaign_id" value="<?php echo (int) $pid; ?>">
+            <div id="cw-bulk-qr-panel" class="cw-bulk-qr-panel" data-base-url="<?php echo esc_attr( $qr_base ); ?>" style="max-width:520px;margin:12px 0 20px;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
                 <p style="margin:0 0 8px;">
                     <label for="cw-bulk-qr-school" style="font-weight:600;"><?php esc_html_e( 'School', 'creativewings-core' ); ?></label><br>
-                    <select name="school" id="cw-bulk-qr-school" style="width:100%;margin-top:4px;">
+                    <select id="cw-bulk-qr-school" style="width:100%;margin-top:4px;">
                         <?php
                         foreach ( $schools as $s ) {
                             if ( empty( $s['school_code'] ) ) {
                                 continue;
                             }
-                            $sc = CW_Submission_Code::pad_school( $s['school_code'] );
+                            $sc    = CW_Submission_Code::pad_school( $s['school_code'] );
                             $label = trim( $sc . ' — ' . ( $s['school_name'] ?? '' ) );
                             echo '<option value="' . esc_attr( $sc ) . '">' . esc_html( $label ) . '</option>';
                         }
@@ -254,21 +336,22 @@ class CW_Campaign_Admin {
                 <p style="margin:0 0 8px;display:flex;gap:10px;">
                     <span style="flex:1;">
                         <label for="cw-bulk-qr-month" style="font-weight:600;"><?php esc_html_e( 'Month (MM)', 'creativewings-core' ); ?></label><br>
-                        <input type="text" name="month" id="cw-bulk-qr-month" value="<?php echo esc_attr( gmdate( 'm' ) ); ?>" maxlength="2" style="width:100%;margin-top:4px;">
+                        <input type="text" id="cw-bulk-qr-month" value="<?php echo esc_attr( gmdate( 'm' ) ); ?>" maxlength="2" style="width:100%;margin-top:4px;">
                     </span>
                     <span style="flex:1;">
                         <label for="cw-bulk-qr-start" style="font-weight:600;"><?php esc_html_e( 'Start #', 'creativewings-core' ); ?></label><br>
-                        <input type="number" name="start" id="cw-bulk-qr-start" value="1" min="1" style="width:100%;margin-top:4px;">
+                        <input type="number" id="cw-bulk-qr-start" value="1" min="1" style="width:100%;margin-top:4px;">
                     </span>
                     <span style="flex:1;">
                         <label for="cw-bulk-qr-count" style="font-weight:600;"><?php esc_html_e( 'How many', 'creativewings-core' ); ?></label><br>
-                        <input type="number" name="count" id="cw-bulk-qr-count" value="50" min="1" max="500" style="width:100%;margin-top:4px;">
+                        <input type="number" id="cw-bulk-qr-count" value="50" min="1" max="500" style="width:100%;margin-top:4px;">
                     </span>
                 </p>
                 <p style="margin:12px 0 0;">
-                    <button type="submit" class="button button-primary"><?php esc_html_e( 'Open printable QR sheet', 'creativewings-core' ); ?></button>
+                    <button type="button" class="button button-primary" id="cw-bulk-qr-open"><?php esc_html_e( 'Open printable QR sheet', 'creativewings-core' ); ?></button>
                 </p>
-            </form>
+            </div>
+            <script>(function(){var p=document.getElementById("cw-bulk-qr-panel"),b=document.getElementById("cw-bulk-qr-open");if(!p||!b)return;b.onclick=function(ev){ev.preventDefault();ev.stopPropagation();var u=new URL(p.getAttribute("data-base-url"),location.origin);u.searchParams.set("school",document.getElementById("cw-bulk-qr-school").value||"001");u.searchParams.set("month",document.getElementById("cw-bulk-qr-month").value||"01");u.searchParams.set("start",document.getElementById("cw-bulk-qr-start").value||"1");u.searchParams.set("count",document.getElementById("cw-bulk-qr-count").value||"50");window.open(u.toString(),"_blank","noopener");};})();</script>
             <?php
         }
 
@@ -309,7 +392,7 @@ class CW_Campaign_Admin {
         echo '<p class="no-print"><button onclick="window.print()">Print</button></p>';
         echo '<h1>' . esc_html( $title ) . '</h1>';
         echo '<p>School ' . esc_html( $school ) . ' · Month ' . esc_html( $month ) . '</p>';
-        echo '<table><thead><tr><th>#</th><th>Submission code</th><th>Student name</th></tr></thead><tbody>';
+        echo '<table><thead><tr><th>#</th><th>' . esc_html__( 'Submission code', 'creativewings-core' ) . '</th><th>' . esc_html__( 'Student name', 'creativewings-core' ) . '</th></tr></thead><tbody>';
         $campaign_id = (int) ( $_GET['campaign_id'] ?? 0 );
         for ( $i = 0; $i < $count; $i++ ) {
             $seq  = $start + $i;
@@ -337,17 +420,6 @@ class CW_Campaign_Admin {
         $start       = max( 1, (int) ( $_GET['start'] ?? 1 ) );
         $count       = min( 500, max( 1, (int) ( $_GET['count'] ?? 50 ) ) );
         $title       = get_the_title( $campaign_id );
-        $school_name = '';
-
-        $sponsors = get_post_meta( $campaign_id, 'cw_school_sponsors', true );
-        if ( is_array( $sponsors ) ) {
-            foreach ( $sponsors as $s ) {
-                if ( CW_Submission_Code::pad_school( $s['school_code'] ?? '' ) === $school ) {
-                    $school_name = sanitize_text_field( $s['school_name'] ?? '' );
-                    break;
-                }
-            }
-        }
 
         if ( ! class_exists( 'CW_Staged_Submissions' ) ) {
             wp_die( esc_html__( 'Upload module not available.', 'creativewings-core' ), '', [ 'response' => 500 ] );
@@ -355,42 +427,35 @@ class CW_Campaign_Admin {
 
         header( 'Content-Type: text/html; charset=utf-8' );
         echo '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
-        echo '<title>' . esc_html__( 'PIC QR codes', 'creativewings-core' ) . '</title>';
+        echo '<title>' . esc_html__( 'PIC QR sheet', 'creativewings-core' ) . '</title>';
         echo '<style>
-            body{font-family:system-ui,sans-serif;padding:16px;margin:0;color:#0f172a}
-            h1{font-size:20px;margin:0 0 6px}
-            .meta{color:#64748b;font-size:14px;margin-bottom:16px}
-            .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
-            .card{border:1px solid #cbd5e1;border-radius:10px;padding:10px;text-align:center;page-break-inside:avoid;background:#fff}
-            .card img{width:120px;height:120px;display:block;margin:0 auto 8px}
-            .code{font-size:11px;font-weight:700;letter-spacing:.03em;word-break:break-all}
-            .seq{color:#64748b;font-size:11px;margin-top:4px}
-            .name{margin-top:6px;min-height:18px;font-size:11px;border-bottom:1px dashed #cbd5e1}
-            @media print{.no-print{display:none}body{padding:8px}.grid{gap:8px}}
+            body{font-family:system-ui,sans-serif;margin:0;padding:14px;color:#0f172a;background:#fff}
+            .hdr{margin-bottom:12px}
+            .hdr h1{font-size:18px;margin:0 0 4px}
+            .hdr p{margin:0;color:#64748b;font-size:13px}
+            .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+            .card{border:1px solid #e2e8f0;border-radius:8px;padding:8px 8px 10px;text-align:center;page-break-inside:avoid;background:#fff}
+            .card img{width:100%;max-width:128px;height:auto;aspect-ratio:1;display:block;margin:0 auto}
+            .card .code{margin-top:6px;font-size:11px;font-weight:700;letter-spacing:.04em;color:#0f172a;word-break:break-all;font-variant-numeric:tabular-nums}
+            @media print{
+                .np,.hdr{display:none}
+                body{padding:4px}
+                .grid{gap:6px}
+                .card{border:1px solid #cbd5e1;padding:4px 4px 6px}
+            }
         </style></head><body>';
-        echo '<p class="no-print"><button type="button" onclick="window.print()">' . esc_html__( 'Print', 'creativewings-core' ) . '</button></p>';
-        echo '<h1>' . esc_html( $title ) . '</h1>';
-        echo '<p class="meta">' . esc_html(
-            sprintf(
-                /* translators: 1: school code, 2: school name, 3: month */
-                __( 'School %1$s %2$s · Month %3$s · Scan QR to open PIC upload with ID filled in', 'creativewings-core' ),
-                $school,
-                $school_name,
-                $month
-            )
-        ) . '</p>';
+        echo '<div class="hdr"><h1>' . esc_html( $title ) . '</h1><p>' . esc_html( sprintf( __( 'School %1$s · Month %2$s · %3$d codes (screen preview)', 'creativewings-core' ), $school, $month, $count ) ) . '</p></div>';
+        echo '<p class="np"><button type="button" onclick="window.print()">' . esc_html__( 'Print', 'creativewings-core' ) . '</button></p>';
         echo '<div class="grid">';
 
         for ( $i = 0; $i < $count; $i++ ) {
-            $seq      = $start + $i;
-            $code     = CW_Submission_Code::build( $campaign_id, $month, $school, $seq );
-            $pic_url  = CW_Staged_Submissions::get_pic_qr_url( $campaign_id, $school, $code );
-            $qr_src   = 'https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=8&data=' . rawurlencode( $pic_url );
+            $seq     = $start + $i;
+            $code    = CW_Submission_Code::build( $campaign_id, $month, $school, $seq );
+            $pic_url = CW_Staged_Submissions::get_pic_qr_url( $campaign_id, $school, $code );
+            $qr_src  = 'https://api.qrserver.com/v1/create-qr-code/?size=128x128&margin=6&data=' . rawurlencode( $pic_url );
             echo '<div class="card">';
-            echo '<img src="' . esc_url( $qr_src ) . '" width="120" height="120" alt="">';
+            echo '<img src="' . esc_url( $qr_src ) . '" width="128" height="128" alt="" loading="lazy">';
             echo '<div class="code">' . esc_html( $code ) . '</div>';
-            echo '<div class="seq">#' . esc_html( (string) ( $i + 1 ) ) . '</div>';
-            echo '<div class="name">' . esc_html__( 'Student:', 'creativewings-core' ) . ' ________________</div>';
             echo '</div>';
         }
 

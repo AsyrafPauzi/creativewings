@@ -100,6 +100,26 @@ class CW_Auth {
                         <small style="color:#64748b;font-size:12px;">Used for age category when joining campaigns.</small>
                     </div>
 
+                    <?php
+                    $pdpa_page = get_page_by_path( 'pdpa' );
+                    $pdpa_url  = $pdpa_page ? get_permalink( $pdpa_page ) : home_url( '/pdpa/' );
+                    ?>
+                    <div class="cw-pdpa-consent">
+                        <label class="cw-pdpa-consent-label" for="cw_pdpa_consent">
+                            <input type="checkbox" id="cw_pdpa_consent" name="cw_pdpa_consent" value="1" required>
+                            <span class="cw-pdpa-consent-text">
+                                <?php
+                                printf(
+                                    /* translators: %s: link to PDPA notice page */
+                                    esc_html__( 'I have read and agree to the %s. For applicants under 18, a parent or guardian gives permission to collect and use the information provided.', 'creativewings-core' ),
+                                    '<a href="' . esc_url( $pdpa_url ) . '" target="_blank" rel="noopener" class="cw-pdpa-consent-link">' . esc_html__( 'Personal Data Protection (PDPA) Notice', 'creativewings-core' ) . '</a>'
+                                );
+                                ?>
+                                <span class="cw-pdpa-req" aria-hidden="true">*</span>
+                            </span>
+                        </label>
+                    </div>
+
                     <button type="submit" class="cw-btn-primary cw-btn-full">Sign Up</button>
                     
                     <div class="cw-auth-links-v2">
@@ -267,6 +287,10 @@ class CW_Auth {
             $this->redirect_with_error( 'reg_error', 'missing_fields' );
         }
 
+        if ( empty( $_POST['cw_pdpa_consent'] ) ) {
+            $this->redirect_with_error( 'reg_error', 'pdpa_required' );
+        }
+
         if ( email_exists( $email ) ) {
             $this->redirect_with_error( 'reg_error', 'email_exists' );
         }
@@ -291,6 +315,10 @@ class CW_Auth {
             update_user_meta( $user_id, 'first_name', $first );
             update_user_meta( $user_id, 'last_name', $last );
             update_user_meta( $user_id, 'account_type', 'contestant' );
+
+            update_user_meta( $user_id, 'cw_pdpa_consent', 'yes' );
+            update_user_meta( $user_id, 'cw_pdpa_consent_at', current_time( 'mysql' ) );
+            update_user_meta( $user_id, 'cw_pdpa_consent_ip', isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '' );
 
             wp_update_user( [
                 'ID'           => $user_id,
@@ -462,6 +490,7 @@ class CW_Auth {
             switch ( $_GET['reg_error'] ) {
                 case 'missing_fields': $msg = 'Please fill in all fields.'; break;
                 case 'email_exists':   $msg = 'Email already exists.'; break;
+                case 'pdpa_required':  $msg = 'Please tick the PDPA consent box to continue. For applicants under 18, a parent or guardian must give consent.'; break;
                 case 'generic':        $msg = 'An error occurred. Please try again.'; break;
             }
             if ( $msg ) echo '<div class="cw-alert error">' . esc_html( $msg ) . '</div>';
