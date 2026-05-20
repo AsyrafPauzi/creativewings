@@ -221,7 +221,9 @@ class CW_Users {
         <style>
             :root { --pub-primary: var(--cw-primary, #006599); --pub-accent: #FE6261; --pub-soft: var(--cw-text-soft, #64748b); }
             *, *::before, *::after { box-sizing: border-box; }
-            .cw-pub-wrap { background: #f4f6f9; font-family: 'Inter', sans-serif; min-height: 100vh; padding-bottom: 80px; }
+            /* isolation: isolate confines inner z-indexes so the theme's mobile
+               menu / drawers / overlays always render above the profile UI. */
+            .cw-pub-wrap { background: #f4f6f9; font-family: 'Inter', sans-serif; min-height: 100vh; padding-bottom: 80px; isolation: isolate; position: relative; z-index: 0; }
 
             /* Suppress duplicate theme-rendered page title above our profile */
             body.cw-pub-profile-page .page-header,
@@ -247,7 +249,9 @@ class CW_Users {
                 background: #fff; border-radius: 20px; padding: 32px 40px;
                 display: flex; align-items: flex-end; gap: 28px; flex-wrap: wrap;
                 box-shadow: 0 8px 30px rgba(0,0,0,0.07);
-                margin-top: -80px; position: relative; z-index: 10;
+                /* Pulls the card up over the hero banner. z-index kept low so the
+                   theme's mobile menu / drawers / fixed UI always stay on top. */
+                margin-top: -80px; position: relative; z-index: 1;
             }
             .cw-pub-avatar-wrap { flex-shrink: 0; }
             .cw-pub-avatar { width: 130px; height: 130px; border-radius: 50%; object-fit: cover; border: 5px solid #fff; box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
