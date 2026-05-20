@@ -125,7 +125,7 @@ class CW_Dashboard_Business {
                 <div class="cw-stat-card">
                     <div>
                         <span class="cw-stat-label">Total Revenue</span>
-                        <h3 class="cw-stat-value" style="font-size:22px;"><?php echo wc_price( $wallet['total_earned'] ); ?></h3>
+                        <h3 class="cw-stat-value cw-stat-money"><?php echo wc_price( $wallet['total_earned'] ); ?></h3>
                     </div>
                     <div class="cw-stat-icon-wrapper coral"><i class="fas fa-wallet"></i></div>
                 </div>
@@ -617,7 +617,7 @@ class CW_Dashboard_Business {
                 <div class="cw-stat-card dark">
                     <div>
                         <span class="cw-stat-label text-gray">Total Earned (Lifetime)</span>
-                        <h2 class="cw-stat-val text-white"><?php echo wc_price($wallet['total_earned']); ?></h2>
+                        <h2 class="cw-stat-val cw-stat-money text-white"><?php echo wc_price($wallet['total_earned']); ?></h2>
                         <div class="cw-mini-tag"><span class="dot green"></span> Gross Revenue</div>
                     </div>
                 </div>
@@ -626,7 +626,7 @@ class CW_Dashboard_Business {
                 <div class="cw-stat-card">
                     <div>
                         <span class="cw-stat-label">Pending Clearance</span>
-                        <h2 class="cw-stat-val text-yellow"><?php echo wc_price($wallet['pending']); ?></h2>
+                        <h2 class="cw-stat-val cw-stat-money text-yellow"><?php echo wc_price($wallet['pending']); ?></h2>
                         <div class="cw-stat-meta text-muted">Held funds</div>
                     </div>
                 </div>
@@ -635,7 +635,7 @@ class CW_Dashboard_Business {
                 <div class="cw-stat-card border-left">
                     <div>
                         <span class="cw-stat-label">Available Balance</span>
-                        <h2 class="cw-stat-val text-blue"><?php echo wc_price($wallet['available']); ?></h2>
+                        <h2 class="cw-stat-val cw-stat-money text-blue"><?php echo wc_price($wallet['available']); ?></h2>
                         <div class="cw-stat-meta text-muted">Ready to withdraw</div>
                     </div>
                 </div>

@@ -52,8 +52,21 @@
     font-weight: 800;
     color: var(--cw-text);
     margin: 0;
-    line-height: 1;
+    line-height: 1.15;
     letter-spacing: -0.5px;
+    max-width: 100%;
+}
+.cw-stat-card > div:first-child {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+.cw-stat-value .woocommerce-Price-amount,
+.cw-stat-val .woocommerce-Price-amount,
+.cw-stat-value .woocommerce-Price-currencySymbol,
+.cw-stat-val .woocommerce-Price-currencySymbol {
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
 }
 
 /* Icon Circle */
@@ -82,6 +95,12 @@
 .cw-stat-card.dark .cw-stat-label { color: #94a3b8; }
 .cw-stat-card.dark .cw-stat-value,
 .cw-stat-card.dark .cw-stat-val   { color: #fff; }
+
+/* Currency amounts — slightly smaller than plain numeric stats */
+.cw-stat-money {
+    font-size: 26px;
+    letter-spacing: -0.3px;
+}
 
 /* Border-left accent card (Available balance) */
 .cw-stat-card.border-left { border-left: 5px solid var(--cw-primary); }
@@ -1579,8 +1598,10 @@ textarea:focus {
     .cw-dash-header { flex-wrap: wrap; gap: 10px; }
     .cw-stats-grid,
     .cw-stats-grid.cols-4 { grid-template-columns: 1fr 1fr; gap: 12px; }
-    .cw-stat-card { padding: 16px; min-width: 0; }
-    .cw-stat-card .cw-stat-value { font-size: 22px; }
+    .cw-stat-card { padding: 16px; min-width: 0; gap: 10px; }
+    .cw-stat-card .cw-stat-value,
+    .cw-stat-card .cw-stat-val { font-size: 22px; }
+    .cw-stat-card .cw-stat-money { font-size: 18px; letter-spacing: -0.2px; }
     .cw-stat-card .cw-stat-icon-wrapper { width: 38px; height: 38px; font-size: 16px; }
 
     .cw-split-section { gap: 14px; }
@@ -1610,7 +1631,9 @@ textarea:focus {
 @media (max-width: 480px) {
     .cw-stats-grid,
     .cw-stats-grid.cols-4 { grid-template-columns: 1fr 1fr; gap: 10px; }
-    .cw-stat-card .cw-stat-value { font-size: 20px; }
+    .cw-stat-card .cw-stat-value,
+    .cw-stat-card .cw-stat-val { font-size: 20px; }
+    .cw-stat-card .cw-stat-money { font-size: 15px; letter-spacing: -0.15px; }
     .cw-stat-card .cw-stat-label { font-size: 11px; }
 
     .cw-chart-container { padding: 14px 12px; }
