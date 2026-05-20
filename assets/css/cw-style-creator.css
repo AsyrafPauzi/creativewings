@@ -559,6 +559,23 @@
     cursor: default;
 }
 
+/* SDG icon images (Explore Opportunities card) — matches product details page */
+.cw-sdg-row.cw-sdg-icons { gap: 6px; }
+.cw-sdg-icon-img {
+    width: 34px;
+    height: 34px;
+    border-radius: 6px;
+    object-fit: cover;
+    border: 1px solid var(--cw-border);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.10);
+    transition: transform 0.18s;
+    cursor: default;
+}
+.cw-sdg-icon-img:hover { transform: scale(1.12); }
+@media (max-width: 600px) {
+    .cw-sdg-icon-img { width: 30px; height: 30px; border-radius: 5px; }
+}
+
 
 /* --------------------------------------------------------------------------
    4. PORTFOLIO GRID

@@ -902,9 +902,10 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
             }
         }
 
-        // SDG reverse map (name → number) for badge display
+        // SDG reverse map (name → number) for icon display
         $sdg_map     = class_exists('CW_Business') ? CW_Business::get_sdg_map() : [];
         $sdg_reverse = array_flip( $sdg_map );
+        $sdg_base    = 'https://creativewings.asia/wp-content/uploads/2025/12/';
         ?>
         <div class="cw-content-wrapper">
             <div class="cw-dash-header">
@@ -977,9 +978,13 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                             <div><i class="fas fa-wallet"></i> Entry Fee: <?php echo $price > 0 ? wc_price( $price ) : 'Free'; ?></div>
                         </div>
                         <?php if ( !empty($active_sdgs) ): ?>
-                        <div class="cw-sdg-row">
-                            <?php foreach ( $active_sdgs as $sdg ): ?>
-                                <span class="cw-sdg-badge" title="<?php echo esc_attr( $sdg['name'] ); ?>">SDG <?php echo $sdg['num']; ?></span>
+                        <div class="cw-sdg-row cw-sdg-icons" aria-label="<?php esc_attr_e( 'Sustainable Development Goals', 'creativewings-core' ); ?>">
+                            <?php foreach ( $active_sdgs as $sdg ):
+                                $pad = str_pad( $sdg['num'], 2, '0', STR_PAD_LEFT ); ?>
+                                <img src="<?php echo esc_url( $sdg_base . 'E_WEB_' . $pad . '.png' ); ?>"
+                                     alt="SDG <?php echo (int) $sdg['num']; ?>"
+                                     title="<?php echo esc_attr( $sdg['name'] ); ?>"
+                                     class="cw-sdg-icon-img" loading="lazy">
                             <?php endforeach; ?>
                         </div>
                         <?php endif; ?>
