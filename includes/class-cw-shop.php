@@ -548,12 +548,56 @@ class CW_Shop {
             return false;
         }
 
+        // Anti-spam: one entry per user (= per email). Default ON for any campaign that
+        // hasn't explicitly opted out via the admin toggle.
+        $uid = get_current_user_id();
+        if ( $uid && self::campaign_limits_to_one_entry( (int) $product_id ) && self::user_already_has_entry( $uid, (int) $product_id ) ) {
+            wc_add_notice(
+                __( 'You have already registered for this campaign with this account. Only one entry per user is allowed.', 'creativewings-core' ),
+                'error'
+            );
+            return false;
+        }
+
         $names = $_POST['cw_names'] ?? [];
         if ( empty( $names ) ) {
             wc_add_notice( 'Details are required.', 'error' );
             return false;
         }
         return $passed;
+    }
+
+    /**
+     * Whether a campaign is configured to allow only one entry per user (= per email).
+     * Default ON for any campaign whose meta has never been touched.
+     *
+     * @param int $product_id
+     * @return bool
+     */
+    public static function campaign_limits_to_one_entry( $product_id ) {
+        $raw = get_post_meta( (int) $product_id, 'cw_one_entry_per_user', true );
+        return ( $raw === '' || $raw === 'yes' );
+    }
+
+    /**
+     * Whether a given user already has a submission for a campaign product.
+     *
+     * @param int $user_id
+     * @param int $product_id
+     * @return bool
+     */
+    public static function user_already_has_entry( $user_id, $product_id ) {
+        $existing = get_posts( [
+            'post_type'      => self::entry_post_types(),
+            'meta_query'     => [
+                [ 'key' => 'customer_id', 'value' => (int) $user_id ],
+                [ 'key' => 'product_id',  'value' => (int) $product_id ],
+            ],
+            'posts_per_page' => 1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+        ] );
+        return ! empty( $existing );
     }
     
     /**
@@ -800,6 +844,7 @@ class CW_Shop {
             $staged_id = (int) $item->get_meta( '_cw_staged_id' );
             if ( $staged_id && class_exists( 'CW_Staged_Submissions' ) ) {
                 $this->create_entry_from_staged( $staged_id, $order_id, $user_id, $product_id, $item, $post_type );
+                $this->maybe_send_online_access_link( $order, $product_id );
                 continue;
             }
 
@@ -844,9 +889,62 @@ class CW_Shop {
                     }
                 }
             } 
+
+            $this->maybe_send_online_access_link( $order, (int) $product_id );
         }
         $order->update_meta_data( '_cw_entries_created', 'yes' );
         $order->save();
+    }
+
+    /**
+     * Send the online meeting link to the customer once per (order, product) pair.
+     *
+     * Uses add_post_meta($order_id, $key, $value, $unique = true) as the
+     * idempotency guard so even if WooCommerce fires payment_complete /
+     * order_status_completed / order_status_processing in the same request
+     * (or across retries), we only send once per product line. Email failure
+     * never blocks entry creation — CW_Email::send_online_access_link logs
+     * and returns false on its own.
+     *
+     * @param WC_Order $order
+     * @param int      $product_id
+     */
+    private function maybe_send_online_access_link( $order, $product_id ) {
+        if ( ! ( $order instanceof WC_Order ) || $product_id <= 0 ) {
+            return;
+        }
+        if ( ! class_exists( 'CW_Email' ) ) {
+            return;
+        }
+        if ( 'online' !== get_post_meta( $product_id, 'cw_event_mode', true ) ) {
+            return;
+        }
+
+        // Skip silently when there's no link configured yet — don't burn the
+        // idempotency guard so the business can still email retroactively if
+        // they fix the meta and a future status hook re-runs entry creation.
+        $link = trim( (string) get_post_meta( $product_id, 'cw_online_link', true ) );
+        if ( '' === $link ) {
+            return;
+        }
+
+        $guard_key = '_cw_online_link_sent_pid_' . $product_id;
+        // add_post_meta with $unique = true returns false if the key already exists,
+        // making this a single-shot guard per (order, product).
+        if ( ! add_post_meta( $order->get_id(), $guard_key, time(), true ) ) {
+            return;
+        }
+
+        try {
+            CW_Email::send_online_access_link( $order, $product_id );
+        } catch ( \Throwable $e ) {
+            error_log( sprintf(
+                '[CW_Shop] Online-access email dispatch threw for order #%d / product #%d: %s',
+                (int) $order->get_id(),
+                (int) $product_id,
+                $e->getMessage()
+            ) );
+        }
     }
 
     private function create_entry_from_staged( $staged_id, $order_id, $user_id, $product_id, $item, $post_type ) {

@@ -13,7 +13,205 @@ class CW_Campaign_Admin {
         add_action( 'save_post_product', [ $this, 'save_product_flags' ], 20, 2 );
         add_filter( 'redirect_post_location', [ $this, 'fix_product_save_redirect' ], 99, 2 );
         add_action( 'admin_notices', [ $this, 'product_save_admin_notice' ] );
+        add_action( 'admin_notices', [ $this, 'pending_queue_admin_notice' ] );
         add_action( 'edit_form_top', [ $this, 'warn_if_not_product_campaign' ] );
+
+        add_action( 'init', [ $this, 'seed_default_subcategories' ] );
+        add_filter( 'post_row_actions', [ $this, 'add_approve_row_action' ], 10, 2 );
+        add_action( 'admin_post_cw_approve_campaign', [ $this, 'handle_approve_campaign' ] );
+        add_action( 'admin_menu', [ $this, 'register_pending_queue_submenu' ] );
+    }
+
+    /**
+     * Idempotent seeder for default sub-categories that should always exist
+     * (e.g. "Art" under Activity). Runs on init and only inserts when missing.
+     */
+    public function seed_default_subcategories() {
+        if ( ! taxonomy_exists( 'product_cat' ) ) {
+            return;
+        }
+
+        $parent = get_term_by( 'slug', 'activities', 'product_cat' );
+        if ( ! $parent || is_wp_error( $parent ) ) {
+            return;
+        }
+
+        $desired_slug = 'art-activities';
+
+        // Find an existing "Art" child term under Activities, regardless of its current slug.
+        $existing = get_terms( [
+            'taxonomy'   => 'product_cat',
+            'hide_empty' => false,
+            'parent'     => (int) $parent->term_id,
+            'name'       => 'Art',
+        ] );
+
+        if ( empty( $existing ) || is_wp_error( $existing ) ) {
+            wp_insert_term(
+                'Art',
+                'product_cat',
+                [
+                    'slug'   => $desired_slug,
+                    'parent' => (int) $parent->term_id,
+                ]
+            );
+            return;
+        }
+
+        // Realign existing term's slug to the canonical one if it drifted.
+        $term = $existing[0];
+        if ( isset( $term->slug ) && $term->slug !== $desired_slug ) {
+            wp_update_term( (int) $term->term_id, 'product_cat', [ 'slug' => $desired_slug ] );
+        }
+    }
+
+    /**
+     * Inline "Approve campaign" row action on the products list for pending campaigns.
+     *
+     * @param array   $actions
+     * @param WP_Post $post
+     * @return array
+     */
+    public function add_approve_row_action( $actions, $post ) {
+        if ( ! $post || 'product' !== $post->post_type ) {
+            return $actions;
+        }
+        if ( 'pending' !== $post->post_status ) {
+            return $actions;
+        }
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            return $actions;
+        }
+
+        $url = wp_nonce_url(
+            add_query_arg(
+                [
+                    'action' => 'cw_approve_campaign',
+                    'post'   => (int) $post->ID,
+                ],
+                admin_url( 'admin-post.php' )
+            ),
+            'cw_approve_campaign_' . (int) $post->ID
+        );
+
+        $new = [
+            'cw_approve' => '<a href="' . esc_url( $url ) . '" style="color:#15803d;font-weight:600;">' .
+                esc_html__( 'Approve campaign', 'creativewings-core' ) . '</a>',
+        ];
+        return array_merge( $new, $actions );
+    }
+
+    /**
+     * One-click approve handler — flips a pending product to publish.
+     */
+    public function handle_approve_campaign() {
+        $pid = isset( $_GET['post'] ) ? (int) $_GET['post'] : 0;
+        if ( ! $pid ) {
+            wp_die( esc_html__( 'Missing campaign id.', 'creativewings-core' ), '', [ 'response' => 400 ] );
+        }
+        check_admin_referer( 'cw_approve_campaign_' . $pid );
+
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            wp_die( esc_html__( 'Unauthorized', 'creativewings-core' ), '', [ 'response' => 403 ] );
+        }
+
+        $post = get_post( $pid );
+        if ( ! $post || 'product' !== $post->post_type ) {
+            wp_die( esc_html__( 'Not a campaign.', 'creativewings-core' ), '', [ 'response' => 400 ] );
+        }
+
+        wp_update_post(
+            [
+                'ID'          => $pid,
+                'post_status' => 'publish',
+            ]
+        );
+
+        do_action( 'cw_campaign_approved', $pid, (int) $post->post_author );
+
+        $referer = wp_get_referer();
+        wp_safe_redirect(
+            add_query_arg(
+                'cw_campaign_approved',
+                $pid,
+                $referer ? $referer : admin_url( 'edit.php?post_type=product&post_status=pending' )
+            )
+        );
+        exit;
+    }
+
+    /**
+     * Admin notice on product list when filtered to pending — encourages review.
+     */
+    public function pending_queue_admin_notice() {
+        if ( ! is_admin() || ! function_exists( 'get_current_screen' ) ) {
+            return;
+        }
+        $screen = get_current_screen();
+        if ( ! $screen || 'edit-product' !== $screen->id ) {
+            return;
+        }
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            return;
+        }
+
+        if ( ! empty( $_GET['cw_campaign_approved'] ) ) {
+            $pid = (int) $_GET['cw_campaign_approved'];
+            echo '<div class="notice notice-success is-dismissible"><p><strong>' .
+                esc_html__( 'Creative Wings:', 'creativewings-core' ) . '</strong> ';
+            printf(
+                /* translators: %s: campaign title */
+                esc_html__( 'Campaign “%s” is now published.', 'creativewings-core' ),
+                esc_html( get_the_title( $pid ) )
+            );
+            echo '</p></div>';
+        }
+
+        $status = isset( $_GET['post_status'] ) ? sanitize_key( wp_unslash( $_GET['post_status'] ) ) : '';
+        if ( 'pending' !== $status ) {
+            return;
+        }
+        $count = wp_count_posts( 'product' );
+        $pending_count = isset( $count->pending ) ? (int) $count->pending : 0;
+        if ( $pending_count <= 0 ) {
+            return;
+        }
+        echo '<div class="notice notice-info"><p><strong>' .
+            esc_html__( 'Creative Wings:', 'creativewings-core' ) . '</strong> ';
+        printf(
+            esc_html(
+                _n(
+                    '%d campaign is awaiting your approval. Hover a row and click “Approve campaign” to publish.',
+                    '%d campaigns are awaiting your approval. Hover a row and click “Approve campaign” to publish.',
+                    $pending_count,
+                    'creativewings-core'
+                )
+            ),
+            $pending_count
+        );
+        echo '</p></div>';
+    }
+
+    /**
+     * Add a quick "Pending campaigns" link under WooCommerce → for fast review.
+     */
+    public function register_pending_queue_submenu() {
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            return;
+        }
+        $count         = wp_count_posts( 'product' );
+        $pending_count = isset( $count->pending ) ? (int) $count->pending : 0;
+        $bubble        = $pending_count > 0
+            ? ' <span class="awaiting-mod">' . (int) $pending_count . '</span>'
+            : '';
+
+        add_submenu_page(
+            'woocommerce',
+            __( 'Pending campaigns', 'creativewings-core' ),
+            __( 'Pending campaigns', 'creativewings-core' ) . $bubble,
+            'manage_woocommerce',
+            'edit.php?post_type=product&post_status=pending'
+        );
     }
 
     /**
@@ -126,6 +324,16 @@ class CW_Campaign_Admin {
             update_post_meta( $post_id, 'cw_enable_moderation', 'yes' );
         } else {
             delete_post_meta( $post_id, 'cw_enable_moderation' );
+        }
+
+        // Anti-spam: only mutate when the meta box was actually rendered/submitted
+        // (the hidden _present marker). When checked → 'yes'. When unchecked → 'no'.
+        if ( isset( $_POST['cw_one_entry_per_user_present'] ) ) {
+            if ( isset( $_POST['cw_one_entry_per_user'] ) ) {
+                update_post_meta( $post_id, 'cw_one_entry_per_user', 'yes' );
+            } else {
+                update_post_meta( $post_id, 'cw_one_entry_per_user', 'no' );
+            }
         }
 
         if ( isset( $_POST['cw_kpi_show_progress'] ) ) {
@@ -242,6 +450,17 @@ class CW_Campaign_Admin {
         $mod = get_post_meta( $post->ID, 'cw_enable_moderation', true ) === 'yes';
         echo '<p style="margin:14px 0 4px;"><label><input type="checkbox" name="cw_enable_moderation" value="1" ' . checked( $mod, true, false ) . '> ';
         echo esc_html__( 'Require artwork moderation before gallery', 'creativewings-core' ) . '</label></p>';
+
+        // Anti-spam: one entry per user (= one email, since WP enforces unique emails per account).
+        // Default ON for new campaigns. Stored 'no' only when the admin explicitly unticks.
+        $one_entry_raw  = get_post_meta( $post->ID, 'cw_one_entry_per_user', true );
+        $one_entry_on   = ( $one_entry_raw === '' || $one_entry_raw === 'yes' );
+        echo '<input type="hidden" name="cw_one_entry_per_user_present" value="1">';
+        echo '<p style="margin:8px 0 4px;"><label><input type="checkbox" name="cw_one_entry_per_user" value="1" ' . checked( $one_entry_on, true, false ) . '> ';
+        echo esc_html__( 'Limit to one entry per user (anti-spam)', 'creativewings-core' ) . '</label></p>';
+        echo '<p class="description" style="margin:2px 0 0;font-size:11px;color:#64748b;">';
+        echo esc_html__( 'Each account (email) can only submit once. Different emails count as different users.', 'creativewings-core' );
+        echo '</p>';
 
         $kpi_on     = get_post_meta( $post->ID, 'cw_kpi_show_progress', true ) === 'yes';
         $kpi_target = (int) get_post_meta( $post->ID, 'cw_kpi_target', true );

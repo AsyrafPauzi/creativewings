@@ -35,7 +35,7 @@ class CW_Shortcodes {
         // Location Logic: Shows "Online Event" if online, otherwise address
         add_shortcode('cw_location', function(){ 
             $mode = get_post_meta(get_the_ID(), 'cw_event_mode', true);
-            if($mode === 'online') return 'Online Event';
+            if($mode === 'online') return 'Online';
             return get_post_meta(get_the_ID(), 'cw_location_details', true); 
         });
 
@@ -107,7 +107,7 @@ class CW_Shortcodes {
         if ( $is_author || $has_bought ) {
             $link = get_post_meta( $pid, 'cw_online_link', true );
             if ( $link ) {
-                return '<a href="'.esc_url($link).'" target="_blank" class="cw-btn-pink"><i class="fa-solid fa-video"></i> Join Online Event</a>';
+                return '<a href="'.esc_url($link).'" target="_blank" class="cw-btn-pink"><i class="fa-solid fa-video"></i> Join Online</a>';
             }
         }
         return '';
@@ -197,7 +197,7 @@ class CW_Shortcodes {
             <?php if($sub_open): ?><p class="cw-timeline-item cw-open"><span class="dot" style="background:#8bc34a;"></span>Submission Open<br><strong><?php echo date('d M Y', strtotime($sub_open)); ?></strong></p><?php endif; ?>
             <?php if($sub_close): ?><p class="cw-timeline-item cw-close"><span class="dot" style="background:#f44336;"></span>Deadline<br><strong><?php echo date('d M Y', strtotime($sub_close)); ?></strong></p><?php endif; ?>
             <?php if($review): ?><p class="cw-timeline-item"><span class="dot" style="background:#f39c12;"></span>Review<br><strong><?php echo date('d M Y', strtotime($review)); ?></strong></p><?php endif; ?>
-            <?php if($final): ?><p class="cw-timeline-item"><span class="dot" style="background:#555;"></span>Event Date<br><strong><?php echo date('d M Y', strtotime($final)); ?></strong></p><?php endif; ?>
+            <?php if($final): ?><p class="cw-timeline-item"><span class="dot" style="background:#555;"></span>Campaign Date<br><strong><?php echo date('d M Y', strtotime($final)); ?></strong></p><?php endif; ?>
         </div>
         <?php
         return ob_get_clean();
@@ -315,7 +315,7 @@ class CW_Shortcodes {
                     <div class="cws-input-wrap">
                         <i class="fas fa-search cws-input-icon"></i>
                         <input type="text" id="cw_search_input" class="cws-input"
-                               placeholder="Search events, competitions, seminars…"
+                               placeholder="Search campaigns, competitions, activities…"
                                value="<?php echo esc_attr( $cw_search_val ); ?>" autocomplete="off">
                     </div>
                     <button type="submit" class="cws-submit">
@@ -467,7 +467,7 @@ class CW_Shortcodes {
         // ── Category detection ────────────────────────────────────────────────
         $terms       = get_the_terms( $pid, 'product_cat' );
         $cat_type    = 'activity';  // default
-        $cat_label   = 'Event';
+        $cat_label   = 'Campaign';
         $cat_key     = '';
         $sub_cat_name = '';
 
@@ -503,7 +503,10 @@ class CW_Shortcodes {
         $final_date  = $g('cw_final_event_date');
         $now         = current_time('timestamp');
         $is_closed   = $deadline && strtotime($deadline) < $now;
+        // Registration hasn't opened yet — start date is in the future.
+        $is_upcoming = $date_start && strtotime($date_start) > $now;
         $days_left   = $deadline ? max(0, (int) ceil((strtotime($deadline) - $now) / DAY_IN_SECONDS)) : null;
+        $days_to_start = $is_upcoming ? max(0, (int) ceil((strtotime($date_start) - $now) / DAY_IN_SECONDS)) : null;
 
         $fmt_date = function($d) { return $d ? date_i18n('j M Y', strtotime($d)) : '—'; };
         $fmt_day  = function($d) { return $d ? date_i18n('j M Y (l)', strtotime($d)) : '—'; };
@@ -517,14 +520,20 @@ class CW_Shortcodes {
 
         // ── Location ──────────────────────────────────────────────────────────
         $event_mode  = $g('cw_event_mode');
-        $location    = $event_mode === 'online' ? 'Online Event' : ( $g('cw_location_details') ?: '—' );
+        $location    = $event_mode === 'online' ? 'Online' : ( $g('cw_location_details') ?: '—' );
         $loc_icon    = $event_mode === 'online' ? 'fa-video' : 'fa-map-marker-alt';
 
         // ── Organiser ─────────────────────────────────────────────────────────
         $org_id      = $g('organizer_id');
+        $org_user    = $org_id ? get_userdata($org_id) : null;
         $org_name    = $org_id ? ( get_user_meta($org_id,'business_name',true) ?: 'Host' ) : 'Host';
         $org_phone   = $org_id ? get_user_meta($org_id,'business_phone',true) : '';
-        $org_email   = $org_id ? ( get_userdata($org_id)->user_email ?? '' ) : '';
+        $org_email   = $org_user ? ( $org_user->user_email ?? '' ) : '';
+        $org_login   = $org_user ? $org_user->user_login : '';
+        // Visibility toggles (default: visible). Stored as '1' / '0' user meta — empty string also = visible.
+        $org_show_email = ! $org_id || ( get_user_meta($org_id, 'cw_show_org_email', true) !== '0' );
+        $org_show_phone = ! $org_id || ( get_user_meta($org_id, 'cw_show_org_phone', true) !== '0' );
+        $org_profile_url = $org_login ? home_url( '/profile/' . rawurlencode( $org_login ) . '/' ) : '';
 
         // ── SDG ───────────────────────────────────────────────────────────────
         $sdg_base  = 'https://creativewings.asia/wp-content/uploads/2025/12/';
@@ -567,24 +576,29 @@ class CW_Shortcodes {
         }
 
         // ── KPI progress (admin toggle + target) ──────────────────────────────
-        $kpi_show   = ( $g('cw_kpi_show_progress') === 'yes' );
-        $kpi_target = (int) $g('cw_kpi_target');
+        $kpi_show     = ( $g('cw_kpi_show_progress') === 'yes' );
+        $kpi_target   = (int) $g('cw_kpi_target');
         $kpi_label  = trim( (string) $g('cw_kpi_label') );
         if ( $kpi_label === '' ) {
             $kpi_label = __( 'participated', 'creativewings-core' );
         }
-        $kpi_count   = 0;
-        $kpi_percent = 0;
-        $kpi_visible = $kpi_show && $kpi_target > 0;
+        $kpi_count        = 0;
+        $kpi_percent      = 0;   // Real percent — can exceed 100 (e.g. 156%).
+        $kpi_fill_percent = 0;   // Visual progress-bar fill — clamped to 0–100.
+        $kpi_visible      = $kpi_show && $kpi_target > 0;
         if ( $kpi_visible && class_exists( 'CW_Campaign_Admin' ) ) {
-            $kpi_count   = (int) CW_Campaign_Admin::get_participant_count( $pid );
-            $kpi_percent = $kpi_target > 0 ? min( 100, round( ( $kpi_count / $kpi_target ) * 100, 1 ) ) : 0;
+            $kpi_count        = (int) CW_Campaign_Admin::get_participant_count( $pid );
+            $kpi_percent      = $kpi_target > 0 ? round( ( $kpi_count / $kpi_target ) * 100, 1 ) : 0;
+            $kpi_fill_percent = max( 0, min( 100, $kpi_percent ) );
         }
 
         // ── Already joined ────────────────────────────────────────────────────
-        $uid        = get_current_user_id();
-        $already    = false;
-        if ( $uid ) {
+        // Only treats the user as "already in" when the campaign enforces one-entry-per-user.
+        // Multi-entry campaigns let users register again with the same account.
+        $uid          = get_current_user_id();
+        $one_per_user = class_exists( 'CW_Shop' ) ? CW_Shop::campaign_limits_to_one_entry( $pid ) : true;
+        $already      = false;
+        if ( $uid && $one_per_user ) {
             $entries = get_posts(['post_type'=>['cw_activity_entry','cw_competition_entry'],'meta_query'=>[['key'=>'customer_id','value'=>$uid],['key'=>'product_id','value'=>$pid]],'posts_per_page'=>1,'fields'=>'ids']);
             $already = ! empty($entries);
         }
@@ -600,7 +614,7 @@ class CW_Shortcodes {
         if ($date_start)  $tl_items[] = ['icon'=>'fa-door-open',     'color'=>'#16a34a', 'label'=>'Submission Opens',    'date'=>$date_start];
         if ($deadline)    $tl_items[] = ['icon'=>'fa-flag-checkered', 'color'=>'#dc2626', 'label'=>'Submission Closes',   'date'=>$deadline];
         if ($review_date) $tl_items[] = ['icon'=>'fa-search',         'color'=>'#d97706', 'label'=>'Review Period',       'date'=>$review_date];
-        if ($final_date)  $tl_items[] = ['icon'=>'fa-star',           'color'=>'#7c3aed', 'label'=>'Event / Announcement','date'=>$final_date];
+        if ($final_date)  $tl_items[] = ['icon'=>'fa-star',           'color'=>'#7c3aed', 'label'=>'Campaign Date / Announcement','date'=>$final_date];
 
         // ── Participant meta ──────────────────────────────────────────────────
         $min_p = (int) $g('cw_min_participants');
@@ -670,9 +684,13 @@ class CW_Shortcodes {
                 <div class="cwd-hero-info-col">
                     <div class="cwd-hero-top">
                         <span class="cwd-cat-chip" style="background:<?php echo esc_attr($chip_color); ?>"><?php echo esc_html($cat_label); ?></span>
-                        <span class="cwd-status-pill <?php echo $is_closed ? 'closed' : 'open'; ?>">
+                        <?php
+                            $status_class = $is_closed ? 'closed' : ( $is_upcoming ? 'upcoming' : 'open' );
+                            $status_text  = $is_closed ? 'Closed' : ( $is_upcoming ? 'Upcoming' : 'Open' );
+                        ?>
+                        <span class="cwd-status-pill <?php echo esc_attr( $status_class ); ?>">
                             <span class="cwd-status-dot"></span>
-                            <?php echo $is_closed ? 'Closed' : 'Open'; ?>
+                            <?php echo esc_html( $status_text ); ?>
                         </span>
                     </div>
 
@@ -693,7 +711,7 @@ class CW_Shortcodes {
 
                     <!-- SDG icons + compact KPI progress (compact strip) -->
                     <?php
-                    $kpi_state = $kpi_percent >= 100 ? 'done' : ( $kpi_percent >= 50 ? 'mid' : 'start' );
+                    $kpi_state = $kpi_percent > 100 ? 'over' : ( $kpi_percent >= 100 ? 'done' : ( $kpi_percent >= 50 ? 'mid' : 'start' ) );
                     $has_sdg   = ! empty( $active_sdgs );
                     if ( $has_sdg || $kpi_visible ): ?>
                     <div class="cwd-hero-meta">
@@ -708,10 +726,19 @@ class CW_Shortcodes {
                         </div>
                         <?php endif; ?>
 
-                        <?php if ( $kpi_visible ): ?>
+                        <?php if ( $kpi_visible ):
+                            // Display-only percent: round to int (e.g. 156.4 → 156). Floor at 1% when there's any participation
+                            // so a single signup in a huge target doesn't render as a misleading "0%".
+                            $kpi_display_percent = (int) round( $kpi_percent );
+                            if ( $kpi_count > 0 && $kpi_percent > 0 && $kpi_display_percent === 0 ) {
+                                $kpi_display_percent_label = '<1%';
+                            } else {
+                                $kpi_display_percent_label = $kpi_display_percent . '%';
+                            }
+                        ?>
                         <div class="cwd-hero-kpi cwd-kpi-state-<?php echo esc_attr( $kpi_state ); ?>"
                              role="progressbar"
-                             aria-valuenow="<?php echo esc_attr( (string) (int) $kpi_percent ); ?>"
+                             aria-valuenow="<?php echo esc_attr( (string) $kpi_display_percent ); ?>"
                              aria-valuemin="0" aria-valuemax="100"
                              aria-label="<?php esc_attr_e( 'Campaign progress', 'creativewings-core' ); ?>"
                              title="<?php echo esc_attr( sprintf( __( '%1$s of %2$s %3$s · %4$s%%', 'creativewings-core' ), number_format_i18n( $kpi_count ), number_format_i18n( $kpi_target ), $kpi_label, (string) $kpi_percent ) ); ?>">
@@ -722,11 +749,16 @@ class CW_Shortcodes {
                                     <span class="cwd-hero-kpi-of">/ <?php echo esc_html( number_format_i18n( $kpi_target ) ); ?></span>
                                     <span class="cwd-hero-kpi-label"><?php echo esc_html( $kpi_label ); ?></span>
                                 </span>
-                                <span class="cwd-hero-kpi-percent"><?php echo (int) $kpi_percent; ?>%</span>
+                                <span class="cwd-hero-kpi-percent"><?php echo esc_html( $kpi_display_percent_label ); ?></span>
                             </div>
                             <div class="cwd-hero-kpi-bar">
-                                <span class="cwd-hero-kpi-fill" style="width: <?php echo esc_attr( (string) $kpi_percent ); ?>%;"></span>
+                                <span class="cwd-hero-kpi-fill" style="width: <?php echo esc_attr( (string) $kpi_fill_percent ); ?>%;"></span>
                             </div>
+                            <?php if ( $kpi_state === 'over' ): ?>
+                            <div class="cwd-hero-kpi-exceeded">
+                                <i class="fas fa-trophy"></i> <?php echo esc_html( sprintf( __( 'Goal exceeded by %s!', 'creativewings-core' ), number_format_i18n( max( 0, $kpi_count - $kpi_target ) ) ) ); ?>
+                            </div>
+                            <?php endif; ?>
                         </div>
                         <?php endif; ?>
                     </div>
@@ -747,7 +779,20 @@ class CW_Shortcodes {
                         <div class="cwd-reg-price"><?php echo $fee_label; ?></div>
                         <div class="cwd-reg-label">Entry Fee</div>
 
-                        <?php if ( $deadline && ! $is_closed ): ?>
+                        <?php if ( $is_upcoming ): ?>
+                        <div class="cwd-deadline-row cwd-deadline-upcoming">
+                            <i class="fas fa-calendar-alt"></i>
+                            <span>
+                                <?php if ( $days_to_start === 0 ): ?>
+                                    <strong style="color:#0369a1;">Opens today!</strong>
+                                <?php elseif ( $days_to_start !== null && $days_to_start <= 14 ): ?>
+                                    <strong style="color:#0369a1;">Opens in <?php echo $days_to_start; ?> day<?php echo $days_to_start === 1 ? '' : 's'; ?></strong>
+                                <?php else: ?>
+                                    Opens: <?php echo esc_html($fmt_date($date_start)); ?>
+                                <?php endif; ?>
+                            </span>
+                        </div>
+                        <?php elseif ( $deadline && ! $is_closed ): ?>
                         <div class="cwd-deadline-row">
                             <i class="fas fa-hourglass-half"></i>
                             <span>
@@ -769,24 +814,28 @@ class CW_Shortcodes {
                         <?php endif; ?>
 
                         <?php if ( $is_closed ): ?>
-                            <button class="cwd-cta-btn cwd-cta-closed" disabled><i class="fas fa-lock"></i> Event Closed</button>
+                            <button class="cwd-cta-btn cwd-cta-closed" disabled><i class="fas fa-lock"></i> Already Closed</button>
                         <?php elseif ( $already ): ?>
                             <button class="cwd-cta-btn cwd-cta-joined" disabled><i class="fas fa-check-circle"></i> Already Joined</button>
+                        <?php elseif ( $is_upcoming ): ?>
+                            <button class="cwd-cta-btn cwd-cta-upcoming" disabled><i class="fas fa-clock"></i> Coming Soon</button>
                         <?php elseif ( ! is_user_logged_in() ): ?>
                             <a href="<?php echo esc_url(wc_get_page_permalink('myaccount') . '?redirect_to=' . urlencode(get_permalink($pid))); ?>" class="cwd-cta-btn cwd-cta-join">
                                 <i class="fas fa-sign-in-alt"></i> Log in to Join
                             </a>
                         <?php else: ?>
                             <button type="button" class="cwd-cta-btn cwd-cta-join" onclick="cwdOpenRegModal()">
-                                <i class="fas fa-bolt"></i> Register Now
+                                <i class="fas fa-bolt"></i> Join Now
                             </button>
                         <?php endif; ?>
 
-                        <?php if ( ! $is_closed && ! $already ):
+                        <?php if ( ! $is_closed && ! $already && ! $is_upcoming ):
                             $deadline_str = $deadline ? 'Closes ' . $fmt_date($deadline) : '';
                             if ( $deadline_str ): ?>
                         <p class="cwd-reg-footnote"><i class="fas fa-info-circle"></i> <?php echo esc_html($deadline_str); ?></p>
                             <?php endif; ?>
+                        <?php elseif ( $is_upcoming && $date_start ): ?>
+                        <p class="cwd-reg-footnote"><i class="fas fa-info-circle"></i> Registration opens <?php echo esc_html($fmt_date($date_start)); ?></p>
                         <?php endif; ?>
 
                         <?php if ( $voting_enabled ): ?>
@@ -857,7 +906,7 @@ class CW_Shortcodes {
                             <li>
                                 <span class="cwd-il-icon"><i class="fas <?php echo $event_mode === 'online' ? 'fa-video' : 'fa-map-marker-alt'; ?>"></i></span>
                                 <div>
-                                    <span class="cwd-il-label">Event Mode</span>
+                                    <span class="cwd-il-label">Format</span>
                                     <span class="cwd-il-value"><?php echo $event_mode === 'online' ? 'Online' : 'Physical'; ?></span>
                                 </div>
                             </li>
@@ -915,19 +964,28 @@ class CW_Shortcodes {
                     <div class="cwd-card cwd-org-card">
                         <h4 class="cwd-card-heading"><i class="fas fa-building"></i> Organiser</h4>
                         <?php
-                        $has_org_info = $org_name && $org_name !== 'Host';
-                        $has_contact  = $org_email || $org_phone;
+                        $has_org_info       = $org_name && $org_name !== 'Host';
+                        $show_email_visible = $org_email && $org_show_email;
+                        $show_phone_visible = $org_phone && $org_show_phone;
+                        $has_contact        = $show_email_visible || $show_phone_visible;
                         if ( $has_org_info || $has_contact ):
                         ?>
                         <?php if ($has_org_info): ?>
-                        <p class="cwd-org-name"><?php echo esc_html($org_name); ?></p>
+                            <?php if ($org_profile_url): ?>
+                            <a href="<?php echo esc_url($org_profile_url); ?>" class="cwd-org-name cwd-org-name-link">
+                                <?php echo esc_html($org_name); ?>
+                                <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                            </a>
+                            <?php else: ?>
+                            <p class="cwd-org-name"><?php echo esc_html($org_name); ?></p>
+                            <?php endif; ?>
                         <?php endif; ?>
-                        <?php if ($org_email): ?>
+                        <?php if ($show_email_visible): ?>
                         <a href="mailto:<?php echo esc_attr($org_email); ?>" class="cwd-org-row">
                             <i class="fas fa-envelope"></i> <?php echo esc_html($org_email); ?>
                         </a>
                         <?php endif; ?>
-                        <?php if ($org_phone): ?>
+                        <?php if ($show_phone_visible): ?>
                         <a href="tel:<?php echo esc_attr(preg_replace('/\D/','',$org_phone)); ?>" class="cwd-org-row">
                             <i class="fas fa-phone"></i> <?php echo esc_html($org_phone); ?>
                         </a>
@@ -1368,13 +1426,17 @@ class CW_Shortcodes {
         <?php endif; // voting_enabled ?>
 
         <!-- Sticky mobile CTA -->
-        <?php if ( ! $is_closed && ! $already ): ?>
+        <?php if ( ! $already ): ?>
         <div class="cwd-mobile-cta">
             <div class="cwd-mobile-cta-price"><?php echo $fee_label; ?></div>
-            <?php if ( ! is_user_logged_in() ): ?>
+            <?php if ( $is_closed ): ?>
+            <button class="cwd-cta-btn cwd-cta-closed" disabled><i class="fas fa-lock"></i> Already Closed</button>
+            <?php elseif ( $is_upcoming ): ?>
+            <button class="cwd-cta-btn cwd-cta-upcoming" disabled><i class="fas fa-clock"></i> Coming Soon</button>
+            <?php elseif ( ! is_user_logged_in() ): ?>
             <a href="<?php echo esc_url(wc_get_page_permalink('myaccount').'?redirect_to='.urlencode(get_permalink($pid))); ?>" class="cwd-cta-btn cwd-cta-join">Log in to Join</a>
             <?php else: ?>
-            <button type="button" class="cwd-cta-btn cwd-cta-join" onclick="cwdOpenRegModal()">Register Now <i class="fas fa-bolt"></i></button>
+            <button type="button" class="cwd-cta-btn cwd-cta-join" onclick="cwdOpenRegModal()">Join Now <i class="fas fa-bolt"></i></button>
             <?php endif; ?>
         </div>
         <?php endif; ?>
@@ -1409,7 +1471,7 @@ class CW_Shortcodes {
                         </button>
                         <button type="submit" class="cwd-cta-btn cwd-cta-join cwd-reg-submit-primary" id="cwd-reg-submit"
                             style="background:#fff;background-image:none;color:#0f172a;-webkit-text-fill-color:#0f172a;border:2px solid #006599;box-shadow:0 2px 10px rgba(0,101,153,.12);">
-                            <i class="fas fa-paper-plane" style="color:#0f172a;-webkit-text-fill-color:#0f172a;"></i> Submit &amp; Proceed to Payment
+                            <i class="fas fa-paper-plane" style="color:#0f172a;-webkit-text-fill-color:#0f172a;"></i> Submit &amp; Proceed
                         </button>
                     </div>
                 </form>
@@ -1459,9 +1521,9 @@ class CW_Shortcodes {
                 var nameHint = '';
                 if (num === 1 && cfg.useAccountFullname && cfg.accountFullName) {
                     nameVal = cfg.accountFullName.replace(/"/g, '&quot;');
-                    nameHint = '<p class="cwd-reg-hint" style="font-size:12px;color:#64748b;margin:4px 0 8px;">Prefilled from your account — edit if this certificate should show a different name.</p>';
+                    nameHint = '<p class="cwd-reg-hint">Prefilled from your account — edit if this certificate should show a different name.</p>';
                 } else if (num > 1 && cfg.useAccountFullname) {
-                    nameHint = '<p class="cwd-reg-hint" style="font-size:12px;color:#64748b;margin:4px 0 8px;">Enter the full name for this participant (certificate).</p>';
+                    nameHint = '<p class="cwd-reg-hint">Enter the full name for this participant (certificate).</p>';
                 }
                 html += '<div class="cwd-reg-field">'
                       + '<label class="cwd-reg-label">Full Name <span class="cwd-req">*</span></label>'
@@ -1737,7 +1799,7 @@ class CW_Shortcodes {
                     </div>
                     <?php endif; ?>
                     <?php if ( $is_closed ): ?>
-                        <button class="cwg-cta cwg-cta-closed" disabled><i class="fas fa-lock"></i> Event Closed</button>
+                        <button class="cwg-cta cwg-cta-closed" disabled><i class="fas fa-lock"></i> Campaign Closed</button>
                     <?php elseif ( $already ): ?>
                         <a href="<?php the_permalink(); ?>" class="cwg-cta cwg-cta-joined"><i class="fas fa-check-circle"></i> Already Joined</a>
                     <?php else: ?>
@@ -1813,7 +1875,7 @@ class CW_Shortcodes {
         // "All" label: single parent → its name, multiple → "All Events"
         $all_label = count( $all_parent_terms ) === 1
             ? 'All ' . ucwords( $all_parent_terms[0]->name )
-            : 'All Events';
+            : 'All Campaigns';
 
         // ── Tax query ──────────────────────────────────────────────────────────
         if ( $active_cat ) {
@@ -2022,7 +2084,7 @@ class CW_Shortcodes {
                         <?php endif; ?>
 
                         <?php if ( $is_closed ): ?>
-                            <button class="cwg-cta cwg-cta-closed" disabled><i class="fas fa-lock"></i> Event Closed</button>
+                            <button class="cwg-cta cwg-cta-closed" disabled><i class="fas fa-lock"></i> Campaign Closed</button>
                         <?php elseif ( $already ): ?>
                             <a href="<?php the_permalink(); ?>" class="cwg-cta cwg-cta-joined"><i class="fas fa-check-circle"></i> Already Joined</a>
                         <?php else: ?>
@@ -2059,7 +2121,7 @@ class CW_Shortcodes {
             <?php else: ?>
             <div class="cwg-empty">
                 <div class="cwg-empty-icon"><i class="fas fa-search"></i></div>
-                <h3>No events found</h3>
+                <h3>No campaigns found</h3>
                 <p><?php echo $search_term ? 'Try a different keyword or clear the filter.' : 'No activities are available right now. Check back soon!'; ?></p>
                 <?php if ( $search_term || $active_cat ): ?>
                     <a href="<?php echo esc_url( $base_url ); ?>" class="cwg-cta cwg-cta-join">View All Activities</a>

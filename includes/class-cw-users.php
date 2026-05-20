@@ -86,20 +86,71 @@ class CW_Users {
 
     public function render_public_profile_html( $u ) {
         $uid = $u->ID;
-        $name     = get_user_meta($uid, 'creator_display_name', true) ?: $u->display_name;
-        $tagline  = get_user_meta($uid, 'creator_tagline', true);
-        $bio      = get_user_meta($uid, 'creator_bio', true);
-        $address  = get_user_meta($uid, 'creator_address', true) ?: 'Global';
-        $skills_raw = get_user_meta($uid, 'creator_skills', true);
-        $skills   = array_filter(array_map('trim', explode(',', (string) $skills_raw)));
-        $views    = (int) get_user_meta($uid, 'cw_profile_views', true);
-        $website  = get_user_meta($uid, 'website_url', true);
 
-        $img_meta   = get_user_meta($uid, 'creator_profile_image', true);
-        $avatar_url = (is_array($img_meta) && isset($img_meta['url'])) ? $img_meta['url'] : get_avatar_url($uid, ['size' => 200]);
+        // ── Business meta (used as fallback when creator-shaped meta is empty) ──
+        $biz_name      = get_user_meta( $uid, 'business_name', true );
+        $biz_tagline   = get_user_meta( $uid, 'business_tagline', true );
+        $biz_about     = get_user_meta( $uid, 'business_about', true );
+        $biz_city      = get_user_meta( $uid, 'business_city', true );
+        $biz_country   = get_user_meta( $uid, 'business_country', true );
+        $biz_address   = get_user_meta( $uid, 'business_address', true );
+        $biz_website   = get_user_meta( $uid, 'business_website', true );
+        $biz_industry  = get_user_meta( $uid, 'business_industry', true );
+        $biz_founded   = get_user_meta( $uid, 'business_founded_year', true );
+        $biz_team_size = get_user_meta( $uid, 'business_team_size', true );
 
-        $hdr_meta   = get_user_meta($uid, 'creator_header_image', true);
-        $header_url = (is_array($hdr_meta) && isset($hdr_meta['url'])) ? $hdr_meta['url'] : 'https://creativewings.asia/wp-content/uploads/2025/09/Asset-2@2x.png';
+        $biz_logo_meta  = get_user_meta( $uid, 'business_logo', true );
+        $biz_logo_url   = ( is_array( $biz_logo_meta ) && isset( $biz_logo_meta['url'] ) ) ? $biz_logo_meta['url'] : '';
+
+        $biz_cover_meta = get_user_meta( $uid, 'business_cover', true );
+        $biz_cover_url  = ( is_array( $biz_cover_meta ) && isset( $biz_cover_meta['url'] ) ) ? $biz_cover_meta['url'] : '';
+
+        // Composed "city, country" for the meta-row address fallback.
+        $biz_location = trim( implode( ', ', array_filter( [ trim( (string) $biz_city ), trim( (string) $biz_country ) ] ) ) );
+
+        // ── Name / tagline / bio ──
+        $creator_display = get_user_meta( $uid, 'creator_display_name', true );
+        $name    = $creator_display ?: ( $u->display_name ?: $biz_name );
+        if ( ! $name ) { $name = $u->user_login; }
+
+        $tagline = get_user_meta( $uid, 'creator_tagline', true );
+        if ( $tagline === '' || $tagline === false || $tagline === null ) { $tagline = $biz_tagline; }
+
+        $bio = get_user_meta( $uid, 'creator_bio', true );
+        if ( $bio === '' || $bio === false || $bio === null ) { $bio = $biz_about; }
+
+        // Address fallback chain: creator_address → "city, country" → business_address → Global
+        $address = get_user_meta( $uid, 'creator_address', true );
+        if ( ! $address ) { $address = $biz_location; }
+        if ( ! $address ) { $address = $biz_address; }
+        if ( ! $address ) { $address = 'Global'; }
+
+        // Skills: if creator_skills empty, fall back to industry as a single chip.
+        $skills_raw = get_user_meta( $uid, 'creator_skills', true );
+        $skills     = array_filter( array_map( 'trim', explode( ',', (string) $skills_raw ) ) );
+        $skills_heading = __( 'Focus Areas', 'creativewings-core' );
+        if ( empty( $skills ) && $biz_industry ) {
+            $skills        = [ $biz_industry ];
+            $skills_heading = __( 'Industry', 'creativewings-core' );
+        }
+
+        $views   = (int) get_user_meta( $uid, 'cw_profile_views', true );
+
+        // Website: creator website_url → business_website
+        $website = get_user_meta( $uid, 'website_url', true );
+        if ( ! $website ) { $website = $biz_website; }
+
+        // Avatar: creator_profile_image → business_logo → gravatar
+        $img_meta   = get_user_meta( $uid, 'creator_profile_image', true );
+        $avatar_url = ( is_array( $img_meta ) && isset( $img_meta['url'] ) ) ? $img_meta['url'] : '';
+        if ( ! $avatar_url ) { $avatar_url = $biz_logo_url; }
+        if ( ! $avatar_url ) { $avatar_url = get_avatar_url( $uid, [ 'size' => 200 ] ); }
+
+        // Header: creator_header_image → business_cover → default
+        $hdr_meta   = get_user_meta( $uid, 'creator_header_image', true );
+        $header_url = ( is_array( $hdr_meta ) && isset( $hdr_meta['url'] ) ) ? $hdr_meta['url'] : '';
+        if ( ! $header_url ) { $header_url = $biz_cover_url; }
+        if ( ! $header_url ) { $header_url = 'https://creativewings.asia/wp-content/uploads/2025/09/Asset-2@2x.png'; }
 
         // Viewer state — needed before we fetch portfolio so we can hide private items from visitors.
         $is_logged_in = is_user_logged_in();
@@ -214,6 +265,8 @@ class CW_Users {
             'twitter_url'   => [ 'icon' => 'fab fa-twitter',     'label' => 'Twitter',   'net' => 'twitter'   ],
             'Facebook_url'  => [ 'icon' => 'fab fa-facebook-f',  'label' => 'Facebook',  'net' => 'facebook'  ],
             'linkeden_url'  => [ 'icon' => 'fab fa-linkedin-in', 'label' => 'LinkedIn',  'net' => 'linkedin'  ],
+            'youtube_url'   => [ 'icon' => 'fab fa-youtube',     'label' => 'YouTube',   'net' => 'youtube'   ],
+            'tiktok_url'    => [ 'icon' => 'fab fa-tiktok',      'label' => 'TikTok',    'net' => 'tiktok'    ],
         ];
 
         get_header();
@@ -352,7 +405,15 @@ class CW_Users {
             .cw-pub-social-icon[data-net="twitter"]:hover   { background: #000;    border-color: #000;    }
             .cw-pub-social-icon[data-net="facebook"]:hover  { background: #1877f2; border-color: #1877f2; }
             .cw-pub-social-icon[data-net="linkedin"]:hover  { background: #0077b5; border-color: #0077b5; }
+            .cw-pub-social-icon[data-net="youtube"]:hover   { background: #ff0000; border-color: #ff0000; }
+            .cw-pub-social-icon[data-net="tiktok"]:hover    { background: #000;    border-color: #000;    }
             .cw-pub-social-icon[data-net="website"]:hover   { background: var(--pub-primary); border-color: var(--pub-primary); }
+
+            /* Organiser Info sidebar block — small label/value rows */
+            .cw-pub-org-info { display: flex; flex-direction: column; gap: 10px; }
+            .cw-pub-org-info-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 1.4; }
+            .cw-pub-org-info-row .cw-pub-org-label { color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; font-size: 11px; font-weight: 700; }
+            .cw-pub-org-info-row .cw-pub-org-value { color: #0f172a; font-weight: 600; text-align: right; }
 
             /* ── Portfolio Section ── */
             .cw-pub-portfolio h2 { font-size: 24px; font-weight: 800; color: #0f172a; margin: 0 0 20px; }
@@ -549,6 +610,35 @@ class CW_Users {
                     </div>
                     <?php endif; ?>
 
+                    <?php
+                    // Organiser Info — only render if at least one piece of business meta exists.
+                    $has_org_info = ! empty( $biz_founded ) || ! empty( $biz_team_size ) || ! empty( $biz_industry );
+                    if ( $has_org_info ): ?>
+                    <div class="cw-pub-sidebar-block">
+                        <h4><?php esc_html_e( 'Organiser Info', 'creativewings-core' ); ?></h4>
+                        <div class="cw-pub-org-info">
+                            <?php if ( ! empty( $biz_founded ) ): ?>
+                                <div class="cw-pub-org-info-row">
+                                    <span class="cw-pub-org-label"><?php esc_html_e( 'Founded', 'creativewings-core' ); ?></span>
+                                    <span class="cw-pub-org-value"><?php echo esc_html( $biz_founded ); ?></span>
+                                </div>
+                            <?php endif; ?>
+                            <?php if ( ! empty( $biz_team_size ) ): ?>
+                                <div class="cw-pub-org-info-row">
+                                    <span class="cw-pub-org-label"><?php esc_html_e( 'Team Size', 'creativewings-core' ); ?></span>
+                                    <span class="cw-pub-org-value"><?php echo esc_html( $biz_team_size ); ?></span>
+                                </div>
+                            <?php endif; ?>
+                            <?php if ( ! empty( $biz_industry ) ): ?>
+                                <div class="cw-pub-org-info-row">
+                                    <span class="cw-pub-org-label"><?php esc_html_e( 'Industry', 'creativewings-core' ); ?></span>
+                                    <span class="cw-pub-org-value"><?php echo esc_html( $biz_industry ); ?></span>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
                     <!-- Share Profile widget -->
                     <div class="cw-pub-sidebar-block cw-share-widget">
                         <h4><?php esc_html_e( 'Share this profile', 'creativewings-core' ); ?></h4>
@@ -592,7 +682,7 @@ class CW_Users {
 
                     <?php if(!empty($skills)): ?>
                     <div class="cw-pub-sidebar-block">
-                        <h4><?php esc_html_e( 'Focus Areas', 'creativewings-core' ); ?></h4>
+                        <h4><?php echo esc_html( $skills_heading ); ?></h4>
                         <div class="cw-pub-skills">
                             <?php foreach($skills as $skill): ?>
                                 <span class="cw-pub-skill-chip"><?php echo esc_html($skill); ?></span>

@@ -62,6 +62,11 @@ class CW_Dashboard_Business {
         // Base URL for links
         $base = get_permalink( wc_get_page_id( 'myaccount' ) );
 
+        // Public organiser profile URL (visible to everyone). Falls back to login slug.
+        $public_profile_url = $u && ! empty( $u->user_login )
+            ? home_url( '/profile/' . rawurlencode( $u->user_login ) . '/' )
+            : '';
+
         ?>
         <style>
             .woocommerce-MyAccount-content > p:first-child,
@@ -74,18 +79,28 @@ class CW_Dashboard_Business {
             <div class="cw-dash-header">
                 <div>
                     <h1 style="margin:0 0 4px;">Hello, <?php echo esc_html($biz_name); ?> 👋</h1>
-                    <p>Manage your events, track earnings, and update your profile.</p>
+                    <p>Manage your campaigns, track earnings, and update your profile.</p>
                 </div>
-                <a href="<?php echo esc_url( add_query_arg('tab', 'campaigns', $base) ); ?>" class="cw-btn-primary" style="text-decoration:none;">
-                    <i class="fas fa-plus"></i> Create Event
-                </a>
+                <div class="cw-dash-header-actions">
+                    <?php if ( $public_profile_url ) : ?>
+                        <a href="<?php echo esc_url( $public_profile_url ); ?>"
+                           class="cw-btn-outline-blue"
+                           target="_blank" rel="noopener"
+                           title="Open your public organiser profile in a new tab">
+                            <i class="fas fa-user-circle"></i> View Public Profile
+                        </a>
+                    <?php endif; ?>
+                    <a href="<?php echo esc_url( add_query_arg('tab', 'campaigns', $base) ); ?>" class="cw-btn-primary" style="text-decoration:none;">
+                        <i class="fas fa-plus"></i> Create Campaign
+                    </a>
+                </div>
             </div>
 
             <!-- STATS GRID (4 cols) -->
             <div class="cw-stats-grid cols-4">
                 <div class="cw-stat-card">
                     <div>
-                        <span class="cw-stat-label">Active Events</span>
+                        <span class="cw-stat-label">Active Campaigns</span>
                         <h3 class="cw-stat-value"><?php echo intval($total_active); ?></h3>
                     </div>
                     <div class="cw-stat-icon-wrapper green"><i class="fas fa-bullhorn"></i></div>
@@ -118,12 +133,21 @@ class CW_Dashboard_Business {
 
             <!-- SPLIT SECTION (Chart + Actions) -->
             <div class="cw-split-section">
-                
+
                 <!-- LEFT: REVENUE CHART -->
                 <div class="cw-chart-container">
                     <div class="cw-chart-header">
                         <h3>Revenue Overview</h3>
-                        <select class="cw-chart-filter"><option>Last 6 Months</option><option>This Year</option></select>
+                        <select class="cw-chart-filter" id="cw-revenue-range" aria-label="Date range">
+                            <option value="1">Today</option>
+                            <option value="3">Last 3 days</option>
+                            <option value="7">Last 7 days</option>
+                            <option value="14">Last 14 days</option>
+                            <option value="30" selected>Last 30 days</option>
+                            <option value="180">Last 6 months</option>
+                            <option value="365">Last 1 year</option>
+                            <option value="all">All time</option>
+                        </select>
                     </div>
                     <div class="cw-chart-wrapper">
                         <canvas id="revenueChart"></canvas>
@@ -140,7 +164,7 @@ class CW_Dashboard_Business {
                                 <div class="cw-action-icon red"><i class="fas fa-plus"></i></div>
                                 <div>
                                     <strong>Create Campaign</strong>
-                                    <span>Launch a new event</span>
+                                    <span>Launch a new campaign</span>
                                 </div>
                             </div>
                             <i class="fas fa-arrow-right"></i>
@@ -168,6 +192,19 @@ class CW_Dashboard_Business {
                             <i class="fas fa-arrow-right"></i>
                         </a>
 
+                        <?php if ( $public_profile_url ) : ?>
+                        <a href="<?php echo esc_url( $public_profile_url ); ?>" class="cw-action-btn hover-blue" target="_blank" rel="noopener">
+                            <div class="cw-action-content">
+                                <div class="cw-action-icon blue"><i class="fas fa-globe"></i></div>
+                                <div>
+                                    <strong>Public Profile</strong>
+                                    <span>View how the public sees you</span>
+                                </div>
+                            </div>
+                            <i class="fas fa-external-link-alt"></i>
+                        </a>
+                        <?php endif; ?>
+
                     </div>
                 </div>
             </div>
@@ -178,38 +215,93 @@ class CW_Dashboard_Business {
         <script>
         document.addEventListener('DOMContentLoaded', function() {
             const ctx = document.getElementById('revenueChart');
-            if(ctx && typeof Chart !== 'undefined') {
-                const ctx2d = ctx.getContext('2d');
-                // Create Gradient
-                let gradient = ctx2d.createLinearGradient(0, 0, 0, 400);
-                gradient.addColorStop(0, 'rgba(15, 103, 150, 0.2)'); // Brand Blue transparent
-                gradient.addColorStop(1, 'rgba(15, 103, 150, 0)');
+            if (!ctx || typeof Chart === 'undefined') return;
 
-                new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-                        datasets: [{
-                            label: 'Revenue',
-                            data: [0, 0, 0, 0, 0, <?php echo floatval($wallet['total_earned']); ?>], // Populate with real historical data in V2
-                            borderColor: '#0F6796', // Brand Blue
-                            borderWidth: 3,
-                            backgroundColor: gradient,
-                            fill: true,
-                            tension: 0.4, // Smooth curve
-                            pointRadius: 3,
-                            pointHoverRadius: 6
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false }, tooltip: { backgroundColor: '#fff', titleColor: '#000', bodyColor: '#0F6796', borderColor: '#e2e8f0', borderWidth: 1 } },
-                        scales: {
-                            y: { beginAtZero: true, grid: { borderDash: [5, 5], color: '#e2e8f0' }, ticks: { color: '#64748b' } },
-                            x: { grid: { display: false }, ticks: { color: '#64748b' } }
-                        }
+            const totalEarned = <?php echo floatval($wallet['total_earned']); ?>;
+            const ctx2d = ctx.getContext('2d');
+            let gradient = ctx2d.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(15, 103, 150, 0.2)');
+            gradient.addColorStop(1, 'rgba(15, 103, 150, 0)');
+
+            // Build labels + data series for a given range value.
+            // NOTE: Real per-day revenue isn't queried yet — we render an empty trend
+            // with the lifetime "total earned" on the latest bucket so the chart still
+            // reflects the dashboard total. Hook this up to a real timeseries later.
+            function buildSeries(range) {
+                let labels = [];
+                if (range === '1') {
+                    labels = ['Today'];
+                } else if (range === '3') {
+                    labels = ['-2d', '-1d', 'Today'];
+                } else if (range === '7') {
+                    labels = ['-6d', '-5d', '-4d', '-3d', '-2d', '-1d', 'Today'];
+                } else if (range === '14') {
+                    for (let i = 13; i >= 0; i--) labels.push(i === 0 ? 'Today' : ('-' + i + 'd'));
+                } else if (range === '30') {
+                    for (let i = 29; i >= 0; i -= 3) labels.push(i === 0 ? 'Today' : ('-' + i + 'd'));
+                    if (labels[labels.length - 1] !== 'Today') labels.push('Today');
+                } else if (range === '180') {
+                    const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                    const today = new Date();
+                    for (let i = 5; i >= 0; i--) {
+                        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+                        labels.push(m[d.getMonth()]);
                     }
+                } else if (range === '365') {
+                    const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                    const today = new Date();
+                    for (let i = 11; i >= 0; i--) {
+                        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+                        labels.push(m[d.getMonth()]);
+                    }
+                } else { // all
+                    labels = ['Year 1', 'Year 2', 'Year 3', 'This year'];
+                }
+                const data = labels.map(function () { return 0; });
+                data[data.length - 1] = totalEarned;
+                return { labels: labels, data: data };
+            }
+
+            const initialRange = (document.getElementById('cw-revenue-range') || {}).value || '30';
+            const init = buildSeries(initialRange);
+
+            const chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: init.labels,
+                    datasets: [{
+                        label: 'Revenue',
+                        data: init.data,
+                        borderColor: '#0F6796',
+                        borderWidth: 3,
+                        backgroundColor: gradient,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 3,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { backgroundColor: '#fff', titleColor: '#000', bodyColor: '#0F6796', borderColor: '#e2e8f0', borderWidth: 1 }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, grid: { borderDash: [5, 5], color: '#e2e8f0' }, ticks: { color: '#64748b' } },
+                        x: { grid: { display: false }, ticks: { color: '#64748b', maxRotation: 0, autoSkip: true, autoSkipPadding: 12 } }
+                    }
+                }
+            });
+
+            const rangeEl = document.getElementById('cw-revenue-range');
+            if (rangeEl) {
+                rangeEl.addEventListener('change', function () {
+                    const s = buildSeries(this.value);
+                    chart.data.labels = s.labels;
+                    chart.data.datasets[0].data = s.data;
+                    chart.update();
                 });
             }
         });
@@ -222,21 +314,44 @@ class CW_Dashboard_Business {
        ========================================================================== */
    public function render_campaigns() {
         $uid = get_current_user_id();
-        $campaigns = get_posts(
-            class_exists( 'CW_Roles' ) ? CW_Roles::get_business_campaign_query_args( $uid ) : [
-                'post_type'      => 'product',
-                'author'         => $uid,
-                'post_status'    => [ 'publish', 'pending', 'draft' ],
-                'posts_per_page' => -1,
-            ]
-        );
 
         // --- FIX: Define base URLs using the safe ?tab=slug structure ---
         $my_account_page_url = get_permalink( wc_get_page_id( 'myaccount' ) );
         $base_campaigns_url = add_query_arg('tab', 'campaigns', $my_account_page_url); // For Edit links
         $manage_entries_url = add_query_arg('tab', 'manage_entries', $my_account_page_url); // For Manage Entries link
 
-        
+        // --- Read & sanitize filter / pagination inputs from URL ---
+        $cw_q       = isset($_GET['cw_q']) ? sanitize_text_field( wp_unslash( $_GET['cw_q'] ) ) : '';
+        $allowed_statuses = ['any', 'publish', 'pending', 'draft'];
+        $cw_status  = isset($_GET['cw_status']) && in_array($_GET['cw_status'], $allowed_statuses, true)
+            ? $_GET['cw_status']
+            : 'any';
+        $cw_cpage   = isset($_GET['cw_cpage']) ? max(1, intval($_GET['cw_cpage'])) : 1;
+
+        // --- Build query args: role-aware base, then merge our filters on top ---
+        $base_args = class_exists('CW_Roles')
+            ? CW_Roles::get_business_campaign_query_args($uid)
+            : [
+                'post_type'   => 'product',
+                'author'      => $uid,
+                'post_status' => ['publish', 'pending', 'draft'],
+            ];
+
+        $args = array_merge($base_args, [
+            'posts_per_page' => 6,
+            'paged'          => $cw_cpage,
+        ]);
+        if ($cw_q !== '')          { $args['s']           = $cw_q; }
+        if ($cw_status !== 'any')  { $args['post_status'] = $cw_status; }
+
+        $query        = new WP_Query($args);
+        $found_posts  = (int) $query->found_posts;
+        $total_pages  = (int) $query->max_num_pages;
+        $is_filtered  = ($cw_q !== '' || $cw_status !== 'any');
+
+        // Reset URL (clears all filter/pagination args, keeps the tab)
+        $reset_url = add_query_arg('tab', 'campaigns', $my_account_page_url);
+
         $is_edit_mode = isset($_GET['edit_id']);
         $edit_id = $is_edit_mode ? intval($_GET['edit_id']) : 0;
         
@@ -244,25 +359,53 @@ class CW_Dashboard_Business {
         if ( isset($_GET['saved']) ) echo '<div class="cw-alert success">Campaign saved successfully!</div>';
         if ( isset($_GET['campaign_created']) ) echo '<div class="cw-alert success">New Campaign created successfully!</div>';
 
-        if ( current_user_can( 'manage_woocommerce' ) ) {
-            echo '<p style="margin:0 0 16px;"><a class="button" href="' . esc_url( admin_url( 'admin.php?page=cw-import-campaign' ) ) . '">' . esc_html__( 'Import campaign from JSON (admin)', 'creativewings-core' ) . '</a></p>';
-        }
-
         ?>
         <div class="cw-content-wrapper">
             <div class="cw-dash-header">
                 <div>
                     <h2 style="margin:0 0 4px;">My Campaigns</h2>
-                    <p>Manage and track all your events</p>
+                    <p>Manage and track all your campaigns</p>
                 </div>
                 <button type="button" class="cw-btn-primary" id="cw-open-create" style="text-decoration:none;">
-                    <i class="fas fa-plus"></i> Create New Event
+                    <i class="fas fa-plus"></i> Create New Campaign
                 </button>
             </div>
 
-            <?php if ( $campaigns ): ?>
+            <!-- Filter / search bar -->
+            <form method="GET" class="cw-camp-filterbar" role="search" aria-label="Filter campaigns">
+                <input type="hidden" name="tab" value="campaigns">
+                <input type="text"
+                       name="cw_q"
+                       value="<?php echo esc_attr($cw_q); ?>"
+                       placeholder="Search campaign name…"
+                       aria-label="Search campaign name">
+                <select name="cw_status" aria-label="Filter by status">
+                    <option value="any"     <?php selected($cw_status, 'any'); ?>>All statuses</option>
+                    <option value="publish" <?php selected($cw_status, 'publish'); ?>>Published</option>
+                    <option value="pending" <?php selected($cw_status, 'pending'); ?>>Pending</option>
+                    <option value="draft"   <?php selected($cw_status, 'draft'); ?>>Draft</option>
+                </select>
+                <button type="submit" class="cw-btn-primary small">
+                    <i class="fas fa-filter"></i> Filter
+                </button>
+                <a href="<?php echo esc_url($reset_url); ?>" class="cw-btn-outline-blue small">
+                    <i class="fas fa-times"></i> Reset
+                </a>
+            </form>
+
+            <?php if ( $found_posts > 0 ):
+                $range_from = (($cw_cpage - 1) * 6) + 1;
+                $range_to   = min($cw_cpage * 6, $found_posts);
+            ?>
+                <p class="cw-result-count">
+                    Showing <strong><?php echo intval($range_from); ?>–<?php echo intval($range_to); ?></strong>
+                    of <strong><?php echo intval($found_posts); ?></strong>
+                    <?php echo ($found_posts === 1) ? 'campaign' : 'campaigns'; ?>
+                    <?php if ($is_filtered) echo '<span aria-hidden="true"> · filtered</span>'; ?>
+                </p>
+
                 <div class="cw-portfolio-grid-modern">
-                    <?php foreach ( $campaigns as $c ):
+                    <?php foreach ( $query->posts as $c ):
                         $pid = $c->ID;
                         $status = get_post_status( $pid );
                         $status_label = ucfirst($status);
@@ -279,8 +422,7 @@ class CW_Dashboard_Business {
                         ) );
 
                         $is_competition = has_term('competitions', 'product_cat', $pid);
-                        $is_talk        = has_term('talks', 'product_cat', $pid);
-                        $cat_label      = $is_competition ? 'Competition' : ( $is_talk ? 'Talk/Seminar' : 'Activity' );
+                        $cat_label      = $is_competition ? 'Competition' : 'Activity';
                         $event_mode     = get_post_meta($pid, 'cw_event_mode', true) ?: 'physical';
 
                         $deadline = get_post_meta($pid, 'submission_deadline', true);
@@ -304,6 +446,9 @@ class CW_Dashboard_Business {
                                     <span class="cw-tag gray"><?php echo ucfirst($event_mode); ?></span>
                                 </div>
                                 <h4><?php echo esc_html(get_the_title($pid)); ?></h4>
+                                <?php if ($status === 'pending'): ?>
+                                <small class="cw-pending-note">Awaiting admin approval</small>
+                                <?php endif; ?>
                                 <div class="cw-card-stats">
                                     <div class="cw-stat-item"><i class="fas fa-users"></i> <?php echo number_format($entries_count); ?> Joined</div>
                                     <div class="cw-stat-item"><i class="fas fa-wallet"></i> RM <?php echo number_format($earnings, 0); ?></div>
@@ -319,12 +464,59 @@ class CW_Dashboard_Business {
                         </div>
                     <?php endforeach; ?>
                 </div>
+
+                <?php if ( $total_pages > 1 ):
+                    $prev_page = max(1, $cw_cpage - 1);
+                    $next_page = min($total_pages, $cw_cpage + 1);
+                    $on_first  = ($cw_cpage <= 1);
+                    $on_last   = ($cw_cpage >= $total_pages);
+
+                    $build_page_url = function ($n) use ($cw_q, $cw_status, $my_account_page_url) {
+                        return add_query_arg([
+                            'tab'       => 'campaigns',
+                            'cw_q'      => $cw_q,
+                            'cw_status' => $cw_status,
+                            'cw_cpage'  => $n,
+                        ], $my_account_page_url);
+                    };
+                ?>
+                <nav class="cw-pagination" role="navigation" aria-label="Campaigns pagination">
+                    <?php if ($on_first): ?>
+                        <span class="cw-page-btn prev disabled" aria-disabled="true">‹ Prev</span>
+                    <?php else: ?>
+                        <a class="cw-page-btn prev"
+                           href="<?php echo esc_url($build_page_url($prev_page)); ?>"
+                           aria-label="Previous page">‹ Prev</a>
+                    <?php endif; ?>
+
+                    <span class="cw-page-info">
+                        Page <?php echo intval($cw_cpage); ?> of <?php echo intval($total_pages); ?>
+                    </span>
+
+                    <?php if ($on_last): ?>
+                        <span class="cw-page-btn next disabled" aria-disabled="true">Next ›</span>
+                    <?php else: ?>
+                        <a class="cw-page-btn next"
+                           href="<?php echo esc_url($build_page_url($next_page)); ?>"
+                           aria-label="Next page">Next ›</a>
+                    <?php endif; ?>
+                </nav>
+                <?php endif; ?>
+
+            <?php elseif ( $is_filtered ): ?>
+                <div class="cw-empty-state">
+                    <i class="fas fa-search"></i>
+                    <p>No campaigns match your filter.</p>
+                    <a href="<?php echo esc_url($reset_url); ?>" class="cw-btn-outline-blue" style="margin-top:14px; text-decoration:none;">
+                        <i class="fas fa-times"></i> Clear filter
+                    </a>
+                </div>
             <?php else: ?>
                 <div class="cw-empty-state">
                     <i class="fas fa-bullhorn"></i>
-                    <p>No campaigns yet. Create your first event to get started!</p>
+                    <p>No campaigns yet. Create your first campaign to get started!</p>
                     <button type="button" class="cw-btn-primary" id="cw-open-create-empty" style="margin-top:14px;">
-                        <i class="fas fa-plus"></i> Create Event
+                        <i class="fas fa-plus"></i> Create Campaign
                     </button>
                 </div>
             <?php endif; ?>
@@ -553,12 +745,46 @@ class CW_Dashboard_Business {
        ========================================================================== */
     public function render_settings() {
         $uid = get_current_user_id();
-        $fields = ['business_name', 'business_phone', 'business_address', 'business_website', 'business_ssm'];
-        $meta = []; 
-        foreach($fields as $f) $meta[$f] = get_user_meta($uid, $f, true);
-        
+
+        // Text-ish fields read in bulk so the form can pre-fill cleanly.
+        $text_fields = [
+            // Existing
+            'business_name', 'business_phone', 'business_address', 'business_website', 'business_ssm',
+            // New basics / story / location
+            'business_tagline', 'business_about', 'business_founded_year', 'business_industry',
+            'business_team_size', 'business_city', 'business_country',
+            // Social links (reuse existing meta keys so the public profile picks them up)
+            'Facebook_url', 'instagram_url', 'linkeden_url', 'twitter_url', 'behave_url',
+            'youtube_url', 'tiktok_url',
+        ];
+        $meta = [];
+        foreach ( $text_fields as $f ) {
+            $meta[ $f ] = get_user_meta( $uid, $f, true );
+        }
+
         $logo = get_user_meta($uid, 'business_logo', true);
         $logo_url = (is_array($logo) && isset($logo['url'])) ? $logo['url'] : '';
+
+        $cover = get_user_meta($uid, 'business_cover', true);
+        $cover_url = (is_array($cover) && isset($cover['url'])) ? $cover['url'] : '';
+
+        // Public-visibility toggles for the organiser card on campaign pages.
+        // Default to visible ('1'). Stored as '1' / '0'.
+        $show_email = get_user_meta( $uid, 'cw_show_org_email', true );
+        $show_phone = get_user_meta( $uid, 'cw_show_org_phone', true );
+        $show_email = ( $show_email === '' ) ? '1' : $show_email;
+        $show_phone = ( $show_phone === '' ) ? '1' : $show_phone;
+
+        $current_user = wp_get_current_user();
+        $public_email = $current_user ? $current_user->user_email : '';
+
+        $current_year = (int) date( 'Y' );
+
+        $industries = [
+            'Education', 'Technology', 'Arts & Culture', 'Media', 'Non-Profit',
+            'Government', 'Sports', 'Healthcare', 'Retail', 'Other',
+        ];
+        $team_sizes = [ '1-10', '11-50', '51-200', '201-500', '500+' ];
 
         if ( isset($_GET['updated']) ) echo '<div class="cw-alert success"><i class="fas fa-check-circle"></i> Profile updated successfully.</div>';
         ?>
@@ -572,14 +798,28 @@ class CW_Dashboard_Business {
             </div>
 
             <div class="cw-profile-card-ui">
-                <!-- Banner Section -->
-                <div class="cw-profile-banner"></div>
-                
-                <div class="cw-profile-body">
-                    
-                    <form action="<?php echo admin_url('admin-post.php'); ?>" method="POST" enctype="multipart/form-data">
-                        <input type="hidden" name="action" value="cw_save_biz_info">
-                        <?php wp_nonce_field('cw_biz_info_nonce'); ?>
+
+                <form action="<?php echo admin_url('admin-post.php'); ?>" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="action" value="cw_save_biz_info">
+                    <?php wp_nonce_field('cw_biz_info_nonce'); ?>
+
+                    <!-- Cover Photo Banner (uploader) -->
+                    <div class="cw-profile-banner<?php echo $cover_url ? ' has-cover' : ''; ?>">
+                        <?php if ( $cover_url ): ?>
+                            <img src="<?php echo esc_url( $cover_url ); ?>" id="cw-biz-cover-preview" alt="Cover photo">
+                        <?php else: ?>
+                            <img src="" id="cw-biz-cover-preview" alt="Cover photo" style="display:none;">
+                        <?php endif; ?>
+
+                        <label for="biz_cover_input" class="cw-cover-upload-btn">
+                            <i class="fas fa-camera"></i>
+                            <span><?php echo $cover_url ? 'Change cover photo' : 'Add cover photo'; ?></span>
+                        </label>
+                        <input type="file" id="biz_cover_input" name="business_cover" accept="image/*" style="display:none;"
+                               onchange="if(this.files[0]){var p=document.getElementById('cw-biz-cover-preview');p.src=window.URL.createObjectURL(this.files[0]);p.style.display='block';this.closest('.cw-profile-banner').classList.add('has-cover');}">
+                    </div>
+
+                    <div class="cw-profile-body">
 
                         <!-- Avatar / Logo Section -->
                         <div class="cw-profile-avatar-wrap">
@@ -587,47 +827,178 @@ class CW_Dashboard_Business {
                                 <?php if($logo_url): ?>
                                     <img src="<?php echo esc_url($logo_url); ?>" id="cw-biz-logo-preview">
                                 <?php else: ?>
-                                    <div class="cw-avatar-placeholder"><i class="fas fa-building"></i></div>
+                                    <img src="" id="cw-biz-logo-preview" style="display:none;">
+                                    <div class="cw-avatar-placeholder" id="cw-biz-logo-placeholder"><i class="fas fa-building"></i></div>
                                 <?php endif; ?>
                             </div>
                             <label for="biz_logo_input" class="cw-avatar-upload-btn">
                                 <i class="fas fa-camera"></i>
                             </label>
-                            <input type="file" id="biz_logo_input" name="business_logo" accept="image/*" style="display:none;" 
-                                   onchange="if(this.files[0]) document.getElementById('cw-biz-logo-preview').src = window.URL.createObjectURL(this.files[0])">
+                            <input type="file" id="biz_logo_input" name="business_logo" accept="image/*" style="display:none;"
+                                   onchange="if(this.files[0]){var p=document.getElementById('cw-biz-logo-preview');p.src=window.URL.createObjectURL(this.files[0]);p.style.display='block';var ph=document.getElementById('cw-biz-logo-placeholder');if(ph)ph.style.display='none';}">
                         </div>
 
-                        <!-- Form Grid -->
+                        <!-- ============================================================
+                             SECTION: BASICS
+                             ============================================================ -->
+                        <h4 class="cw-biz-section-title"><i class="fas fa-building"></i> Basics</h4>
+
                         <div class="cw-profile-grid-layout">
-                            
-                            <!-- Left Column -->
+
                             <div class="cw-col-left">
                                 <div class="cw-field-dark">
                                     <label>Company Name</label>
                                     <input type="text" name="business_name" value="<?php echo esc_attr($meta['business_name']); ?>" placeholder="Company Name">
                                 </div>
                                 <div class="cw-field-dark">
+                                    <label>Tagline</label>
+                                    <input type="text" name="business_tagline" value="<?php echo esc_attr($meta['business_tagline']); ?>" placeholder="A short slogan that describes you" maxlength="120">
+                                </div>
+                                <div class="cw-field-dark">
                                     <label>SSM / Registration Number</label>
                                     <input type="text" name="business_ssm" value="<?php echo esc_attr($meta['business_ssm']); ?>" placeholder="2024010...">
                                 </div>
                                 <div class="cw-field-dark">
-                                    <label>Website</label>
-                                    <input type="text" name="business_website" value="<?php echo esc_attr($meta['business_website']); ?>" placeholder="https://...">
+                                    <label>Industry</label>
+                                    <select name="business_industry">
+                                        <option value="" <?php selected( $meta['business_industry'], '' ); ?>>— Select industry —</option>
+                                        <?php foreach ( $industries as $ind ): ?>
+                                            <option value="<?php echo esc_attr( $ind ); ?>" <?php selected( $meta['business_industry'], $ind ); ?>><?php echo esc_html( $ind ); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
                                 </div>
                             </div>
 
-                            <!-- Right Column -->
                             <div class="cw-col-right">
                                 <div class="cw-field-dark">
                                     <label>Phone Number</label>
                                     <input type="text" name="business_phone" value="<?php echo esc_attr($meta['business_phone']); ?>" placeholder="+60...">
                                 </div>
                                 <div class="cw-field-dark">
-                                    <label>Business Address</label>
-                                    <textarea name="business_address" rows="5" placeholder="Enter address..."><?php echo esc_textarea($meta['business_address']); ?></textarea>
+                                    <label>Website</label>
+                                    <input type="url" name="business_website" value="<?php echo esc_attr($meta['business_website']); ?>" placeholder="https://...">
+                                </div>
+                                <div class="cw-field-dark">
+                                    <label>Founded Year</label>
+                                    <input type="number" name="business_founded_year" value="<?php echo esc_attr($meta['business_founded_year']); ?>" min="1900" max="<?php echo esc_attr( $current_year ); ?>" placeholder="e.g. <?php echo esc_attr( $current_year - 5 ); ?>">
+                                </div>
+                                <div class="cw-field-dark">
+                                    <label>Team Size</label>
+                                    <select name="business_team_size">
+                                        <option value="" <?php selected( $meta['business_team_size'], '' ); ?>>— Select size —</option>
+                                        <?php foreach ( $team_sizes as $ts ): ?>
+                                            <option value="<?php echo esc_attr( $ts ); ?>" <?php selected( $meta['business_team_size'], $ts ); ?>><?php echo esc_html( $ts ); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
                                 </div>
                             </div>
 
+                        </div>
+
+                        <!-- ============================================================
+                             SECTION: STORY
+                             ============================================================ -->
+                        <h4 class="cw-biz-section-title"><i class="fas fa-book-open"></i> Story</h4>
+
+                        <div class="cw-field-dark">
+                            <label>About</label>
+                            <textarea name="business_about" rows="5" placeholder="Tell people what your organisation does, who you serve, and what makes you different..."><?php echo esc_textarea( $meta['business_about'] ); ?></textarea>
+                            <p class="cw-field-hint">Basic HTML is allowed (links, bold, lists). Shown on your public profile.</p>
+                        </div>
+
+                        <!-- ============================================================
+                             SECTION: LOCATION
+                             ============================================================ -->
+                        <h4 class="cw-biz-section-title"><i class="fas fa-map-marker-alt"></i> Location</h4>
+
+                        <div class="cw-profile-grid-layout">
+                            <div class="cw-col-left">
+                                <div class="cw-field-dark">
+                                    <label>City</label>
+                                    <input type="text" name="business_city" value="<?php echo esc_attr( $meta['business_city'] ); ?>" placeholder="e.g. Kuala Lumpur">
+                                </div>
+                            </div>
+                            <div class="cw-col-right">
+                                <div class="cw-field-dark">
+                                    <label>Country</label>
+                                    <input type="text" name="business_country" value="<?php echo esc_attr( $meta['business_country'] ); ?>" placeholder="Malaysia">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="cw-field-dark">
+                            <label>Business Address</label>
+                            <textarea name="business_address" rows="3" placeholder="Street, postcode, building..."><?php echo esc_textarea($meta['business_address']); ?></textarea>
+                        </div>
+
+                        <!-- ============================================================
+                             SECTION: SOCIAL LINKS
+                             ============================================================ -->
+                        <h4 class="cw-biz-section-title"><i class="fas fa-share-alt"></i> Social Links</h4>
+
+                        <div class="cw-profile-grid-layout">
+                            <div class="cw-col-left">
+                                <div class="cw-field-dark">
+                                    <label><i class="fab fa-facebook-f" style="color:#1877f2;"></i> Facebook</label>
+                                    <input type="url" name="Facebook_url" value="<?php echo esc_attr( $meta['Facebook_url'] ); ?>" placeholder="https://facebook.com/yourpage">
+                                </div>
+                                <div class="cw-field-dark">
+                                    <label><i class="fab fa-instagram" style="color:#dc2743;"></i> Instagram</label>
+                                    <input type="url" name="instagram_url" value="<?php echo esc_attr( $meta['instagram_url'] ); ?>" placeholder="https://instagram.com/yourhandle">
+                                </div>
+                                <div class="cw-field-dark">
+                                    <label><i class="fab fa-linkedin-in" style="color:#0077b5;"></i> LinkedIn</label>
+                                    <input type="url" name="linkeden_url" value="<?php echo esc_attr( $meta['linkeden_url'] ); ?>" placeholder="https://linkedin.com/company/...">
+                                </div>
+                                <div class="cw-field-dark">
+                                    <label><i class="fab fa-behance" style="color:#1769ff;"></i> Behance</label>
+                                    <input type="url" name="behave_url" value="<?php echo esc_attr( $meta['behave_url'] ); ?>" placeholder="https://behance.net/yourstudio">
+                                </div>
+                            </div>
+                            <div class="cw-col-right">
+                                <div class="cw-field-dark">
+                                    <label><i class="fab fa-twitter" style="color:#000;"></i> X / Twitter</label>
+                                    <input type="url" name="twitter_url" value="<?php echo esc_attr( $meta['twitter_url'] ); ?>" placeholder="https://x.com/yourhandle">
+                                </div>
+                                <div class="cw-field-dark">
+                                    <label><i class="fab fa-youtube" style="color:#ff0000;"></i> YouTube</label>
+                                    <input type="url" name="youtube_url" value="<?php echo esc_attr( $meta['youtube_url'] ); ?>" placeholder="https://youtube.com/@yourchannel">
+                                </div>
+                                <div class="cw-field-dark">
+                                    <label><i class="fab fa-tiktok" style="color:#000;"></i> TikTok</label>
+                                    <input type="url" name="tiktok_url" value="<?php echo esc_attr( $meta['tiktok_url'] ); ?>" placeholder="https://tiktok.com/@yourhandle">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Public visibility on campaign pages -->
+                        <div class="cw-biz-visibility">
+                            <h3 class="cw-biz-visibility-title"><i class="fas fa-eye"></i> Public visibility</h3>
+                            <p class="cw-biz-visibility-desc">Choose what contact details participants can see on your campaign pages.</p>
+
+                            <label class="cw-biz-vis-row">
+                                <input type="hidden" name="cw_show_org_email" value="0">
+                                <input type="checkbox" name="cw_show_org_email" value="1" <?php checked( $show_email, '1' ); ?>>
+                                <span class="cw-biz-vis-text">
+                                    <strong>Show email on campaign pages</strong>
+                                    <?php if ( $public_email ): ?>
+                                        <em><?php echo esc_html( $public_email ); ?></em>
+                                    <?php endif; ?>
+                                </span>
+                            </label>
+
+                            <label class="cw-biz-vis-row">
+                                <input type="hidden" name="cw_show_org_phone" value="0">
+                                <input type="checkbox" name="cw_show_org_phone" value="1" <?php checked( $show_phone, '1' ); ?>>
+                                <span class="cw-biz-vis-text">
+                                    <strong>Show phone number on campaign pages</strong>
+                                    <?php if ( ! empty( $meta['business_phone'] ) ): ?>
+                                        <em><?php echo esc_html( $meta['business_phone'] ); ?></em>
+                                    <?php else: ?>
+                                        <em class="cw-biz-vis-empty">Add a phone number above to enable this</em>
+                                    <?php endif; ?>
+                                </span>
+                            </label>
                         </div>
 
                         <div class="cw-profile-footer">
@@ -636,8 +1007,8 @@ class CW_Dashboard_Business {
                             </button>
                         </div>
 
-                    </form>
-                </div>
+                    </div>
+                </form>
             </div>
 
         </div>

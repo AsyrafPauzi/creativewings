@@ -38,6 +38,7 @@ class CW_Loader {
         require_once CW_PATH . 'includes/class-cw-shop.php';
         require_once CW_PATH . 'includes/class-cw-checkout.php';
         require_once CW_PATH . 'includes/class-cw-shortcodes.php';
+        require_once CW_PATH . 'includes/class-cw-organizer-profile.php';
         require_once CW_PATH . 'includes/class-cw-ajax.php';
         require_once CW_PATH . 'includes/class-cw-wallet.php';
         require_once CW_PATH . 'includes/class-cw-admin.php';

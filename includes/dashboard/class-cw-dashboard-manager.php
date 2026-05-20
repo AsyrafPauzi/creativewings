@@ -62,6 +62,7 @@ class CW_Dashboard_Manager {
         } else {
             $menu_items = [
                 'overview'         => ['icon' => 'fa-th-large', 'label' => 'Overview'],
+                'explore'          => ['icon' => 'fa-bolt',     'label' => 'Explore Opportunities'],
                 'link-submission'  => ['icon' => 'fa-link',     'label' => 'Link submission code'],
                 'activities'       => ['icon' => 'fa-running',  'label' => 'My Activities'],
                 'upgrade'          => ['icon' => 'fa-arrow-up', 'label' => 'Upgrade Account'],
@@ -242,6 +243,13 @@ class CW_Dashboard_Manager {
             switch ($tab) {
                 case 'overview': 
                     if ( $this->contestant_dashboard ) $this->contestant_dashboard->render_overview(); 
+                    break;
+                case 'explore':
+                    if ( $this->creator_dashboard ) {
+                        $this->creator_dashboard->render_explore_opportunities();
+                    } elseif ( $this->contestant_dashboard ) {
+                        $this->contestant_dashboard->render_overview();
+                    }
                     break;
                 case 'link-submission':
                     if ( $this->contestant_dashboard ) {

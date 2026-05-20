@@ -36,7 +36,30 @@ class CW_Dashboard_Contestant {
         // CRITICAL FIX: Base URL for View All Activities link
         $base_url = get_permalink( wc_get_page_id( 'myaccount' ) );
         $activities_url = add_query_arg( 'tab', 'activities', $base_url );
-        $upgrade_url = add_query_arg( 'tab', 'upgrade', $base_url );
+        $upgrade_url    = add_query_arg( 'tab', 'upgrade', $base_url );
+        $explore_url    = add_query_arg( 'tab', 'explore', $base_url );
+
+        $recent_entries = get_posts([ 'post_type' => ['cw_competition_entry', 'cw_activity_entry'], 'meta_key' => 'customer_id', 'meta_value' => $uid, 'posts_per_page' => 5, 'orderby' => 'date', 'order' => 'DESC' ]);
+
+        // Build a usable list (skipping entries whose product was deleted)
+        $renderable_recent = [];
+        foreach ( $recent_entries as $e ) {
+            $pid     = get_post_meta( $e->ID, 'product_id', true );
+            $product = wc_get_product( $pid );
+            if ( ! $product ) continue;
+
+            $is_activity = has_term( 'activities', 'product_cat', $pid );
+            $score       = get_post_meta( $e->ID, 'judge_score', true );
+
+            $renderable_recent[] = [
+                'entry'        => $e,
+                'pid'          => $pid,
+                'product'      => $product,
+                'type_tag'     => $is_activity ? 'Activity' : 'Competition',
+                'status_label' => ( $score !== '' && $score > 0 ) ? 'Completed' : 'Pending',
+                'status_class' => ( $score !== '' && $score > 0 ) ? 'cw-status-completed' : 'cw-status-pending',
+            ];
+        }
 
         ?>
         <div class="cw-content-wrapper">
@@ -44,19 +67,23 @@ class CW_Dashboard_Contestant {
                  <h2>Welcome back, <?php echo esc_html($u->first_name ?: $u->display_name); ?></h2>
                  <p>Here's what's happening with your activities. <a href="<?php echo esc_url($activities_url); ?>" style="font-weight:600;color:var(--cw-primary);text-decoration:none;">View All Activities →</a></p>
              </div>
-            
+
             <div class="cw-stats-container">
                 <!-- Total Submissions -->
                 <div class="cw-stat-box-v2">
-                    <i class="fas fa-trophy" style="color:var(--cw-primary); font-size:24px;"></i>
-                    <h3><?php echo number_format($entries_count); ?></h3>
+                    <div class="cw-stat-value-row">
+                        <div class="stat-icon blue"><i class="fas fa-trophy"></i></div>
+                        <h3><?php echo number_format($entries_count); ?></h3>
+                    </div>
                     <span>Total Submissions</span>
                 </div>
-                
+
                 <!-- Pending Review -->
                 <div class="cw-stat-box-v2">
-                    <i class="fas fa-chart-line" style="color:var(--cw-warning); font-size:24px;"></i>
-                    <h3><?php echo number_format($pending_review_count); ?></h3>
+                    <div class="cw-stat-value-row">
+                        <div class="stat-icon yellow"><i class="fas fa-chart-line"></i></div>
+                        <h3><?php echo number_format($pending_review_count); ?></h3>
+                    </div>
                     <span>Pending Review</span>
                 </div>
 
@@ -68,51 +95,42 @@ class CW_Dashboard_Contestant {
                 </div>
             </div>
 
-            <!-- Recent Submissions Table (FIXED DATA LOOP) -->
-            <h3 style="margin-top:40px; font-weight:700;">Recent Submissions</h3>
-            <table class="cw-recent-table">
-                <thead>
-                    <tr>
-                        <th>Activity Name</th>
-                        <th>Type</th>
-                        <th>Date</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php 
-                    $recent_entries = get_posts([ 'post_type' => ['cw_competition_entry', 'cw_activity_entry'], 'meta_key' => 'customer_id', 'meta_value' => $uid, 'posts_per_page' => 5, 'orderby' => 'date', 'order' => 'DESC' ]);
-                    foreach ($recent_entries as $e): 
-                        $pid = get_post_meta( $e->ID, 'product_id', true );
-                        $product = wc_get_product( $pid );
-                        
-                        if (!$product) continue;
-                        
-                        // Type Logic
-                        $is_activity = has_term('activities', 'product_cat', $pid);
-                        $type_tag = $is_activity ? 'Activity' : 'Competition';
-                        
-                        // Status Logic
-                        $score = get_post_meta($e->ID, 'judge_score', true);
-                        if ($score !== '' && $score > 0) {
-                             $status_label = 'Completed';
-                             $status_class = 'cw-status-completed';
-                        } else {
-                             // Assuming any entry without a score is pending if not explicitly completed
-                             $status_label = 'Pending';
-                             $status_class = 'cw-status-pending';
-                        }
+            <!-- Recent Submissions -->
+            <h3 class="cw-recent-heading">Recent Submissions</h3>
 
-                    ?>
-                    <tr>
-                        <td><?php echo esc_html($product->get_name()); ?></td>
-                        <td><span class="cw-status-badge cw-status-registered"><?php echo esc_html($type_tag); ?></span></td>
-                        <td><?php echo get_the_date('Y-m-d', $e->ID); ?></td>
-                        <td><span class="cw-status-badge <?php echo $status_class; ?>"><?php echo esc_html($status_label); ?></span></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+            <?php if ( ! empty( $renderable_recent ) ): ?>
+                <div class="cw-recent-table-wrap">
+                    <table class="cw-recent-table">
+                        <thead>
+                            <tr>
+                                <th>Activity Name</th>
+                                <th>Type</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $renderable_recent as $row ): ?>
+                            <tr>
+                                <td><?php echo esc_html( $row['product']->get_name() ); ?></td>
+                                <td><span class="cw-status-badge cw-status-registered"><?php echo esc_html( $row['type_tag'] ); ?></span></td>
+                                <td><?php echo get_the_date( 'Y-m-d', $row['entry']->ID ); ?></td>
+                                <td><span class="cw-status-badge <?php echo esc_attr( $row['status_class'] ); ?>"><?php echo esc_html( $row['status_label'] ); ?></span></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php else: ?>
+                <div class="cw-recent-empty">
+                    <div class="cw-recent-empty-icon"><i class="fas fa-rocket"></i></div>
+                    <h4 class="cw-recent-empty-title"><?php esc_html_e( 'No activities yet', 'creativewings-core' ); ?></h4>
+                    <p class="cw-recent-empty-desc"><?php esc_html_e( 'Join a competition or activity to see your submissions here. Browse all the latest opportunities in one place.', 'creativewings-core' ); ?></p>
+                    <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-recent-empty-btn">
+                        <i class="fas fa-bolt"></i> <?php esc_html_e( 'Explore Opportunities', 'creativewings-core' ); ?>
+                    </a>
+                </div>
+            <?php endif; ?>
         </div>
         <?php
     }
@@ -129,11 +147,12 @@ class CW_Dashboard_Contestant {
        2. ACTIVITIES TAB (Third Screenshot - Nova UI)
        ========================================================================== */
     public function render_activities() {
-        $uid      = get_current_user_id();
-        $base_url = get_permalink( wc_get_page_id( 'myaccount' ) );
-        $act_url  = add_query_arg( 'tab', 'activities', $base_url );
-        $paged    = isset( $_GET['cw_page'] ) ? max( 1, intval( $_GET['cw_page'] ) ) : 1;
-        $per_page = 9;
+        $uid         = get_current_user_id();
+        $base_url    = get_permalink( wc_get_page_id( 'myaccount' ) );
+        $act_url     = add_query_arg( 'tab', 'activities', $base_url );
+        $explore_url = add_query_arg( 'tab', 'explore', $base_url );
+        $paged       = isset( $_GET['cw_page'] ) ? max( 1, intval( $_GET['cw_page'] ) ) : 1;
+        $per_page    = 9;
 
         $base_args = [
             'post_type'  => ['cw_competition_entry', 'cw_activity_entry'],
@@ -154,12 +173,11 @@ class CW_Dashboard_Contestant {
         $base_args['posts_per_page'] = $per_page;
         $base_args['offset']         = ( $paged - 1 ) * $per_page;
         $entries = get_posts( $base_args );
-
         ?>
         <div class="cw-content-wrapper">
-            <div class="cw-portfolio-header">
+            <div class="cw-portfolio-header cw-activities-header">
                 <h2>My Activities</h2>
-                <a href="<?php echo esc_url( home_url( '/competitions' ) ); ?>" class="cw-btn-primary" style="padding:10px 20px; font-size:14px;"><i class="fas fa-search"></i> Browse New Events</a>
+                <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-btn-primary cw-browse-new-btn"><i class="fas fa-bolt"></i> Browse Campaigns</a>
             </div>
 
             <?php if ( $entries ): ?>
@@ -218,7 +236,14 @@ class CW_Dashboard_Contestant {
             <?php $this->render_pagination( $paged, $total_pages, $act_url ); ?>
 
             <?php else: ?>
-                <div class="cw-empty-state"><p>You haven't joined any activities yet.</p></div>
+                <div class="cw-recent-empty">
+                    <div class="cw-recent-empty-icon"><i class="fas fa-rocket"></i></div>
+                    <h4 class="cw-recent-empty-title"><?php esc_html_e( "You haven't joined any activities yet", 'creativewings-core' ); ?></h4>
+                    <p class="cw-recent-empty-desc"><?php esc_html_e( 'Browse the latest competitions and activities to get started.', 'creativewings-core' ); ?></p>
+                    <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-recent-empty-btn">
+                        <i class="fas fa-bolt"></i> <?php esc_html_e( 'Explore Opportunities', 'creativewings-core' ); ?>
+                    </a>
+                </div>
             <?php endif; ?>
         </div>
         <?php
@@ -406,111 +431,199 @@ class CW_Dashboard_Contestant {
         <?php
     }
     /* ==========================================================================
-       3. UPGRADE TAB (Second Screenshot - Nova UI)
+       3. UPGRADE TAB — mirrors the public Get Started page
        ========================================================================== */
-    public function render_upgrade() { 
-        // Get URLs for the forms
-        $creator_form_url = esc_url(admin_url('admin-post.php'));
-        $business_form_url = esc_url(admin_url('admin-post.php'));
-        
-        // Get Nonces
-        $creator_nonce = wp_nonce_field('cw_upgrade_creator_action', 'cw_nonce_creator', true, false);
-        $business_nonce = wp_nonce_field('cw_upgrade_business_action', 'cw_nonce_business', true, false);
+    public function render_upgrade() {
+        $uid          = get_current_user_id();
+        $user         = wp_get_current_user();
+        $base_url     = get_permalink( wc_get_page_id( 'myaccount' ) );
+        $overview_url = add_query_arg( 'tab', 'overview', $base_url );
+        $admin_post   = esc_url( admin_url( 'admin-post.php' ) );
 
-        echo '<div class="cw-content-wrapper">
-                <div class="cw-dash-header" style="text-align:center;">
-                    <h2 style="font-size:32px; font-weight:800;">Upgrade Your Experience</h2>
-                    <p style="font-size:16px; color:#64748b;">Ready to do more than just participate? Unlock the ability to host competitions or partner with us for business growth.</p>
+        // Already a Creator -> show a success card with a link back to the dashboard.
+        if ( in_array( 'creator_role', (array) $user->roles, true ) ) {
+            ?>
+            <div class="cw-content-wrapper">
+                <div class="cw-onboard-card" style="text-align:center;padding:60px 20px;max-width:600px;margin:40px auto;background:#fff;border-radius:12px;box-shadow:0 5px 20px rgba(0,0,0,0.05);">
+                    <i class="fa-solid fa-circle-check" style="font-size:60px;color:#22c55e;margin-bottom:25px;"></i>
+                    <h2 style="margin:0 0 10px;"><?php esc_html_e( 'You are already a Creator', 'creativewings-core' ); ?></h2>
+                    <p style="color:#64748b;margin:0 0 25px;"><?php esc_html_e( 'Your account already has Creator privileges.', 'creativewings-core' ); ?></p>
+                    <a href="<?php echo esc_url( $overview_url ); ?>" class="cw-btn-primary" style="padding:12px 28px;font-size:15px;"><?php esc_html_e( 'Go to Dashboard', 'creativewings-core' ); ?></a>
                 </div>
-              <div class="cw-upgrade-cards-v2">
-              ';
-              
-        // --- CREATOR CARD ---
-        echo '<div class="cw-role-upgrade-card creator">
-                <i class="fas fa-shield-alt" style="font-size:30px; color:#7c3aed;"></i>
-                <h3>Creator</h3>
-                <p>For individuals who want to host challenges and build a following.</p>
-                <ul class="cw-feature-list">
-                   <li><i class="fas fa-check"></i> Upload Portfolio</li>
-                        <li><i class="fas fa-check"></i> Public Profile</li>
-                        <li><i class="fas fa-bolt"></i> Instant Approval</li>
-                </ul>
-                <form action="'.$creator_form_url.'" method="POST" style="width:100%;margin-top:auto;">
-                    '.$creator_nonce.'
-                    <input type="hidden" name="action" value="cw_become_creator">
-                    <button type="submit" class="btn-creator-v2">Become a Creator</button>
-                </form>
-              </div>';
-              
-        // --- BUSINESS CARD ---
-        echo '<div class="cw-role-upgrade-card business">
-                <i class="fas fa-building" style="font-size:30px; color:#1e293b;"></i>
-                <h3>Business Partner</h3>
-                <p>For organizations needing advanced analytics and branding solutions.</p>
-                <ul class="cw-feature-list">
-                    <li><i class="fas fa-check"></i> Create Campaigns</li>
-                        <li><i class="fas fa-check"></i> Manage Participants</li>
-                        <li><i class="fas fa-clock"></i> Admin Approval Required</li>
-                </ul>
-                <form action="'.$business_form_url.'" method="POST" style="width:100%;margin-top:auto;">
-                    '.$business_nonce.'
-                    <input type="hidden" name="action" value="cw_become_business">
-                    <button type="submit" class="btn-business-v2">Apply as Partner</button>
-                </form>
-              </div>';
-              
-        echo '</div></div>';
-    }
-
-    /* ==========================================================================
-       4. SETTINGS TAB (First Screenshot - Nova UI)
-       ========================================================================== */
-    public function render_settings() {
-        $u = wp_get_current_user();
-        
-        if ( isset($_GET['updated']) ) {
-            echo '<div class="cw-alert success" style="margin-bottom:20px;">Profile updated successfully.</div>';
+            </div>
+            <?php
+            return;
         }
-        if ( isset($_GET['err']) ) {
-            echo '<div class="cw-alert error" style="margin-bottom:20px;">Passwords did not match.</div>';
+
+        // Pending Business Partner application -> show the same pending card markup the onboarding page uses.
+        $biz_status = get_user_meta( $uid, 'cw_business_application_status', true );
+        if ( $biz_status === 'pending' ) {
+            ?>
+            <div class="cw-content-wrapper">
+                <div class="cw-onboard-card" style="text-align:center;padding:60px 20px;max-width:600px;margin:40px auto;background:#fff;border-radius:12px;box-shadow:0 5px 20px rgba(0,0,0,0.05);">
+                    <i class="fa-solid fa-clock" style="font-size:60px;color:#f39c12;margin-bottom:25px;"></i>
+                    <h2 style="margin:0 0 10px;"><?php esc_html_e( 'Application Pending', 'creativewings-core' ); ?></h2>
+                    <p style="color:#64748b;margin:0;"><?php esc_html_e( 'Your request to become a Business Partner is under review. Please wait for approval.', 'creativewings-core' ); ?></p>
+                </div>
+            </div>
+            <?php
+            return;
+        }
+
+        if ( isset( $_GET['upgrade_error'] ) && $_GET['upgrade_error'] === 'security' ) {
+            echo '<div class="cw-alert error" style="max-width:820px;margin:0 auto 20px;">' . esc_html__( 'Security check failed. Please try again.', 'creativewings-core' ) . '</div>';
         }
         ?>
         <div class="cw-content-wrapper">
-            <div class="cw-auth-card" style="max-width:800px; margin:0 auto; padding:40px; border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.05);">
-            <h2>Account Settings</h2>
-            
-            <form action="<?php echo admin_url('admin-post.php'); ?>" method="POST" class="cw-modern-form">
-                <input type="hidden" name="action" value="cw_save_contestant_settings">
-                <?php wp_nonce_field('cw_settings_nonce'); ?>
-                
-                <div class="cw-form-grid" style="grid-template-columns: 1fr 1fr; gap:20px;">
-                    <div class="cw-field">
-                        <label>First Name</label>
-                        <input type="text" name="first_name" class="cw-input" value="<?php echo esc_attr($u->first_name); ?>" required>
-                    </div>
-                    <div class="cw-field">
-                        <label>Last Name</label>
-                        <input type="text" name="last_name" class="cw-input" value="<?php echo esc_attr($u->last_name); ?>" required>
-                    </div>
-                </div>
-                
-                <div class="cw-field full" style="margin-bottom:30px;">
-                    <label>Display Name</label>
-                    <input type="text" name="display_name" class="cw-input" value="<?php echo esc_attr($u->display_name); ?>">
-                    <small style="font-size:12px; color:#64748b;">This is how you will appear on public certificates and leaderboards.</small>
-                </div>
+            <div class="cw-onboarding-wrapper">
+                <h2><?php esc_html_e( 'Upgrade your account', 'creativewings-core' ); ?></h2>
+                <p class="cw-subtext"><?php esc_html_e( 'Select an account type to unlock more features.', 'creativewings-core' ); ?></p>
 
-                <div class="cw-field full" style="margin-bottom:30px;">
-                    <label>New Password</label>
-                    <input type="password" name="pass1" class="cw-input" autocomplete="new-password" placeholder="Leave blank to keep current password">
+                <div class="cw-role-cards">
+
+                    <!-- CREATOR CARD -->
+                    <div class="cw-role-card">
+                        <div class="icon"><i class="fas fa-palette"></i></div>
+                        <h3><?php esc_html_e( 'Creator', 'creativewings-core' ); ?></h3>
+                        <p><?php esc_html_e( 'Build your portfolio, showcase your art, and join creative contests.', 'creativewings-core' ); ?></p>
+                        <ul class="cw-features">
+                            <li><i class="fas fa-check"></i> <?php esc_html_e( 'Upload Portfolio', 'creativewings-core' ); ?></li>
+                            <li><i class="fas fa-check"></i> <?php esc_html_e( 'Public Profile', 'creativewings-core' ); ?></li>
+                            <li><i class="fas fa-bolt"></i> <?php esc_html_e( 'Instant Approval', 'creativewings-core' ); ?></li>
+                        </ul>
+                        <form action="<?php echo $admin_post; ?>" method="POST" style="width:100%;margin-top:auto;">
+                            <?php wp_nonce_field( 'cw_upgrade_creator_action', 'cw_nonce' ); ?>
+                            <input type="hidden" name="action" value="cw_become_creator">
+                            <button type="submit" class="btn-creator"><?php esc_html_e( 'Select Creator', 'creativewings-core' ); ?></button>
+                        </form>
+                    </div>
+
+                    <!-- BUSINESS CARD -->
+                    <div class="cw-role-card">
+                        <div class="icon"><i class="fas fa-briefcase"></i></div>
+                        <h3><?php esc_html_e( 'Business Partner', 'creativewings-core' ); ?></h3>
+                        <p><?php esc_html_e( 'Organize tournaments, create campaigns, and manage participants.', 'creativewings-core' ); ?></p>
+                        <ul class="cw-features">
+                            <li><i class="fas fa-check"></i> <?php esc_html_e( 'Create Campaigns', 'creativewings-core' ); ?></li>
+                            <li><i class="fas fa-check"></i> <?php esc_html_e( 'Manage Participants', 'creativewings-core' ); ?></li>
+                            <li><i class="fas fa-clock"></i> <?php esc_html_e( 'Admin Approval Required', 'creativewings-core' ); ?></li>
+                        </ul>
+                        <form action="<?php echo $admin_post; ?>" method="POST" style="width:100%;margin-top:auto;">
+                            <?php wp_nonce_field( 'cw_upgrade_business_action', 'cw_nonce' ); ?>
+                            <input type="hidden" name="action" value="cw_become_business">
+                            <button type="submit" class="btn-business"><?php esc_html_e( 'Apply as Business', 'creativewings-core' ); ?></button>
+                        </form>
+                    </div>
+
                 </div>
-                
-                <div class="cw-form-footer" style="border-top:none; padding-top:0;">
-                    <button type="submit" class="cw-btn-primary" style="padding:12px 30px; font-size:16px;">Save Changes</button>
-                </div>
-            </form>
             </div>
         </div>
+        <?php
+    }
+
+    /* ==========================================================================
+       4. SETTINGS TAB
+       ========================================================================== */
+    public function render_settings() {
+        $u   = wp_get_current_user();
+        $uid = $u->ID;
+        $dob = get_user_meta( $uid, 'birthdate', true );
+
+        $error_messages = [
+            'mismatch'    => __( 'The new passwords you entered do not match. Please try again.', 'creativewings-core' ),
+            'invalid_dob' => __( 'That date of birth doesn\'t look right. Please use the format dd/mm/yyyy.', 'creativewings-core' ),
+        ];
+        $err_key = isset( $_GET['err'] ) ? sanitize_key( wp_unslash( $_GET['err'] ) ) : '';
+        ?>
+        <div class="cw-content-wrapper">
+            <div class="cw-settings-card">
+
+                <div class="cw-settings-header">
+                    <h2><?php esc_html_e( 'Account Settings', 'creativewings-core' ); ?></h2>
+                    <p class="cw-settings-subtitle"><?php esc_html_e( 'Update your personal details and account security. These details appear on certificates and leaderboards.', 'creativewings-core' ); ?></p>
+                </div>
+
+                <?php if ( isset( $_GET['updated'] ) ) : ?>
+                    <div class="cw-alert success cw-settings-alert"><i class="fas fa-check-circle"></i> <?php esc_html_e( 'Your profile has been updated.', 'creativewings-core' ); ?></div>
+                <?php endif; ?>
+                <?php if ( $err_key && isset( $error_messages[ $err_key ] ) ) : ?>
+                    <div class="cw-alert error cw-settings-alert"><i class="fas fa-exclamation-circle"></i> <?php echo esc_html( $error_messages[ $err_key ] ); ?></div>
+                <?php endif; ?>
+
+                <form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="POST" class="cw-settings-form" autocomplete="off">
+                    <input type="hidden" name="action" value="cw_save_contestant_settings">
+                    <?php wp_nonce_field( 'cw_settings_nonce' ); ?>
+
+                    <section class="cw-form-section">
+                        <h3><?php esc_html_e( 'Personal Information', 'creativewings-core' ); ?></h3>
+
+                        <div class="cw-settings-name-grid">
+                            <div class="cw-field">
+                                <label for="cw-settings-first-name"><?php esc_html_e( 'First Name', 'creativewings-core' ); ?></label>
+                                <input type="text" id="cw-settings-first-name" name="first_name" class="cw-input" value="<?php echo esc_attr( $u->first_name ); ?>" required>
+                            </div>
+                            <div class="cw-field">
+                                <label for="cw-settings-last-name"><?php esc_html_e( 'Last Name', 'creativewings-core' ); ?></label>
+                                <input type="text" id="cw-settings-last-name" name="last_name" class="cw-input" value="<?php echo esc_attr( $u->last_name ); ?>" required>
+                            </div>
+                        </div>
+
+                        <div class="cw-field">
+                            <label for="cw-settings-display-name"><?php esc_html_e( 'Display Name', 'creativewings-core' ); ?></label>
+                            <input type="text" id="cw-settings-display-name" name="display_name" class="cw-input" value="<?php echo esc_attr( $u->display_name ); ?>">
+                            <small><?php esc_html_e( 'This is how you will appear on public certificates and leaderboards.', 'creativewings-core' ); ?></small>
+                        </div>
+
+                        <div class="cw-field">
+                            <label for="birthdate"><?php esc_html_e( 'Date of Birth', 'creativewings-core' ); ?></label>
+                            <input type="text" id="birthdate" name="birthdate" class="cw-input cw-datepicker" value="<?php echo esc_attr( $dob ); ?>" placeholder="dd/mm/yyyy" readonly autocomplete="bday">
+                            <small><?php esc_html_e( 'Format: dd/mm/yyyy. Tap the field to pick a date.', 'creativewings-core' ); ?></small>
+                        </div>
+                    </section>
+
+                    <section class="cw-form-section">
+                        <h3><?php esc_html_e( 'Security', 'creativewings-core' ); ?></h3>
+
+                        <div class="cw-field">
+                            <label for="cw-settings-pass1"><?php esc_html_e( 'New Password', 'creativewings-core' ); ?></label>
+                            <input type="password" id="cw-settings-pass1" name="pass1" class="cw-input" autocomplete="new-password" placeholder="<?php esc_attr_e( 'Leave blank to keep current password', 'creativewings-core' ); ?>">
+                            <small><?php esc_html_e( 'Use at least 8 characters with a mix of letters, numbers, and symbols.', 'creativewings-core' ); ?></small>
+                        </div>
+
+                        <div class="cw-field">
+                            <label for="cw-settings-pass2"><?php esc_html_e( 'Confirm New Password', 'creativewings-core' ); ?></label>
+                            <input type="password" id="cw-settings-pass2" name="pass2" class="cw-input" autocomplete="new-password" placeholder="<?php esc_attr_e( 'Re-enter the new password', 'creativewings-core' ); ?>">
+                        </div>
+                    </section>
+
+                    <div class="cw-form-footer">
+                        <button type="submit" class="cw-btn-primary cw-settings-save-btn"><i class="fas fa-save"></i> <?php esc_html_e( 'Save Changes', 'creativewings-core' ); ?></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script>
+        // Safety-net datepicker init: the global script in assets/js/cw-script.js
+        // already binds jQuery UI datepicker to #birthdate with dd/mm/yy format.
+        // This guarded fallback runs only if the global init hasn't bound yet
+        // (e.g. if script order ever changes), to keep the picker working.
+        (function () {
+            if ( typeof jQuery === 'undefined' ) { return; }
+            jQuery(function ($) {
+                if ( ! $.fn || ! $.fn.datepicker ) { return; }
+                var $field = $('input.cw-datepicker#birthdate');
+                if ( ! $field.length || $field.hasClass('hasDatepicker') ) { return; }
+                $field.datepicker({
+                    changeMonth: true,
+                    changeYear: true,
+                    yearRange: 'c-90:c-13',
+                    dateFormat: 'dd/mm/yy',
+                    maxDate: 0
+                });
+            });
+        })();
+        </script>
         <?php
     }
 
@@ -543,40 +656,55 @@ class CW_Dashboard_Contestant {
         <?php
     }
 
-    public function handle_save_settings() { 
-        if ( ! is_user_logged_in() || ! isset($_POST['_wpnonce']) || ! wp_verify_nonce( $_POST['_wpnonce'], 'cw_settings_nonce' ) ) {
+    public function handle_save_settings() {
+        if ( ! is_user_logged_in() || ! isset( $_POST['_wpnonce'] ) || ! wp_verify_nonce( $_POST['_wpnonce'], 'cw_settings_nonce' ) ) {
             wp_die( 'Security Error' );
         }
 
-        $uid = get_current_user_id();
-        
+        $uid          = get_current_user_id();
+        $base_url     = get_permalink( wc_get_page_id( 'myaccount' ) );
+        $settings_url = add_query_arg( 'tab', 'settings', $base_url );
+
+        // --- Validate Date of Birth (optional, but if provided must match dd/mm/yyyy
+        //     to stay consistent with how 'birthdate' is stored elsewhere in the plugin
+        //     — see CW_Auth::process_complete_profile() and the registration flow.)
+        $dob_raw = isset( $_POST['birthdate'] ) ? trim( sanitize_text_field( wp_unslash( $_POST['birthdate'] ) ) ) : '';
+        if ( $dob_raw !== '' && ! preg_match( '#^\d{2}/\d{2}/\d{4}$#', $dob_raw ) ) {
+            wp_safe_redirect( add_query_arg( 'err', 'invalid_dob', $settings_url ) );
+            exit;
+        }
+
         $userdata = [
             'ID'           => $uid,
-            'first_name'   => sanitize_text_field( $_POST['first_name'] ),
-            'last_name'    => sanitize_text_field( $_POST['last_name'] ),
-            'display_name' => sanitize_text_field( $_POST['display_name'] ),
+            'first_name'   => sanitize_text_field( wp_unslash( $_POST['first_name'] ?? '' ) ),
+            'last_name'    => sanitize_text_field( wp_unslash( $_POST['last_name'] ?? '' ) ),
+            'display_name' => sanitize_text_field( wp_unslash( $_POST['display_name'] ?? '' ) ),
         ];
-        
+
         wp_update_user( $userdata );
 
+        if ( isset( $_POST['birthdate'] ) ) {
+            update_user_meta( $uid, 'birthdate', $dob_raw );
+        }
+
         if ( ! empty( $_POST['pass1'] ) ) {
-            if ( $_POST['pass1'] === $_POST['pass2'] ) {
+            if ( $_POST['pass1'] === ( $_POST['pass2'] ?? '' ) ) {
                 wp_update_user([ 'ID' => $uid, 'user_pass' => $_POST['pass1'] ]);
-                
+
                 // Re-authenticate user so they aren't logged out
                 $user = get_user_by( 'id', $uid );
                 wp_signon([
                     'user_login'    => $user->user_login,
                     'user_password' => $_POST['pass1'],
-                    'remember'      => true
+                    'remember'      => true,
                 ]);
             } else {
-                wp_safe_redirect( wc_get_account_endpoint_url('cw-settings') . '?err=mismatch' );
+                wp_safe_redirect( add_query_arg( 'err', 'mismatch', $settings_url ) );
                 exit;
             }
         }
 
-        wp_safe_redirect( wc_get_account_endpoint_url('cw-settings') . '?updated=1' ); 
-        exit; 
+        wp_safe_redirect( add_query_arg( 'updated', '1', $settings_url ) );
+        exit;
     }
 }

@@ -187,7 +187,7 @@ class CW_Dashboard_Creator {
                         <div class="icon"><i class="fas fa-fire" style="color:var(--cw-accent);"></i></div>
                         <h3><?php echo number_format($active_engagements); ?></h3>
                     </div>
-                    <span>Active Events</span>
+                    <span>Active Campaigns</span>
                 </div>
                 <div class="cw-stat-box-small">
                     <div class="cw-stat-value-row">
@@ -932,7 +932,6 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
             'all'          => 'All',
             'competitions' => 'Competitions',
             'activities'   => 'Activities',
-            'talk-seminar' => 'Seminars',
         ];
 
         $tax_query = [];
@@ -981,7 +980,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
         <div class="cw-content-wrapper">
             <div class="cw-dash-header">
                 <h1>Explore Opportunities</h1>
-                <p>Discover competitions, seminars, and activities to join.</p>
+                <p>Discover competitions and activities to join.</p>
             </div>
 
             <div class="cw-filter-tabs">
@@ -1004,7 +1003,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                     if ( ! $wc_product ) continue;
 
                     $terms    = get_the_terms( $product_id, 'product_cat' );
-                    $type_tag = 'Event';
+                    $type_tag = 'Campaign';
                     $type_css = '';
                     if ( $terms && ! is_wp_error( $terms ) ) {
                         foreach ( $terms as $term ) {
@@ -1061,7 +1060,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                         <?php endif; ?>
                         <?php if ( $is_closed ): ?>
                             <button class="cw-btn-join cw-btn-closed" disabled>
-                                <i class="fas fa-lock"></i> Event Closed
+                                <i class="fas fa-lock"></i> Campaign Closed
                             </button>
                         <?php elseif ( $already_joined ): ?>
                             <button class="cw-btn-join cw-btn-joined" disabled>
@@ -1183,7 +1182,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
             <div class="cw-header-flex">
                 <div>
                     <h2 class="cw-section-title">My Activities</h2>
-                    <p class="cw-section-subtitle">Track your competitions, seminars, and events.</p>
+                    <p class="cw-section-subtitle">Track your competitions and activities.</p>
                 </div>
 
                 <div class="cw-filter-group">
@@ -1193,8 +1192,6 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                        class="cw-filter-btn <?php echo ($current_filter === 'competitions') ? 'active' : ''; ?>">Competitions</a>
                     <a href="<?php echo esc_url( $filter_link('activities') ); ?>"
                        class="cw-filter-btn <?php echo ($current_filter === 'activities') ? 'active' : ''; ?>">Activities</a>
-                    <a href="<?php echo esc_url( $filter_link('talk-seminar') ); ?>"
-                       class="cw-filter-btn <?php echo ($current_filter === 'talk-seminar') ? 'active' : ''; ?>">Talk/Seminar</a>
                 </div>
             </div>
 

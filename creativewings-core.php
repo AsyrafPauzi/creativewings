@@ -64,7 +64,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
         private function define_constants() {
             define( 'CW_PATH', plugin_dir_path( __FILE__ ) );
             define( 'CW_URL', plugin_dir_url( __FILE__ ) );
-            define( 'CW_VERSION', '11.0.35' );
+            define( 'CW_VERSION', '11.0.50' );
         }
 
         /**
@@ -131,6 +131,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             $this->shop       = new CW_Shop();
             new CW_Checkout();
             $this->shortcodes = new CW_Shortcodes();
+            new CW_Organizer_Profile();
             $this->ajax       = new CW_Ajax();
             $this->auth       = new CW_Auth();
             $this->wallet     = new CW_Wallet();
@@ -156,6 +157,19 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             // 2. CSS Files - General always loads, role-specific only on dashboard
             wp_enqueue_style( 'cw-style-general', CW_URL . 'assets/css/cw-style-general.css', ['cw-fontawesome'], CW_VERSION );
 
+            // Organizer profile: registered always, enqueued only on its own page (shortcode or /organizer/{slug}/).
+            wp_register_style( 'cw-style-organizer', CW_URL . 'assets/css/cw-style-organizer.css', ['cw-fontawesome'], CW_VERSION );
+            $needs_org_css = (bool) get_query_var( 'cw_organizer' );
+            if ( ! $needs_org_css && is_singular() ) {
+                $post = get_post();
+                if ( $post && has_shortcode( (string) $post->post_content, 'cw_organizer_profile' ) ) {
+                    $needs_org_css = true;
+                }
+            }
+            if ( $needs_org_css ) {
+                wp_enqueue_style( 'cw-style-organizer' );
+            }
+
             if ( $is_account && $is_logged_in ) {
                 $user = wp_get_current_user();
                 if ( class_exists( 'CW_Roles' ) && CW_Roles::is_business_user( $user ) ) {
@@ -165,6 +179,8 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
                     wp_enqueue_style( 'cw-style-creator', CW_URL . 'assets/css/cw-style-creator.css', ['cw-style-general'], CW_VERSION );
                 } else {
                     wp_enqueue_style( 'cw-style-contestant', CW_URL . 'assets/css/cw-style-contestant.css', ['cw-style-general'], CW_VERSION );
+                    // Contestants also use the creator-side "Explore Opportunities" view (shared markup/styles).
+                    wp_enqueue_style( 'cw-style-creator', CW_URL . 'assets/css/cw-style-creator.css', ['cw-style-contestant'], CW_VERSION );
                 }
             }
 

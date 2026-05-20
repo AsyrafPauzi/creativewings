@@ -10,6 +10,9 @@
 
 .cw-content-wrapper {
     padding: 0 0 40px;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: clip;
 }
 .cw-dash-header { margin-bottom: 26px; }
 
@@ -27,33 +30,48 @@
     background: var(--cw-surface);
     border-radius: var(--cw-radius);
     border: 1px solid var(--cw-border);
-    padding: 22px 24px;
+    padding: 20px 22px;
     box-shadow: var(--cw-shadow);
     transition: all 0.25s ease;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
+    min-width: 0;
 }
 .cw-stat-box-v2:hover {
     box-shadow: var(--cw-shadow-md);
     transform: translateY(-2px);
 }
 
+/* Icon + number in the same row */
+.cw-stat-box-v2 .cw-stat-value-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    margin-bottom: 8px;
+    min-width: 0;
+}
+
 /* Icon circle inside stat box */
 .cw-stat-box-v2 .stat-icon {
-    width: 40px; height: 40px;
-    border-radius: 11px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 17px;
-    margin-bottom: 12px;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
     flex-shrink: 0;
+    background: var(--cw-primary-light);
+    color: var(--cw-primary);
 }
 .cw-stat-box-v2 .stat-icon.blue   { background: var(--cw-primary-light); color: var(--cw-primary); }
 .cw-stat-box-v2 .stat-icon.coral  { background: var(--cw-accent-light);  color: var(--cw-accent); }
 .cw-stat-box-v2 .stat-icon.green  { background: var(--cw-success-light); color: var(--cw-success); }
 .cw-stat-box-v2 .stat-icon.yellow { background: var(--cw-warning-light); color: var(--cw-warning); }
 
-/* Legacy icon style (direct .fas child) */
+/* Legacy icon style (direct .fas child) - kept for back-compat */
 .cw-stat-box-v2 > i,
 .cw-stat-box-v2 i.stat-direct {
     font-size: 22px;
@@ -64,9 +82,11 @@
     font-size: 30px;
     font-weight: 800;
     color: var(--cw-text);
-    margin: 0 0 3px;
+    margin: 0;
     line-height: 1;
     letter-spacing: -0.5px;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 .cw-stat-box-v2 span {
     font-size: 13px;
@@ -143,9 +163,29 @@
     color: var(--cw-text);
 }
 
+.cw-recent-heading {
+    margin: 30px 0 14px;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--cw-text);
+}
+
+/* Allow tables to scroll inside their wrapper on small screens without
+   pushing the rest of the dashboard sideways. */
+.cw-recent-table-wrap {
+    background: var(--cw-surface);
+    border: 1px solid var(--cw-border);
+    border-radius: var(--cw-radius);
+    box-shadow: var(--cw-shadow);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+}
+
 .cw-recent-table {
     width: 100%;
     border-collapse: collapse;
+    min-width: 520px;
 }
 .cw-recent-table th,
 .cw-recent-table td {
@@ -183,10 +223,228 @@
 .cw-status-registered { background: var(--cw-primary-light); color: var(--cw-primary); }
 .cw-status-pending    { background: var(--cw-warning-light); color: #78350f; }
 
+/* Recent Submissions — empty / fallback state */
+.cw-recent-empty {
+    background: var(--cw-surface);
+    border: 1px dashed var(--cw-border);
+    border-radius: var(--cw-radius);
+    padding: 38px 24px;
+    text-align: center;
+    max-width: 100%;
+    box-shadow: var(--cw-shadow);
+}
+.cw-recent-empty-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--cw-primary-light);
+    color: var(--cw-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    margin: 0 auto 14px;
+}
+.cw-recent-empty-title {
+    margin: 0 0 8px;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--cw-text);
+}
+.cw-recent-empty-desc {
+    margin: 0 auto 20px;
+    max-width: 460px;
+    color: var(--cw-text-soft);
+    font-size: 14px;
+    line-height: 1.55;
+}
+.cw-recent-empty-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--cw-primary);
+    color: #fff;
+    padding: 11px 22px;
+    border-radius: var(--cw-radius-pill);
+    font-weight: 700;
+    font-size: 14px;
+    text-decoration: none;
+    transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 4px 12px rgba(0, 101, 153, 0.18);
+}
+.cw-recent-empty-btn:hover {
+    background: #004f7a;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 101, 153, 0.28);
+    color: #fff;
+}
+
+/* Contestant settings page — modern left-aligned form card */
+.cw-settings-card.cw-contestant-settings {
+    max-width: 820px;
+    margin: 0 auto;
+    background: var(--cw-surface);
+    border: 1px solid var(--cw-border);
+    border-radius: var(--cw-radius);
+    box-shadow: var(--cw-shadow);
+    padding: 36px 40px;
+    text-align: left;
+}
+.cw-settings-card-header {
+    text-align: left;
+    margin-bottom: 26px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--cw-border);
+}
+.cw-settings-card-header h2 {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--cw-text);
+    margin: 0 0 6px;
+    letter-spacing: -0.3px;
+    text-align: left;
+}
+.cw-settings-card-header p {
+    font-size: 14px;
+    color: var(--cw-text-soft);
+    margin: 0;
+    line-height: 1.55;
+    text-align: left;
+    max-width: 580px;
+}
+.cw-settings-alert {
+    margin-bottom: 22px;
+    text-align: left;
+}
+.cw-settings-form { text-align: left; }
+.cw-settings-section {
+    border: none;
+    padding: 0;
+    margin: 0 0 28px;
+}
+.cw-settings-section legend {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--cw-text-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 14px;
+    padding: 0;
+}
+.cw-settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 18px;
+}
+.cw-settings-form .cw-field {
+    margin-bottom: 18px;
+    text-align: left;
+}
+.cw-settings-form .cw-field:last-child { margin-bottom: 0; }
+.cw-settings-form .cw-field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--cw-text);
+    margin-bottom: 6px;
+    text-align: left;
+}
+.cw-settings-form .cw-input {
+    width: 100%;
+    background: var(--cw-surface);
+    border: 1px solid var(--cw-border);
+    border-radius: 10px;
+    padding: 11px 14px;
+    font-size: 14px;
+    color: var(--cw-text);
+    font-family: inherit;
+    transition: border-color 0.18s, box-shadow 0.18s;
+    box-sizing: border-box;
+}
+.cw-settings-form .cw-input:focus {
+    outline: none;
+    border-color: var(--cw-primary);
+    box-shadow: 0 0 0 3px rgba(0, 101, 153, 0.12);
+}
+.cw-settings-form .cw-input[disabled],
+.cw-settings-form .cw-input[readonly] {
+    background: var(--cw-bg);
+    color: var(--cw-text-soft);
+    cursor: default;
+}
+.cw-settings-form .cw-input[readonly]#birthdate {
+    cursor: pointer;
+    color: var(--cw-text);
+}
+.cw-field-hint {
+    display: block;
+    font-size: 12px;
+    color: var(--cw-text-soft);
+    margin-top: 6px;
+    line-height: 1.5;
+}
+.cw-settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    border-top: 1px solid var(--cw-border);
+    padding-top: 22px;
+    margin-top: 6px;
+}
+.cw-settings-save {
+    padding: 12px 28px;
+    font-size: 15px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Upgrade tab — reuses .cw-onboarding-wrapper but tuned for the dashboard pane */
+.cw-upgrade-wrapper {
+    margin: 0 auto 40px;
+    padding: 0;
+    max-width: 880px;
+}
+.cw-upgrade-wrapper h2 { font-size: 26px; }
+.cw-upgrade-wrapper .cw-subtext { font-size: 15px; margin-bottom: 32px; }
+@media (max-width: 600px) {
+    .cw-upgrade-wrapper h2 { font-size: 22px; }
+    .cw-upgrade-wrapper .cw-subtext { font-size: 14px; margin-bottom: 24px; }
+    .cw-upgrade-wrapper .cw-role-card { padding: 24px; }
+}
+
 
 /* --------------------------------------------------------------------------
    3. MY ACTIVITIES CARD GRID
    -------------------------------------------------------------------------- */
+
+/* Override the column layout so heading + "Browse New Events" share one
+   horizontal row across all viewports (desktop AND mobile). */
+.cw-portfolio-header.cw-activities-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: nowrap;
+    min-width: 0;
+}
+.cw-portfolio-header.cw-activities-header h2 {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+}
+.cw-browse-new-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+    line-height: 1.2;
+}
+.cw-browse-new-btn i { font-size: 13px; }
 
 .cw-activities-grid {
     display: grid;
@@ -750,10 +1008,44 @@
 @media (max-width: 900px) {
     .cw-stats-container { grid-template-columns: 1fr 1fr; }
     .cw-upgrade-cards-v2 { grid-template-columns: 1fr; }
-    .cw-settings-card { padding: 24px; }
+    .cw-settings-card.cw-contestant-settings { padding: 28px 22px; }
+    .cw-settings-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 600px) {
-    .cw-stats-container { grid-template-columns: 1fr; }
+    .cw-content-wrapper { padding-bottom: 28px; }
+    .cw-stats-container {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 12px;
+    }
+    .cw-stat-box-v2 { padding: 16px 14px; }
+    .cw-stat-box-v2 h3 { font-size: 24px; }
+    .cw-stat-box-v2 span { font-size: 12px; }
+    .cw-stat-box-v2 .stat-icon { width: 38px; height: 38px; font-size: 16px; border-radius: 10px; }
+    .cw-stat-box-v2 .cw-stat-value-row { gap: 10px; margin-bottom: 6px; }
+    .cw-upgrade-card-host {
+        grid-column: 1 / -1;
+        padding: 18px 20px;
+    }
+    .cw-upgrade-card-host h4 { font-size: 16px; }
+    .cw-upgrade-card-host p { font-size: 12px; margin-bottom: 12px; }
+
+    .cw-recent-heading { margin-top: 24px; font-size: 16px; }
+    .cw-recent-table th,
+    .cw-recent-table td { padding: 11px 14px; font-size: 12px; }
+    .cw-recent-empty { padding: 28px 18px; }
+    .cw-recent-empty-icon { width: 54px; height: 54px; font-size: 22px; }
+    .cw-recent-empty-title { font-size: 16px; }
+    .cw-recent-empty-desc { font-size: 13px; }
+    .cw-recent-empty-btn { width: 100%; justify-content: center; }
+
+    .cw-portfolio-header.cw-activities-header { gap: 10px; }
+    .cw-portfolio-header.cw-activities-header h2 { font-size: 18px; }
+    .cw-browse-new-btn {
+        padding: 9px 14px;
+        font-size: 13px;
+    }
+    .cw-browse-new-btn i { margin-right: 0; }
+
     .cw-activities-grid { grid-template-columns: 1fr; }
     .cw-settings-name-grid { grid-template-columns: 1fr; }
     .cw-claim-card { padding: 24px 20px; }
@@ -761,4 +1053,199 @@
     .cw-claim-actions { flex-direction: column; align-items: stretch; }
     .cw-claim-actions .cw-btn-primary,
     .cw-claim-actions .cw-btn-outline-blue { width: 100%; justify-content: center; }
+
+    .cw-settings-card.cw-contestant-settings { padding: 22px 18px; }
+    .cw-settings-card-header { padding-bottom: 16px; margin-bottom: 18px; }
+    .cw-settings-card-header h2 { font-size: 20px; }
+    .cw-settings-actions { flex-direction: column-reverse; }
+    .cw-settings-save { width: 100%; justify-content: center; }
+}
+@media (max-width: 380px) {
+    .cw-stats-container { grid-template-columns: 1fr; }
+}
+
+/* --------------------------------------------------------------------------
+   9. UPGRADE TAB (mirrors Get Started layout, scoped to the dashboard)
+   -------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    .cw-content-wrapper .cw-onboarding-wrapper {
+        margin: 24px auto;
+        padding: 0 12px;
+    }
+    .cw-content-wrapper .cw-onboarding-wrapper h2 {
+        font-size: 24px;
+    }
+    .cw-content-wrapper .cw-onboarding-wrapper .cw-subtext {
+        font-size: 14px;
+        margin-bottom: 24px;
+    }
+    .cw-content-wrapper .cw-role-cards {
+        flex-direction: column;
+        gap: 16px;
+    }
+    .cw-content-wrapper .cw-role-card {
+        flex: 1 1 100%;
+        padding: 22px;
+    }
+    .cw-content-wrapper .cw-role-card .btn-creator,
+    .cw-content-wrapper .cw-role-card .btn-business {
+        width: 100%;
+    }
+    .cw-content-wrapper .cw-onboard-card {
+        padding: 40px 18px !important;
+        margin: 20px auto !important;
+    }
+    .cw-content-wrapper .cw-onboard-card h2 {
+        font-size: 20px;
+    }
+}
+
+
+/* ==========================================================================
+   SETTINGS FORM
+   Scoped styles for the contestant Settings tab (render_settings()).
+   Appended at the end so source-order wins over earlier .cw-settings-*
+   declarations and we don't collide with sibling workers' edits.
+   ========================================================================== */
+
+.cw-settings-card {
+    background: var(--cw-surface);
+    border: 1px solid var(--cw-border);
+    border-radius: 18px;
+    box-shadow: var(--cw-shadow-md);
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 32px;
+    text-align: left;
+}
+
+.cw-settings-card .cw-settings-header {
+    margin-bottom: 24px;
+    text-align: left;
+}
+.cw-settings-card h2 {
+    text-align: left;
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--cw-text);
+    margin: 0 0 6px;
+    letter-spacing: -0.3px;
+}
+.cw-settings-card .cw-settings-subtitle {
+    margin: 0;
+    color: var(--cw-text-soft);
+    font-size: 14px;
+    line-height: 1.55;
+    text-align: left;
+}
+
+.cw-settings-card .cw-settings-alert {
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+.cw-settings-card .cw-settings-form { text-align: left; }
+
+.cw-settings-card .cw-form-section {
+    margin-bottom: 28px;
+}
+.cw-settings-card .cw-form-section:last-of-type {
+    margin-bottom: 16px;
+}
+.cw-settings-card .cw-form-section h3 {
+    margin: 0 0 16px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--cw-text-soft);
+    text-align: left;
+}
+
+.cw-settings-card .cw-field {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 16px;
+    min-width: 0;
+    text-align: left;
+}
+.cw-settings-card .cw-field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cw-text);
+    margin-bottom: 6px;
+    text-align: left;
+}
+.cw-settings-card .cw-field small {
+    display: block;
+    color: var(--cw-text-soft);
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: left;
+}
+
+.cw-settings-card .cw-input {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1px solid var(--cw-border);
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--cw-text);
+    background: #fff;
+    box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.cw-settings-card .cw-input:focus {
+    outline: none;
+    border-color: var(--cw-primary);
+    box-shadow: 0 0 0 3px rgba(0, 101, 153, 0.12);
+}
+.cw-settings-card .cw-input[readonly] {
+    background: #fff;
+    cursor: pointer;
+}
+
+.cw-settings-card .cw-settings-name-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.cw-settings-card .cw-form-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+}
+.cw-settings-card .cw-form-footer .cw-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 26px;
+    font-size: 14px;
+    font-weight: 700;
+    border-radius: var(--cw-radius-pill);
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+/* Mobile: stack name grid, tighten padding, stretch the primary button. */
+@media (max-width: 600px) {
+    .cw-settings-card {
+        padding: 22px 18px;
+    }
+    .cw-settings-card .cw-settings-name-grid {
+        grid-template-columns: 1fr;
+    }
+    .cw-settings-card .cw-form-footer {
+        justify-content: stretch;
+    }
+    .cw-settings-card .cw-form-footer .cw-btn-primary {
+        width: 100%;
+        justify-content: center;
+    }
+    .cw-settings-card h2 { font-size: 20px; }
 }

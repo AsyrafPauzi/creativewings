@@ -37,12 +37,25 @@ class CW_Campaign_Persistence {
             'post_author'  => (int) $author_id,
         ];
 
-        $is_new = ( (int) $product_id === 0 );
+        $is_new          = ( (int) $product_id === 0 );
+        $can_publish     = current_user_can( 'manage_woocommerce' );
+        $incoming_status = isset( $data['post_status'] ) ? sanitize_text_field( $data['post_status'] ) : '';
+
         if ( $is_new ) {
-            $args['post_status'] = isset( $data['post_status'] ) ? sanitize_text_field( $data['post_status'] ) : 'draft';
+            // New campaigns: business users always go to pending review; admins keep whatever
+            // they pass (or fall back to pending so nothing accidentally publishes silently).
+            $args['post_status'] = $can_publish ? ( $incoming_status ?: 'pending' ) : 'pending';
             $product_id          = wp_insert_post( $args, true );
         } else {
             $args['ID'] = (int) $product_id;
+            // Existing campaign: if a non-admin edits a live ("publish") campaign, kick it back
+            // to pending for re-review. Otherwise (admin, or already-non-publish) leave the
+            // status alone so admins can keep editing publish posts.
+            if ( ! $can_publish && get_post_status( (int) $product_id ) === 'publish' ) {
+                $args['post_status'] = 'pending';
+            } elseif ( $can_publish && $incoming_status ) {
+                $args['post_status'] = $incoming_status;
+            }
             $product_id = wp_update_post( $args, true );
         }
 
@@ -123,6 +136,7 @@ class CW_Campaign_Persistence {
             'cw_enable_school_sponsors',
             'cw_allow_multiple_participants',
             'cw_use_account_fullname',
+            'cw_enable_certificate',
         ];
         foreach ( $toggle_keys as $tk ) {
             if ( array_key_exists( $tk, $data ) ) {
@@ -226,7 +240,7 @@ class CW_Campaign_Persistence {
             'cw_review_start'               => $_POST['cw_review_start'] ?? '',
             'cw_final_event_date'           => $_POST['cw_final_event_date'] ?? '',
             'cw_location_details'           => $_POST['cw_location_details'] ?? '',
-            'cw_enable_certificate'         => $_POST['cw_enable_certificate'] ?? '',
+            'cw_enable_certificate'         => isset( $_POST['cw_enable_certificate'] ) ? 'yes' : 'no',
             'cw_judging_criteria'           => $_POST['cw_judging_criteria'] ?? '',
             'cw_talk_speaker'               => $_POST['cw_talk_speaker'] ?? '',
             'cw_event_mode'                 => $_POST['cw_event_mode'] ?? '',

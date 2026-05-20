@@ -208,8 +208,8 @@ class CW_Business_Form {
 
                             <!-- ════════════ STEP 1: CLASSIFY ════════════ -->
                             <div class="cw-wizard-step active" data-step="1">
-                                <h4 class="cw-step-title">Let's classify your event</h4>
-                                <p class="cw-step-subtitle">Choose the type of event and a specific subcategory.</p>
+                                <h4 class="cw-step-title">Let's classify your campaign</h4>
+                                <p class="cw-step-subtitle">A campaign has two categories: <strong>Competition</strong> or <strong>Activity</strong>. Pick one, then choose a sub-category.</p>
                                 <div class="cw-step-grid">
                                     <div class="cw-cat-selection">
                                         <label style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--cw-text-soft);margin-bottom:4px;">Main Category</label>
@@ -218,9 +218,6 @@ class CW_Business_Form {
                                         </div>
                                         <div class="cw-cat-card <?php echo $is_activity_selected ? 'selected' : ''; ?>" onclick="selectMainCat(this,'activities')" data-type="activities">
                                             <div class="cw-cat-icon"><i class="fas fa-running"></i></div><span>Activity</span>
-                                        </div>
-                                        <div class="cw-cat-card <?php echo $is_talk_selected ? 'selected' : ''; ?>" onclick="selectMainCat(this,'talks')" data-type="talks">
-                                            <div class="cw-cat-icon"><i class="fas fa-comment-alt"></i></div><span>Talk / Seminar</span>
                                         </div>
                                     </div>
                                     <div class="cw-sub-selection">
@@ -235,7 +232,7 @@ class CW_Business_Form {
                             <!-- ════════════ STEP 2: BASIC DETAILS ════════════ -->
                             <div class="cw-wizard-step" data-step="2" style="display:none;">
                                 <h4 class="cw-step-title">Basic Details &amp; Dates</h4>
-                                <p class="cw-step-subtitle">Set up the core information about your event.</p>
+                                <p class="cw-step-subtitle">Set up the core information about your campaign.</p>
 
                                 <div class="cw-field">
                                     <label>Campaign Title *</label>
@@ -268,9 +265,9 @@ class CW_Business_Form {
                                     <?php wp_editor($mode==='edit' ? $campaign->post_content : '', 'post_content', ['textarea_name'=>'post_content','media_buttons'=>false,'textarea_rows'=>4,'teeny'=>true,'quicktags'=>false,'editor_class'=>'cw-slim-editor-dark']); ?>
                                 </div>
 
-                                <p class="cw-mini-head">Event Mode</p>
+                                <p class="cw-mini-head">Campaign Format</p>
                                 <div class="cw-event-mode-radios">
-                                    <label class="cw-radio-option"><input type="radio" name="cw_event_mode" value="physical" id="mode_physical" onchange="toggleOnlineLink()" <?php checked($val('cw_event_mode') ?: 'physical','physical'); ?>> Physical Event</label>
+                                    <label class="cw-radio-option"><input type="radio" name="cw_event_mode" value="physical" id="mode_physical" onchange="toggleOnlineLink()" <?php checked($val('cw_event_mode') ?: 'physical','physical'); ?>> Physical</label>
                                     <label class="cw-radio-option"><input type="radio" name="cw_event_mode" value="online" id="mode_online" onchange="toggleOnlineLink()" <?php checked($val('cw_event_mode'),'online'); ?>> Online / Virtual</label>
                                 </div>
                                 <div class="cw-location-input-wrap">
@@ -278,12 +275,16 @@ class CW_Business_Form {
                                     <input type="text" name="cw_location_details" id="cw_location_details" value="<?php echo $val('cw_location_details'); ?>" placeholder="Full Venue Address" style="display:<?php echo $val('cw_event_mode')==='online'?'none':'block'; ?>">
                                     <input type="url" name="cw_online_link" id="cw_online_link" value="<?php echo $val('cw_online_link'); ?>" placeholder="Secure Online Link" style="display:<?php echo $val('cw_event_mode')==='online'?'block':'none'; ?>">
                                 </div>
+                                <small id="cw_online_link_hint" style="display:<?php echo $val('cw_event_mode')==='online' ? 'block' : 'none'; ?>;color:var(--cw-text-soft, #64748b);margin-top:6px;font-size:12px;line-height:1.5;">
+                                    <i class="fas fa-info-circle" style="margin-right:4px;"></i>
+                                    This link will be emailed to participants automatically after they complete checkout. Do not share publicly.
+                                </small>
 
                                 <p class="cw-mini-head">Important Dates</p>
                                 <div class="cw-field"><label>Submission Start *</label><input type="date" name="cw_submission_start" required class="cw-input-dark" value="<?php echo $val('cw_submission_start'); ?>"></div>
                                 <div class="cw-field"><label>Submission Deadline *</label><input type="date" name="submission_deadline" required class="cw-input-dark" value="<?php echo $val('submission_deadline'); ?>"></div>
                                 <div class="cw-field"><label>Review Start</label><input type="date" name="cw_review_start" class="cw-input-dark" value="<?php echo $val('cw_review_start'); ?>"></div>
-                                <div class="cw-field"><label>Final Event Date</label><input type="date" name="cw_final_event_date" class="cw-input-dark" value="<?php echo $val('cw_final_event_date'); ?>"></div>
+                                <div class="cw-field"><label>Final Campaign Date</label><input type="date" name="cw_final_event_date" class="cw-input-dark" value="<?php echo $val('cw_final_event_date'); ?>"></div>
                             </div>
 
                             <!-- ════════════ STEP 3: SPECIFICS ════════════ -->
@@ -324,7 +325,8 @@ class CW_Business_Form {
                                     </div>
                                 </div>
 
-                                <p class="cw-mini-head">Judges &amp; Criteria</p>
+                                <p class="cw-mini-head">Judges &amp; Criteria / Who Can Join</p>
+                                <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 8px;">Describe how entries will be judged, who can participate, or what attendees should expect.</p>
                                 <div class="cw-field cw-field-rich-text" id="cw-judges-box">
                                     <?php wp_editor($val('cw_judging_criteria'), 'cw_judging_criteria_editor', ['textarea_name'=>'cw_judging_criteria','media_buttons'=>false,'textarea_rows'=>3,'teeny'=>true,'quicktags'=>false,'editor_class'=>'cw-slim-editor-dark']); ?>
                                 </div>
@@ -347,15 +349,16 @@ class CW_Business_Form {
                                 <h4 class="cw-step-title">SDG Goals &amp; Extras</h4>
                                 <p class="cw-step-subtitle">Select the Sustainable Development Goals your event supports, add FAQs, and optional add-ons.</p>
 
-                                <!-- SDG grid -->
-                                <div class="cw-sdg-grid-container">
+                                <!-- SDG icon grid (mirrors product detail page) -->
+                                <div class="cw-wiz-sdg-grid">
                                     <?php foreach($this->sdg_map as $id=>$name): $is_checked=(isset($selected_sdgs_bool[$name])&&$selected_sdgs_bool[$name]==='true'); ?>
-                                    <button type="button" class="cw-sdg-btn <?php echo $is_checked?'selected':''; ?>" data-id="<?php echo $id; ?>" onclick="window.toggleSdg(this,<?php echo $id; ?>)"
-                                        style="background-color:<?php echo $is_checked?$this->get_sdg_color($id):'#c2c2c2'; ?>; border-color:<?php echo $this->get_sdg_color($id); ?>;">
-                                        <span class="sdg-bg-img" style="position:absolute;inset:0;background-image:url('<?php echo esc_url(CW_URL.'assets/img/sdg/'.str_pad($id,2,'0',STR_PAD_LEFT).'.png'); ?>');background-size:cover;opacity:<?php echo $is_checked?'1':'0.35'; ?>;"></span>
-                                        <span class="sdg-num"><?php echo (int) $id; ?></span>
-                                        <span class="sdg-caption"><span class="sdg-name"><?php echo esc_html($name); ?></span></span>
-                                        <input type="checkbox" name="sdg_goals[]" value="<?php echo $id; ?>" <?php checked($is_checked,true); ?> style="display:none;">
+                                    <button type="button" class="cw-wiz-sdg-tile <?php echo $is_checked?'selected':''; ?>" data-id="<?php echo (int) $id; ?>" onclick="window.toggleSdg(this,<?php echo (int) $id; ?>)" aria-pressed="<?php echo $is_checked?'true':'false'; ?>">
+                                        <span class="cw-wiz-sdg-thumb">
+                                            <img src="<?php echo esc_url(CW_URL.'assets/img/sdg/E_WEB_'.str_pad($id,2,'0',STR_PAD_LEFT).'.png'); ?>" alt="<?php echo esc_attr('SDG '.(int) $id.' — '.$name); ?>" loading="lazy">
+                                            <span class="cw-wiz-sdg-check" aria-hidden="true"><i class="fas fa-check"></i></span>
+                                        </span>
+                                        <span class="cw-wiz-sdg-caption"><?php echo esc_html($name); ?></span>
+                                        <input type="checkbox" name="sdg_goals[]" value="<?php echo (int) $id; ?>" <?php checked($is_checked,true); ?> style="display:none;">
                                     </button>
                                     <?php endforeach; ?>
                                 </div>
@@ -365,12 +368,12 @@ class CW_Business_Form {
                                     <input type="checkbox" name="cw_enable_school_sponsors" value="yes" id="cw_enable_school_sponsors" onchange="toggleWizardSection('cw-section-school-sponsors', this)" <?php checked( $enable_school_sponsors, 'yes' ); ?>>
                                 </div>
                                 <div id="cw-section-school-sponsors" class="cw-wizard-feature-panel" style="display:<?php echo $enable_school_sponsors === 'yes' ? 'block' : 'none'; ?>;">
-                                <p class="cw-mini-head" style="margin-top:0;">Campaign serial</p>
-                                <div class="cw-field">
-                                    <label>Campaign serial (3 digits, e.g. 002)</label>
-                                    <input type="text" name="cw_campaign_serial" class="cw-input-dark" maxlength="3" pattern="\d{3}"
-                                        value="<?php echo esc_attr( $val('cw_campaign_serial') ); ?>" placeholder="002">
-                                </div>
+                <p class="cw-mini-head" style="margin-top:0;">Campaign serial</p>
+                <div class="cw-field">
+                    <label>Campaign serial (digits only, e.g. 002 or 09912)</label>
+                    <input type="text" name="cw_campaign_serial" class="cw-input-dark" pattern="\d+" inputmode="numeric"
+                        value="<?php echo esc_attr( $val('cw_campaign_serial') ); ?>" placeholder="002">
+                </div>
                                 <div class="cw-toggle-box">
                                     <div><label>School sponsor coupons optional</label><small>If yes, parents can pay full price without coupon</small></div>
                                     <input type="checkbox" name="cw_school_coupons_optional" value="yes" <?php checked( $val('cw_school_coupons_optional') ?: 'yes', 'yes' ); ?>>
@@ -508,21 +511,96 @@ class CW_Business_Form {
                                 </div>
                                 <button type="button" id="cw-add-field" class="cw-repeater-add"><i class="fas fa-plus"></i> Add Field</button>
 
-                                <div style="margin-top:28px; border-top:1px solid var(--cw-border); padding-top:20px;">
-                                    <p class="cw-mini-head" style="margin-top:0;">Certificate &amp; Publish</p>
-                                    <div class="cw-config-card">
-                                        <div class="cw-toggle-box">
-                                            <div>
-                                                <label for="cw_cert_toggle" style="cursor:pointer;">Issue E-Certificates</label>
-                                                <small>Auto-generate participation certificates</small>
+                <div style="margin-top:28px; border-top:1px solid var(--cw-border); padding-top:20px;">
+                    <p class="cw-mini-head" style="margin-top:0;">Certificate &amp; Publish</p>
+                    <?php
+                        $cert_layout_defaults = class_exists('CW_Certificate') ? CW_Certificate::default_layout() : [
+                            'x_pct' => 50, 'y_pct' => 50, 'font_size' => 36, 'font_color' => '#000000', 'max_width' => 60, 'align' => 'center',
+                        ];
+                        $cert_x          = $val('cw_cert_x');     $cert_x          = $cert_x === '' ? 50 : (float) $cert_x;
+                        $cert_y          = $val('cw_cert_y');     $cert_y          = $cert_y === '' ? 50 : (float) $cert_y;
+                        $cert_font_size  = $val('cw_cert_font_size');  $cert_font_size  = $cert_font_size === '' ? 36 : (int) $cert_font_size;
+                        $cert_font_color = $val('cw_cert_font_color'); $cert_font_color = $cert_font_color ?: '#000000';
+                        $cert_max_width  = $val('cw_cert_max_width');  $cert_max_width  = $cert_max_width === '' ? 60 : (int) $cert_max_width;
+                        $cert_align      = $val('cw_cert_align') ?: 'center';
+                        $cert_template   = $val('cw_cert_template');
+                    ?>
+                    <div class="cw-config-card">
+                        <div class="cw-toggle-box">
+                            <div>
+                                <label for="cw_cert_toggle" style="cursor:pointer;">Issue E-Certificates</label>
+                                <small>Auto-generate participation certificates</small>
+                            </div>
+                            <input type="checkbox" name="cw_enable_certificate" value="yes" id="cw_cert_toggle" onclick="window.toggleCertSettings()" <?php checked($val('cw_enable_certificate'),'yes'); ?>>
+                        </div>
+                        <div id="cw-cert-settings" class="cw-cert-editor" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--cw-border);">
+                            <div class="cw-field">
+                                <label>Certificate Template (PNG / JPG / PDF)</label>
+                                <input type="file" name="cw_cert_template" class="cw-file-input cw-cert-file" accept="image/*,.pdf">
+                                <?php if ($cert_template): ?>
+                                    <small style="display:block;margin-top:4px;color:var(--cw-text-soft);">
+                                        Current: <a href="<?php echo esc_url($cert_template); ?>" target="_blank" rel="noopener">view template</a>
+                                    </small>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="cw-cert-editor-grid">
+                                <div class="cw-cert-preview-wrap">
+                                    <label class="cw-cert-mini-label">Live preview <small>(drag the name to reposition)</small></label>
+                                    <div class="cw-cert-preview" id="cw-cert-preview" data-template="<?php echo esc_attr($cert_template); ?>">
+                                        <?php if ($cert_template): ?>
+                                            <img class="cw-cert-preview-img" src="<?php echo esc_url($cert_template); ?>" alt="Certificate template preview">
+                                        <?php else: ?>
+                                            <div class="cw-cert-preview-placeholder">
+                                                <i class="fas fa-image"></i>
+                                                <p>Upload a template above to preview name placement.</p>
                                             </div>
-                                            <input type="checkbox" name="cw_enable_certificate" value="yes" id="cw_cert_toggle" onclick="window.toggleCertSettings()" <?php checked($val('cw_enable_certificate'),'yes'); ?>>
-                                        </div>
-                                        <div id="cw-cert-settings" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--cw-border);">
-                                            <div class="cw-field"><label>Certificate Template (PNG/PDF)</label><input type="file" name="cw_cert_template" class="cw-file-input" accept="image/*,.pdf"></div>
-                                        </div>
+                                        <?php endif; ?>
+                                        <div class="cw-cert-name-overlay" id="cw-cert-name-overlay" style="left:<?php echo esc_attr($cert_x); ?>%;top:<?php echo esc_attr($cert_y); ?>%;font-size:<?php echo (int) $cert_font_size; ?>px;color:<?php echo esc_attr($cert_font_color); ?>;text-align:<?php echo esc_attr($cert_align); ?>;width:<?php echo (int) $cert_max_width; ?>%;">Sample Name</div>
                                     </div>
                                 </div>
+
+                                <div class="cw-cert-controls">
+                                    <div class="cw-form-row-2">
+                                        <div class="cw-field">
+                                            <label>Name X (%)</label>
+                                            <input type="number" name="cw_cert_x" id="cw_cert_x" class="cw-input-dark" min="0" max="100" step="0.1" value="<?php echo esc_attr($cert_x); ?>">
+                                        </div>
+                                        <div class="cw-field">
+                                            <label>Name Y (%)</label>
+                                            <input type="number" name="cw_cert_y" id="cw_cert_y" class="cw-input-dark" min="0" max="100" step="0.1" value="<?php echo esc_attr($cert_y); ?>">
+                                        </div>
+                                    </div>
+                                    <div class="cw-form-row-2">
+                                        <div class="cw-field">
+                                            <label>Font size (px)</label>
+                                            <input type="number" name="cw_cert_font_size" id="cw_cert_font_size" class="cw-input-dark" min="10" max="200" step="1" value="<?php echo (int) $cert_font_size; ?>">
+                                        </div>
+                                        <div class="cw-field">
+                                            <label>Font color</label>
+                                            <input type="color" name="cw_cert_font_color" id="cw_cert_font_color" class="cw-cert-color" value="<?php echo esc_attr($cert_font_color); ?>">
+                                        </div>
+                                    </div>
+                                    <div class="cw-form-row-2">
+                                        <div class="cw-field">
+                                            <label>Max width (%)</label>
+                                            <input type="number" name="cw_cert_max_width" id="cw_cert_max_width" class="cw-input-dark" min="10" max="100" step="1" value="<?php echo (int) $cert_max_width; ?>">
+                                        </div>
+                                        <div class="cw-field">
+                                            <label>Align</label>
+                                            <select name="cw_cert_align" id="cw_cert_align" class="cw-input-dark">
+                                                <option value="left"   <?php selected($cert_align,'left'); ?>>Left</option>
+                                                <option value="center" <?php selected($cert_align,'center'); ?>>Center</option>
+                                                <option value="right"  <?php selected($cert_align,'right'); ?>>Right</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <p class="cw-cert-tip"><i class="fas fa-info-circle"></i> X/Y are percentages from the top-left of the template. The name overlay sits centered on that point.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                                 <div class="cw-publish-ready">
                                     <i class="fas fa-check-circle"></i>
@@ -673,9 +751,6 @@ class CW_Business_Form {
                     }
                 }
 
-                const judgesBox = document.getElementById('cw-judges-box');
-                if (judgesBox) judgesBox.style.display = (type === 'competitions') ? 'flex' : 'none';
-
                 const nameBlock = document.getElementById('cw-step5-name-block');
                 if (nameBlock) {
                     nameBlock.style.display = (type === 'activities' || type === 'talks') ? 'block' : 'none';
@@ -707,10 +782,9 @@ class CW_Business_Form {
             // ── Toggles ──
             window.toggleSdg = function(btn, id) {
                 const isChecked = btn.classList.toggle('selected');
-                btn.querySelector('input[type=checkbox]').checked = isChecked;
-                btn.style.backgroundColor = isChecked ? btn.style.borderColor : '#c2c2c2';
-                const span = btn.querySelector('span:not(.sdg-num)');
-                if (span) span.style.opacity = isChecked ? '1' : '0.5';
+                const cb = btn.querySelector('input[type=checkbox]');
+                if (cb) cb.checked = isChecked;
+                btn.setAttribute('aria-pressed', isChecked ? 'true' : 'false');
             };
 
             window.toggleMultiLimits = function() {
@@ -741,14 +815,17 @@ class CW_Business_Form {
                 const loc  = document.getElementById('cw_location_details');
                 const link = document.getElementById('cw_online_link');
                 const icon = document.getElementById('cw_location_icon');
+                const hint = document.getElementById('cw_online_link_hint');
                 if (isOnline) {
                     if (loc)  { loc.style.display  = 'none';  loc.removeAttribute('required'); }
                     if (link) { link.style.display  = 'block'; }
                     if (icon) icon.className = 'fas fa-globe';
+                    if (hint) hint.style.display = 'block';
                 } else {
                     if (loc)  { loc.style.display  = 'block'; loc.setAttribute('required','required'); }
                     if (link) { link.style.display  = 'none'; }
                     if (icon) icon.className = 'fas fa-map-marker-alt';
+                    if (hint) hint.style.display = 'none';
                 }
             };
 
@@ -928,6 +1005,104 @@ class CW_Business_Form {
                 window.currentStep = 1;
                 window.updateWizardUI();
             });
+
+            // ── Certificate editor (preview + drag + live binding) ──
+            (function() {
+                const fileInput  = document.querySelector('.cw-cert-file');
+                const previewEl  = document.getElementById('cw-cert-preview');
+                const overlay    = document.getElementById('cw-cert-name-overlay');
+                if (!previewEl || !overlay) return;
+
+                const xInput     = document.getElementById('cw_cert_x');
+                const yInput     = document.getElementById('cw_cert_y');
+                const sizeInput  = document.getElementById('cw_cert_font_size');
+                const colorInput = document.getElementById('cw_cert_font_color');
+                const widthInput = document.getElementById('cw_cert_max_width');
+                const alignInput = document.getElementById('cw_cert_align');
+
+                function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+                function applyOverlayFromInputs() {
+                    if (xInput)     overlay.style.left = clamp(parseFloat(xInput.value) || 0, 0, 100) + '%';
+                    if (yInput)     overlay.style.top  = clamp(parseFloat(yInput.value) || 0, 0, 100) + '%';
+                    if (sizeInput)  overlay.style.fontSize  = (parseInt(sizeInput.value, 10) || 36) + 'px';
+                    if (colorInput) overlay.style.color     = colorInput.value || '#000';
+                    if (widthInput) overlay.style.width     = clamp(parseInt(widthInput.value, 10) || 60, 10, 100) + '%';
+                    if (alignInput) overlay.style.textAlign = alignInput.value || 'center';
+                }
+
+                [xInput, yInput, sizeInput, colorInput, widthInput, alignInput].forEach(function(el) {
+                    if (el) el.addEventListener('input', applyOverlayFromInputs);
+                });
+
+                if (fileInput) {
+                    fileInput.addEventListener('change', function() {
+                        if (!fileInput.files || !fileInput.files[0]) return;
+                        const file = fileInput.files[0];
+                        if (!file.type || file.type.indexOf('image/') !== 0) {
+                            // PDF or other non-image: just hide the placeholder and let the
+                            // user trust the position numbers — preview only works for images.
+                            return;
+                        }
+                        const url = URL.createObjectURL(file);
+                        let img = previewEl.querySelector('img.cw-cert-preview-img');
+                        const placeholder = previewEl.querySelector('.cw-cert-preview-placeholder');
+                        if (placeholder) placeholder.remove();
+                        if (!img) {
+                            img = document.createElement('img');
+                            img.className = 'cw-cert-preview-img';
+                            previewEl.insertBefore(img, overlay);
+                        }
+                        img.src = url;
+                    });
+                }
+
+                let dragging = false;
+                function pointerXYToPercent(clientX, clientY) {
+                    const rect = previewEl.getBoundingClientRect();
+                    if (!rect.width || !rect.height) return null;
+                    const x = clamp(((clientX - rect.left) / rect.width)  * 100, 0, 100);
+                    const y = clamp(((clientY - rect.top)  / rect.height) * 100, 0, 100);
+                    return { x: x, y: y };
+                }
+
+                function onMove(ev) {
+                    if (!dragging) return;
+                    const point = ev.touches && ev.touches[0]
+                        ? pointerXYToPercent(ev.touches[0].clientX, ev.touches[0].clientY)
+                        : pointerXYToPercent(ev.clientX, ev.clientY);
+                    if (!point) return;
+                    if (xInput) xInput.value = point.x.toFixed(1);
+                    if (yInput) yInput.value = point.y.toFixed(1);
+                    applyOverlayFromInputs();
+                    if (ev.cancelable) ev.preventDefault();
+                }
+
+                function endDrag() {
+                    dragging = false;
+                    document.body.classList.remove('cw-cert-dragging');
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', endDrag);
+                    document.removeEventListener('touchmove', onMove);
+                    document.removeEventListener('touchend', endDrag);
+                }
+
+                overlay.addEventListener('mousedown', function(ev) {
+                    dragging = true;
+                    document.body.classList.add('cw-cert-dragging');
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', endDrag);
+                    ev.preventDefault();
+                });
+                overlay.addEventListener('touchstart', function(ev) {
+                    dragging = true;
+                    document.body.classList.add('cw-cert-dragging');
+                    document.addEventListener('touchmove', onMove, { passive: false });
+                    document.addEventListener('touchend', endDrag);
+                }, { passive: true });
+
+                applyOverlayFromInputs();
+            })();
 
         }); // end DOMContentLoaded
         </script>

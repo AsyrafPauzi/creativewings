@@ -99,16 +99,72 @@ class CW_Business_Save {
             require_once ABSPATH . 'wp-admin/includes/media.php';
         }
 
-        foreach ( [ 'business_name', 'business_phone', 'business_address', 'business_website', 'business_ssm' ] as $f ) {
+        // Plain text fields (single-line text / select / address textarea / tagline).
+        $text_keys = [
+            // Existing
+            'business_name', 'business_phone', 'business_address', 'business_ssm',
+            // New basics / story / location
+            'business_tagline', 'business_industry', 'business_team_size',
+            'business_city', 'business_country',
+        ];
+        foreach ( $text_keys as $f ) {
             if ( isset( $_POST[ $f ] ) ) {
-                update_user_meta( $uid, $f, sanitize_text_field( $_POST[ $f ] ) );
+                update_user_meta( $uid, $f, sanitize_text_field( wp_unslash( $_POST[ $f ] ) ) );
             }
         }
 
+        // URLs — sanitize with esc_url_raw to preserve scheme + query.
+        $url_keys = [
+            'business_website',
+            'Facebook_url', 'instagram_url', 'linkeden_url', 'twitter_url',
+            'behave_url', 'youtube_url', 'tiktok_url',
+        ];
+        foreach ( $url_keys as $f ) {
+            if ( isset( $_POST[ $f ] ) ) {
+                update_user_meta( $uid, $f, esc_url_raw( wp_unslash( $_POST[ $f ] ) ) );
+            }
+        }
+
+        // Long-form description — allow basic post-style HTML (links, lists, bold, etc).
+        if ( isset( $_POST['business_about'] ) ) {
+            update_user_meta( $uid, 'business_about', wp_kses_post( wp_unslash( $_POST['business_about'] ) ) );
+        }
+
+        // Founded year — bounded integer.
+        if ( isset( $_POST['business_founded_year'] ) ) {
+            $year = intval( $_POST['business_founded_year'] );
+            update_user_meta( $uid, 'business_founded_year', $year > 0 ? $year : '' );
+        }
+
+        // Public-visibility toggles for the organiser card.
+        // Hidden input ensures the field is always submitted as '0' if the checkbox is unticked.
+        foreach ( [ 'cw_show_org_email', 'cw_show_org_phone' ] as $vf ) {
+            if ( isset( $_POST[ $vf ] ) ) {
+                $val = ( $_POST[ $vf ] === '1' || $_POST[ $vf ] === 1 ) ? '1' : '0';
+                update_user_meta( $uid, $vf, $val );
+            }
+        }
+
+        // Business logo upload — also mirror to creator_profile_image so the
+        // public organiser profile renderer (CW_Users::render_public_profile_html)
+        // can pick up the avatar without extra wiring.
         if ( ! empty( $_FILES['business_logo']['name'] ) ) {
             $lid = media_handle_upload( 'business_logo', 0 );
             if ( ! is_wp_error( $lid ) ) {
-                update_user_meta( $uid, 'business_logo', [ 'id' => $lid, 'url' => wp_get_attachment_url( $lid ) ] );
+                $logo_data = [ 'id' => $lid, 'url' => wp_get_attachment_url( $lid ) ];
+                update_user_meta( $uid, 'business_logo', $logo_data );
+                update_user_meta( $uid, 'creator_profile_image', $logo_data );
+            }
+        }
+
+        // Business cover upload — saved under business_cover and mirrored to
+        // creator_header_image so the public profile hero banner renders it.
+        if ( ! empty( $_FILES['business_cover']['name'] ) ) {
+            $cid = media_handle_upload( 'business_cover', 0 );
+            if ( ! is_wp_error( $cid ) ) {
+                $cover_data = [ 'id' => $cid, 'url' => wp_get_attachment_url( $cid ) ];
+                update_user_meta( $uid, 'business_cover', $cover_data );
+                update_user_meta( $uid, 'creator_header_image', $cover_data );
             }
         }
 
