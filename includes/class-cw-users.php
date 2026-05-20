@@ -63,9 +63,24 @@ class CW_Users {
     
     
     
-    private function get_creator_portfolio_data($uid) {
+    private function get_creator_portfolio_data($uid, $only_public = false) {
         global $wpdb;
         $table = $wpdb->prefix . $this->portfolio_table;
+
+        if ( $only_public ) {
+            // Visibility column may not exist on very old installs — guard with a column check.
+            $has_visibility = (bool) $wpdb->get_var( $wpdb->prepare(
+                "SHOW COLUMNS FROM `{$table}` LIKE %s",
+                'visibility'
+            ) );
+            if ( $has_visibility ) {
+                return $wpdb->get_results( $wpdb->prepare(
+                    "SELECT * FROM $table WHERE created_by = %d AND (visibility IS NULL OR visibility = '' OR visibility = 'public') ORDER BY _ID DESC",
+                    $uid
+                ) );
+            }
+        }
+
         return $wpdb->get_results( $wpdb->prepare( "SELECT * FROM $table WHERE created_by = %d ORDER BY _ID DESC", $uid ) );
     }
 
@@ -86,7 +101,11 @@ class CW_Users {
         $hdr_meta   = get_user_meta($uid, 'creator_header_image', true);
         $header_url = (is_array($hdr_meta) && isset($hdr_meta['url'])) ? $hdr_meta['url'] : 'https://creativewings.asia/wp-content/uploads/2025/09/Asset-2@2x.png';
 
-        $portfolio_items = $this->get_creator_portfolio_data($uid);
+        // Viewer state — needed before we fetch portfolio so we can hide private items from visitors.
+        $is_logged_in = is_user_logged_in();
+        $is_owner     = $is_logged_in && ( (int) get_current_user_id() === (int) $uid );
+
+        $portfolio_items = $this->get_creator_portfolio_data( $uid, ! $is_owner );
         $project_count   = count((array) $portfolio_items);
 
         // Build per-category counts for the filter strip (and overall "All" count)
@@ -102,10 +121,6 @@ class CW_Users {
         $unique_categories = array_keys($cat_counts);
         // Render filter pills only when there are 2+ categories AND 4+ total items.
         $show_filter_strip = ( count($unique_categories) >= 2 ) && ( $project_count >= 4 );
-
-        // Viewer state
-        $is_logged_in = is_user_logged_in();
-        $is_owner     = $is_logged_in && ( (int) get_current_user_id() === (int) $uid );
 
         // Member-since year (graceful fallback if missing/unparseable)
         $user_data         = get_userdata( $uid );

@@ -559,6 +559,105 @@
     cursor: default;
 }
 
+/* ── Portfolio visibility (modal radio cards + tile badge) ── */
+.cw-pf-visibility {
+    border: none;
+    padding: 0;
+    margin: 14px 0 4px;
+}
+.cw-pf-visibility-legend {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cw-text);
+    margin-bottom: 8px;
+    padding: 0;
+}
+.cw-pf-visibility-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+.cw-pf-vis-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1.5px solid var(--cw-border);
+    border-radius: var(--cw-radius-sm);
+    background: var(--cw-surface);
+    cursor: pointer;
+    transition: border-color .18s, background .18s, box-shadow .18s;
+    min-width: 0;
+}
+.cw-pf-vis-card:hover { border-color: var(--cw-primary); }
+.cw-pf-vis-card input[type="radio"] {
+    margin: 2px 0 0;
+    accent-color: var(--cw-primary);
+    flex-shrink: 0;
+}
+.cw-pf-vis-card:has(input[type="radio"]:checked) {
+    border-color: var(--cw-primary);
+    background: var(--cw-primary-light);
+    box-shadow: 0 0 0 3px rgba(0, 101, 153, 0.10);
+}
+.cw-pf-vis-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: var(--cw-bg);
+    color: var(--cw-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.cw-pf-vis-card:has(input[type="radio"]:checked) .cw-pf-vis-icon {
+    background: var(--cw-primary);
+    color: #fff;
+}
+.cw-pf-vis-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.cw-pf-vis-text strong {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--cw-text);
+    line-height: 1.2;
+}
+.cw-pf-vis-text small {
+    font-size: 11.5px;
+    color: var(--cw-text-soft);
+    line-height: 1.4;
+}
+@media (max-width: 600px) {
+    .cw-pf-visibility-options { grid-template-columns: 1fr; }
+}
+
+/* Private badge on the owner's portfolio tile */
+.cw-pf-private-badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 4;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(15, 23, 42, 0.78);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    padding: 5px 10px;
+    border-radius: 50px;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+}
+.cw-pf-private-badge i { font-size: 10px; }
+
 /* SDG icon images (Explore Opportunities card) — matches product details page */
 .cw-sdg-row.cw-sdg-icons { gap: 6px; }
 .cw-sdg-icon-img {

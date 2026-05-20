@@ -24,6 +24,40 @@ class CW_Dashboard_Creator {
         add_action( 'admin_post_cw_save_creative_profile', [ $this, 'handle_save_profile' ] );
         add_action( 'admin_post_cw_save_portfolio', [ $this, 'handle_save_portfolio' ] );
         add_action( 'admin_post_cw_delete_portfolio', [ $this, 'handle_delete_portfolio' ] );
+
+        // 3. Schema migrations (idempotent — runs once via option flag)
+        add_action( 'init', [ __CLASS__, 'maybe_install_portfolio_columns' ] );
+    }
+
+    /**
+     * Idempotently add the visibility column to the portfolio table.
+     * Uses a stored version flag so we only hit the DB once per upgrade.
+     */
+    public static function maybe_install_portfolio_columns() {
+        $current = (int) get_option( 'cw_portfolio_schema_version', 0 );
+        if ( $current >= 1 ) {
+            return;
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'jet_cct_creator_portfolio';
+
+        // Only proceed if the JetEngine portfolio table exists
+        $exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+        if ( ! $exists ) {
+            return; // leave flag unset so we try again later
+        }
+
+        $has_visibility = $wpdb->get_var( $wpdb->prepare(
+            "SHOW COLUMNS FROM `{$table}` LIKE %s",
+            'visibility'
+        ) );
+
+        if ( ! $has_visibility ) {
+            $wpdb->query( "ALTER TABLE `{$table}` ADD COLUMN `visibility` VARCHAR(20) NOT NULL DEFAULT 'public'" );
+        }
+
+        update_option( 'cw_portfolio_schema_version', 1, false );
     }
 
     /* ==========================================================================
@@ -484,7 +518,9 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                         $gal_data = maybe_unserialize( $p->gallery ); 
                         $g_urls = []; 
                         if ( is_array( $gal_data ) ) { foreach ( $gal_data as $g ) { if ( isset( $g['url'] ) ) $g_urls[] = $g['url']; } }
-                        
+
+                        $visibility = ( isset( $p->visibility ) && $p->visibility === 'private' ) ? 'private' : 'public';
+
                         $del_url = wp_nonce_url( admin_url( 'admin-post.php?action=cw_delete_portfolio&pid=' . $p->_ID . '&redirect_to=' . urlencode($portfolio_url) ), 'cw_del_' . $p->_ID );
                         $edit_json = htmlspecialchars( json_encode([
                             '_ID'         => $p->_ID, 
@@ -492,12 +528,18 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                             'category'    => $p->category, 
                             'description' => $p->description, 
                             'img_url'     => $img_url, 
-                            'gallery'     => $g_urls
+                            'gallery'     => $g_urls,
+                            'visibility'  => $visibility,
                         ]), ENT_QUOTES, 'UTF-8' );
                     ?>
-                    <div class="cw-project-card-v2" onclick="viewPortfolio(<?php echo $edit_json; ?>)">
+                    <div class="cw-project-card-v2 cw-pf-vis-<?php echo esc_attr( $visibility ); ?>" onclick="viewPortfolio(<?php echo $edit_json; ?>)">
                         <div class="cw-project-image-wrap">
                             <img src="<?php echo esc_url( $img_url ); ?>" alt="<?php echo esc_attr($p->title); ?>" />
+                            <?php if ( $visibility === 'private' ): ?>
+                                <span class="cw-pf-private-badge" title="<?php esc_attr_e( 'Only you can see this project', 'creativewings-core' ); ?>">
+                                    <i class="fas fa-lock"></i> <?php esc_html_e( 'Private', 'creativewings-core' ); ?>
+                                </span>
+                            <?php endif; ?>
                             <div class="cw-project-card-overlay">
                                 <button class="cw-overlay-btn" onclick="event.stopPropagation(); editProject(<?php echo $edit_json; ?>)"><i class="fas fa-edit"></i></button>
                                 <a href="<?php echo $del_url; ?>" class="cw-overlay-btn" onclick="event.stopPropagation(); return confirm('Delete?')"><i class="fas fa-trash-alt"></i></a>
@@ -574,6 +616,28 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                             </div>
                             <div class="cw-pf-gallery-preview-grid" id="cw-pf-gallery-preview-grid"></div>
                         </div>
+
+                        <fieldset class="cw-pf-visibility">
+                            <legend class="cw-pf-visibility-legend"><?php esc_html_e( 'Visibility', 'creativewings-core' ); ?></legend>
+                            <div class="cw-pf-visibility-options">
+                                <label class="cw-pf-vis-card">
+                                    <input type="radio" name="pf_visibility" value="public" checked>
+                                    <span class="cw-pf-vis-icon"><i class="fas fa-globe"></i></span>
+                                    <span class="cw-pf-vis-text">
+                                        <strong><?php esc_html_e( 'Public', 'creativewings-core' ); ?></strong>
+                                        <small><?php esc_html_e( 'Anyone visiting your profile can see this project.', 'creativewings-core' ); ?></small>
+                                    </span>
+                                </label>
+                                <label class="cw-pf-vis-card">
+                                    <input type="radio" name="pf_visibility" value="private">
+                                    <span class="cw-pf-vis-icon"><i class="fas fa-lock"></i></span>
+                                    <span class="cw-pf-vis-text">
+                                        <strong><?php esc_html_e( 'Private', 'creativewings-core' ); ?></strong>
+                                        <small><?php esc_html_e( 'Only you can see this project. Hidden from your public profile.', 'creativewings-core' ); ?></small>
+                                    </span>
+                                </label>
+                            </div>
+                        </fieldset>
                     </div>
                     <div class="cw-modal-footer">
                         <button type="submit" class="cw-modal-btn-submit" id="cw-pf-submit-btn"><?php _e('Create Project', 'creativewings-core'); ?></button>
@@ -710,6 +774,11 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                 }
             }
 
+            function cwPfSetVisibility(value){
+                const v = (value === 'private') ? 'private' : 'public';
+                const radios = document.querySelectorAll('input[name="pf_visibility"]');
+                radios.forEach(r => { r.checked = (r.value === v); });
+            }
             function openPortfolioModal(){
                 document.getElementById('cw-pf-modal').style.display='flex';
                 document.body.style.overflow = 'hidden';
@@ -719,6 +788,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                 cwPfSetDescription('');
                 cwPfResetCoverPreview();
                 cwPfClearGalleryPreviews();
+                cwPfSetVisibility('public');
                 const submit = document.getElementById('cw-pf-submit-btn');
                 if (submit) submit.textContent = <?php echo wp_json_encode( __( 'Create Project', 'creativewings-core' ) ); ?>;
                 const header = document.querySelector('#cw-pf-modal .cw-modal-header h3');
@@ -738,6 +808,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                 cwPfSetDescription(d.description || '');
                 cwPfSetCoverPreview(d.img_url || '');
                 cwPfClearGalleryPreviews();
+                cwPfSetVisibility(d.visibility || 'public');
                 const submit = document.getElementById('cw-pf-submit-btn');
                 if (submit) submit.textContent = <?php echo wp_json_encode( __( 'Save Changes', 'creativewings-core' ) ); ?>;
                 const header = document.querySelector('#cw-pf-modal .cw-modal-header h3');
@@ -1409,7 +1480,10 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
             }
         }
 
-        $data=['title'=>sanitize_text_field($_POST['pf_title']),'category'=>$pf_category_raw,'description'=>wp_kses_post($_POST['pf_desc']),'cct_modified'=>current_time('mysql'),'cct_author_id'=>$uid,'created_by'=>$uid,'cct_status'=>'publish'];
+        $pf_visibility_raw = isset( $_POST['pf_visibility'] ) ? sanitize_text_field( wp_unslash( $_POST['pf_visibility'] ) ) : 'public';
+        $pf_visibility     = ( $pf_visibility_raw === 'private' ) ? 'private' : 'public';
+
+        $data=['title'=>sanitize_text_field($_POST['pf_title']),'category'=>$pf_category_raw,'description'=>wp_kses_post($_POST['pf_desc']),'visibility'=>$pf_visibility,'cct_modified'=>current_time('mysql'),'cct_author_id'=>$uid,'created_by'=>$uid,'cct_status'=>'publish'];
         
         require_once(ABSPATH.'wp-admin/includes/image.php');
         require_once(ABSPATH.'wp-admin/includes/file.php');
