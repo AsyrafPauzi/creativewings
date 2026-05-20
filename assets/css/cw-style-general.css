@@ -54,7 +54,7 @@ body, html {
 .woocommerce-MyAccount-content > p:first-child,
 .woocommerce-MyAccount-content > p:nth-of-type(2) { display: none !important; }
 
-.cw-content-wrapper { padding-bottom: 40px; color: var(--cw-text); }
+.cw-content-wrapper { padding-bottom: 40px; color: var(--cw-text); max-width: 100%; min-width: 0; overflow-x: clip; }
 
 /* FontAwesome Fix */
 .fa, .fas, .fa-solid, .far, .fa-regular, .fab, .fa-brands {
@@ -459,20 +459,28 @@ body, html {
 .cw-content-scroll {
     flex: 1;
     overflow-y: auto;
+    overflow-x: clip;
     padding: 32px 36px;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 .cw-content-max {
     width: 100%;
     max-width: 1400px;
     margin: 0;
+    min-width: 0;
 }
 
 @media (max-width: 1024px) {
     .cw-sidebar { transform: translateX(-100%); }
     .cw-sidebar.open { transform: translateX(0); }
-    .cw-main-area { margin-left: 0; }
+    .cw-main-area { margin-left: 0; max-width: 100%; overflow-x: clip; }
     .cw-mobile-header { display: flex; }
-    .cw-content-scroll { padding: 20px; }
+    .cw-content-scroll { padding: 20px 16px; }
+}
+@media (max-width: 480px) {
+    .cw-content-scroll { padding: 16px 12px; }
 }
 
 
@@ -498,6 +506,7 @@ body, html {
     animation: cwSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
 }
+.cw-modal-box.large { max-width: 760px; }
 @keyframes cwSlideUp {
     from { opacity: 0; transform: translateY(24px) scale(0.98); }
     to   { opacity: 1; transform: translateY(0) scale(1); }
@@ -517,7 +526,8 @@ body, html {
 .cw-modal-body {
     padding: 26px;
     overflow-y: auto;
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;
 }
 .cw-modal-footer {
     padding: 18px 26px;
@@ -527,6 +537,7 @@ body, html {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+    flex-shrink: 0;
 }
 .cw-close-modal {
     font-size: 22px; cursor: pointer; color: var(--cw-muted);
@@ -873,15 +884,46 @@ input.cw-input-text-v2 { padding-left: 42px !important; }
 
 .cw-portfolio-header {
     display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 24px;
+}
+.cw-portfolio-header-top {
+    display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 24px;
+    gap: 12px;
 }
 .cw-portfolio-header h2 {
     font-size: 22px;
     font-weight: 800;
     color: var(--cw-text);
     margin: 0;
+    line-height: 1.25;
+}
+.cw-portfolio-header-desc {
+    color: var(--cw-text-soft);
+    font-size: 14px;
+    margin: 0;
+    line-height: 1.5;
+    max-width: 640px;
+}
+.cw-portfolio-add-btn {
+    flex-shrink: 0;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.2;
+}
+@media (max-width: 600px) {
+    .cw-portfolio-header { gap: 4px; margin-bottom: 16px; }
+    .cw-portfolio-header h2 { font-size: 18px; }
+    .cw-portfolio-header-desc { font-size: 13px; }
+    .cw-portfolio-add-btn {
+        padding: 8px 12px;
+        font-size: 13px;
+        max-width: 45%;
+    }
+    .cw-portfolio-add-btn i { margin-right: 4px; }
 }
 
 
@@ -1125,6 +1167,44 @@ input.cw-input-text-v2 { padding-left: 42px !important; }
    [cw_event_detail]  — .cwd-*
    ============================================================================= */
 
+/* ============================================================
+   THEME OVERRIDES — neutralise the theme's .product gutter on
+   mobile so the campaign UI can render edge-to-edge and never
+   cause horizontal scrolling.
+
+   Targets the user's confirmed rule:
+       body.cw-commerce-page.single-product .product {
+           max-width: 1300px;
+           margin: 0 auto;
+           padding: 0 20px 40px;
+       }
+   ============================================================ */
+@media (max-width: 768px) {
+    html,
+    body.cw-commerce-page,
+    body.single-product,
+    body.cw-commerce-page.single-product { overflow-x: hidden !important; }
+
+    body.cw-commerce-page .product,
+    body.single-product   .product,
+    body.cw-commerce-page.single-product .product {
+        max-width: 100% !important;
+        width: 100% !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+    }
+    body.cw-commerce-page .product > *,
+    body.single-product   .product > *,
+    body.cw-commerce-page.single-product .product > * {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+}
+
 /* ── Wrapper ── */
 .cwd-wrap {
     --cwd-primary:    #006599;
@@ -1136,12 +1216,43 @@ input.cw-input-text-v2 { padding-left: 42px !important; }
     --cwd-muted:      #64748b;
     --cwd-radius:     16px;
     --cwd-shadow:     0 2px 16px rgba(0,0,0,.07);
-    max-width: 1200px;
+    /* Never wider than the actual viewport — neutralises themes that force wider containers */
+    width: 100%;
+    max-width: min(1200px, 100vw);
     margin: 0 auto;
     padding: 0 0 60px;
     font-family: inherit;
     color: var(--cwd-text);
+    box-sizing: border-box;
+    overflow-x: clip;
 }
+.cwd-wrap *,
+.cwd-wrap *::before,
+.cwd-wrap *::after { box-sizing: border-box; }
+.cwd-wrap img,
+.cwd-wrap video { max-width: 100%; height: auto; }
+
+/* Long words / bilingual titles must wrap, never widen the container */
+.cwd-wrap .cwd-hero-title,
+.cwd-wrap .cwd-hero-org,
+.cwd-wrap .cwd-hero-stat,
+.cwd-wrap .cwd-section-title,
+.cwd-wrap .cwd-prose,
+.cwd-wrap .cwd-il-value,
+.cwd-wrap .cwd-il-label,
+.cwd-wrap .cwd-faq-q,
+.cwd-wrap .cwd-faq-a,
+.cwd-wrap .cwd-reg-row-title,
+.cwd-wrap .cwd-modal-title,
+.cwd-wrap .cwd-modal-subtitle,
+.cwd-wrap .cwd-deadline-row span,
+.cwd-wrap .cwd-cta-btn,
+.cwd-wrap .cwd-mobile-cta-price,
+.cwd-wrap .cwd-prose * { overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
+.cwd-wrap .cwd-prose img,
+.cwd-wrap .cwd-prose iframe,
+.cwd-wrap .cwd-prose table { max-width: 100%; }
+.cwd-wrap .cwd-prose table { display: block; overflow-x: auto; }
 
 /* ── HERO CARD (contained 2-col, same max-width as body) ── */
 .cwd-hero-card {
@@ -1966,53 +2077,109 @@ button#cwd-reg-submit.cwd-reg-submit-primary i {
     display: none;
     position: fixed;
     bottom: 0; left: 0; right: 0;
+    width: 100%;
     background: #fff;
     border-top: 1px solid var(--cwd-border);
-    padding: 12px 20px;
-    z-index: 999;
-    box-shadow: 0 -4px 20px rgba(0,0,0,.1);
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    z-index: 9999;
+    box-shadow: 0 -6px 24px rgba(0,0,0,.14);
     align-items: center;
-    gap: 14px;
+    gap: 10px;
+    box-sizing: border-box;
 }
 .cwd-mobile-cta-price {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 800;
     color: var(--cwd-primary);
     flex-shrink: 0;
+    line-height: 1.1;
+    white-space: nowrap;
 }
-.cwd-mobile-cta .cwd-cta-btn { flex: 1; }
+
+/* === Register CTA — force visible against any theme/WC override === */
+.cwd-cta-btn.cwd-cta-join,
+.cwd-mobile-cta .cwd-cta-join,
+.cwd-mobile-cta a.cwd-cta-join,
+.cwd-mobile-cta button.cwd-cta-join,
+.cwd-reg-card .cwd-cta-join,
+.cwd-reg-card a.cwd-cta-join,
+.cwd-reg-card button.cwd-cta-join {
+    background: linear-gradient(135deg, var(--cwd-primary, #006599), #0082c0) !important;
+    background-image: linear-gradient(135deg, var(--cwd-primary, #006599), #0082c0) !important;
+    background-color: var(--cwd-primary, #006599) !important;
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+    border: none !important;
+    text-decoration: none !important;
+    font-weight: 800 !important;
+    box-shadow: 0 6px 16px rgba(0, 101, 153, .35) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    text-align: center !important;
+}
+.cwd-cta-btn.cwd-cta-join i,
+.cwd-mobile-cta .cwd-cta-join i,
+.cwd-reg-card .cwd-cta-join i {
+    color: #fff !important;
+    -webkit-text-fill-color: #fff !important;
+    margin: 0 !important;
+}
+.cwd-mobile-cta .cwd-cta-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 12px 14px;
+    font-size: 14px;
+    min-height: 44px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 
 /* ── Responsive ── */
 @media (max-width: 1024px) {
-    .cwd-body { grid-template-columns: 260px 1fr; gap: 20px; }
+    .cwd-body { grid-template-columns: 100% 1fr; gap: 20px; }
     .cwd-hero-info-col { padding: 24px 22px; }
 }
 @media (max-width: 768px) {
-    /* Hero card stacks: image on top, info below */
-    .cwd-hero-card { grid-template-columns: 1fr; }
+    /* Page edge-to-edge on mobile: no side gutters */
+    .cwd-wrap { padding: 0 0 40px; }
+
+    /* Hero card flush, slightly rounded */
+    .cwd-hero-card { grid-template-columns: 1fr; border-radius: 0; border-left: none; border-right: none; }
     .cwd-hero-img-col { aspect-ratio: 1200 / 900; min-height: 0; height: auto; }
-    .cwd-hero-info-col { padding: 20px 18px; }
-    .cwd-hero-title { font-size: 20px; }
+    .cwd-hero-info-col { padding: 18px 16px 20px; gap: 0; }
+    .cwd-hero-title { font-size: 19px; }
+    .cwd-hero-org   { font-size: 13px; margin-bottom: 8px; }
+    .cwd-hero-stats { gap: 6px; margin-bottom: 14px; }
+    .cwd-hero-stat  { font-size: 12.5px; }
+    .cwd-hero-meta  { margin-top: 12px; gap: 10px; }
+    .cwd-hero-sdg   { gap: 5px; }
 
     /* Body stacks: main first, sidebar below */
     .cwd-body {
-        grid-template-columns: 1fr;
         grid-template-areas: "main" "sidebar";
-        padding-top: 20px;
+        padding: 14px 12px calc(96px + env(safe-area-inset-bottom));
+        gap: 14px;
     }
-    .cwd-section    { padding: 20px 18px; }
+    .cwd-section    { padding: 18px 16px; border-radius: 12px; }
+    .cwd-main, .cwd-sidebar { gap: 14px; }
     .cwd-mobile-cta { display: flex; }
-    .cwd-body       { padding-bottom: 80px; }
     .cwd-prize-grid { grid-template-columns: repeat(2, 1fr); }
-    .cwd-hero-sdg-icon { width: 38px; height: 38px; }
+    .cwd-hero-sdg-icon { width: 36px; height: 36px; border-radius: 7px; }
 }
 @media (max-width: 480px) {
-    .cwd-hero-stat      { font-size: 12px; }
-    .cwd-hero-title     { font-size: 18px; }
-    .cwd-reg-price      { font-size: 26px; }
-    .cwd-prize-grid     { grid-template-columns: 1fr; }
-    .cwd-participant-row{ flex-direction: column; }
-    .cwd-hero-sdg-icon  { width: 34px; height: 34px; }
+    .cwd-hero-stat     { font-size: 12px; }
+    .cwd-hero-title    { font-size: 18px; }
+    .cwd-reg-price     { font-size: 26px; }
+    .cwd-prize-grid    { grid-template-columns: 1fr; }
+    .cwd-participant-row { flex-direction: column; }
+    .cwd-hero-sdg-icon { width: 32px; height: 32px; border-radius: 6px; }
+    .cwd-section       { padding: 16px 14px; }
+    .cwd-body          { padding-left: 0; padding-right: 0; }
+    .cwd-mobile-cta .cwd-cta-btn { padding: 12px 10px; font-size: 13.5px; }
+    .cwd-mobile-cta-price { font-size: 15px; }
 }
 
 /* ==========================================================================
@@ -2734,4 +2901,133 @@ button#cwd-reg-submit.cwd-reg-submit-primary i {
     .cwd-gallery-lb-prev { left: 8px; }
     .cwd-gallery-lb-next { right: 8px; }
     .cwd-gallery-lb-figure img { max-height: calc(100vh - 100px); }
+}
+
+/* ============================================================
+   AUTH FORMS — DESKTOP TOUCHES
+   Login / Register / Forgot Password (shortcodes)
+   ============================================================ */
+@media (min-width: 769px) {
+    .cw-auth-wrapper {
+        border-radius: 50px;
+    }
+}
+
+/* Complete-profile subtitle (used by [cw_complete_profile] shortcode) */
+.cw-complete-profile-subtitle {
+    margin: -10px 0 24px;
+    color: var(--cw-text-soft);
+    font-size: 14px;
+    line-height: 1.5;
+    text-align: center;
+}
+.cw-complete-profile-subtitle strong { color: var(--cw-text); }
+@media (max-width: 480px) {
+    .cw-complete-profile-subtitle { font-size: 13px; margin-bottom: 18px; }
+}
+
+/* ============================================================
+   AUTH FORMS — MOBILE RESPONSIVE
+   Login / Register / Forgot Password (shortcodes)
+   ============================================================ */
+@media (max-width: 768px) {
+    .cw-auth-wrapper {
+        padding: 24px 12px;
+        min-height: 0;
+        align-items: flex-start;
+    }
+    .cw-auth-card,
+    .cw-auth-card.cw-card-nova {
+        max-width: 100%;
+        width: 100%;
+        padding: 28px 22px;
+        border-radius: 16px;
+        box-sizing: border-box;
+    }
+    .cw-auth-heading {
+        font-size: 24px;
+        margin-bottom: 22px;
+        line-height: 1.25;
+    }
+    .cw-input-group,
+    .cw-input-group-v2 { margin-bottom: 16px; }
+    .cw-input-text-v2 {
+        font-size: 16px; /* prevent iOS zoom on focus */
+        padding: 13px 14px 13px 42px;
+    }
+    .cw-auth-form-v2 .cw-btn-primary,
+    .cw-auth-form-v2 .cw-btn-full {
+        width: 100%;
+        padding: 14px 16px;
+        font-size: 15px;
+    }
+    .cw-auth-links-v2 {
+        margin-top: 18px;
+        gap: 8px;
+        font-size: 13.5px;
+    }
+    .cw-social-login-v2 { margin-top: 22px; }
+    .cw-divider-v2 { font-size: 11.5px; }
+    .cw-social-btns,
+    .cw-social-btns-v2 {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        margin-top: 14px;
+    }
+    .cw-social-btns > *,
+    .cw-social-btns-v2 > * {
+        flex: 1 1 100%;
+        width: 100%;
+        min-width: 0;
+    }
+    /* Nextend social-login button host elements — force identical width + centered content */
+    .cw-social-btns .nsl-container,
+    .cw-social-btns-v2 .nsl-container,
+    .cw-social-btns .nsl-container-block,
+    .cw-social-btns-v2 .nsl-container-block,
+    .cw-social-btns .nsl-container-buttons,
+    .cw-social-btns-v2 .nsl-container-buttons {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        text-align: center !important;
+    }
+    .cw-social-btns .nsl-button,
+    .cw-social-btns-v2 .nsl-button,
+    .cw-social-btns .nsl-button-default,
+    .cw-social-btns-v2 .nsl-button-default {
+        display: flex !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 auto !important;
+        justify-content: center !important;
+        align-items: center !important;
+        box-sizing: border-box !important;
+    }
+    .cw-social-btns .nsl-button-label-container,
+    .cw-social-btns-v2 .nsl-button-label-container {
+        flex: 0 1 auto;
+        text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+
+@media (max-width: 480px) {
+    .cw-auth-wrapper { padding: 16px 10px; }
+    .cw-auth-card,
+    .cw-auth-card.cw-card-nova {
+        padding: 22px 16px;
+        border-radius: 14px;
+    }
+    .cw-auth-heading {
+        font-size: 22px;
+        margin-bottom: 18px;
+    }
+    .cw-pdpa-consent { padding: 10px 12px; }
+    .cw-pdpa-consent-text { font-size: 12.5px; }
 }

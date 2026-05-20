@@ -126,7 +126,6 @@ class CW_Dashboard_Creator {
             <div class="cw-overview-header">
                 <div>
                     <h1>Welcome back, <?php echo esc_html($display_name); ?> 👋</h1>
-                    <p>Here's what's happening with your creative profile today.</p>
                 </div>
                 <a href="<?php echo esc_url($profile_url); ?>" target="_blank" class="cw-public-profile-link">
                     <i class="fas fa-external-link-alt"></i> View Public Profile
@@ -136,23 +135,31 @@ class CW_Dashboard_Creator {
             <!-- 4-stat grid -->
             <div class="cw-overview-stats-grid cw-stats-4col">
                 <div class="cw-stat-box-small">
-                    <div class="icon"><i class="fas fa-eye" style="color:var(--cw-primary);"></i></div>
-                    <h3><?php echo number_format($views); ?></h3>
+                    <div class="cw-stat-value-row">
+                        <div class="icon"><i class="fas fa-eye" style="color:var(--cw-primary);"></i></div>
+                        <h3><?php echo number_format($views); ?></h3>
+                    </div>
                     <span>Profile Views</span>
                 </div>
                 <div class="cw-stat-box-small">
-                    <div class="icon"><i class="fas fa-briefcase" style="color:#7c3aed;"></i></div>
-                    <h3><?php echo number_format((int)$port_count); ?></h3>
+                    <div class="cw-stat-value-row">
+                        <div class="icon"><i class="fas fa-briefcase" style="color:#7c3aed;"></i></div>
+                        <h3><?php echo number_format((int)$port_count); ?></h3>
+                    </div>
                     <span>Portfolio Items</span>
                 </div>
                 <div class="cw-stat-box-small">
-                    <div class="icon"><i class="fas fa-fire" style="color:var(--cw-accent);"></i></div>
-                    <h3><?php echo number_format($active_engagements); ?></h3>
+                    <div class="cw-stat-value-row">
+                        <div class="icon"><i class="fas fa-fire" style="color:var(--cw-accent);"></i></div>
+                        <h3><?php echo number_format($active_engagements); ?></h3>
+                    </div>
                     <span>Active Events</span>
                 </div>
                 <div class="cw-stat-box-small">
-                    <div class="icon"><i class="fas fa-check-circle" style="color:var(--cw-success);"></i></div>
-                    <h3><?php echo number_format($completed_entries); ?></h3>
+                    <div class="cw-stat-value-row">
+                        <div class="icon"><i class="fas fa-check-circle" style="color:var(--cw-success);"></i></div>
+                        <h3><?php echo number_format($completed_entries); ?></h3>
+                    </div>
                     <span>Completed</span>
                 </div>
             </div>
@@ -184,7 +191,7 @@ class CW_Dashboard_Creator {
                             </div>
                         </a>
                         <a href="<?php echo esc_url($activities_tab); ?>" class="cw-action-item">
-                            <div class="icon-wrap cw-iw-teal"><i class="fas fa-list-check"></i></div>
+                            <div class="icon-wrap cw-iw-teal"><i class="fas fa-tasks"></i></div>
                             <div class="text-wrap">
                                 <span>My Activities</span>
                                 <small>Track your submissions</small>
@@ -260,7 +267,7 @@ class CW_Dashboard_Creator {
        ========================================================================== */
     public function render_profile() {
         $uid = get_current_user_id();
-        $fields = ['creator_display_name', 'creator_tagline', 'creator_bio', 'awards_won', 'creator_skills', 'website_url', 'linkeden_url', 'instagram_url', 'twitter_url', 'Facebook_url', 'behave_url', 'creator_address']; // Added creator_address
+        $fields = ['creator_display_name', 'creator_tagline', 'creator_bio', 'awards_won', 'creator_skills', 'website_url', 'linkeden_url', 'instagram_url', 'twitter_url', 'Facebook_url', 'behave_url', 'creator_address', 'birthdate']; // Added creator_address, birthdate
 $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true );
 
         $img_data = get_user_meta( $uid, 'creator_profile_image', true );
@@ -308,7 +315,10 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                             <!-- Display Name / Tagline -->
                             <div class="cw-field-dark"><label>Display Name</label><input type="text" name="creator_display_name" value="<?php echo esc_attr($meta['creator_display_name']); ?>" class="cw-input-dark-v2" placeholder="Alex Morgan"></div>
                             <div class="cw-field-dark"><label>Tagline</label><input type="text" name="creator_tagline" value="<?php echo esc_attr($meta['creator_tagline']); ?>" class="cw-input-dark-v2" placeholder="Senior UI/UX Designer & Digital Artist"></div>
-                            
+
+                            <!-- Date of Birth (jQuery UI datepicker auto-binds to #birthdate) -->
+                            <div class="cw-field-dark"><label>Date of Birth</label><input type="text" id="birthdate" name="birthdate" value="<?php echo esc_attr($meta['birthdate']); ?>" class="cw-input-dark-v2" placeholder="dd/mm/yyyy" readonly autocomplete="bday"></div>
+
                             <!-- Bio (Rich Text) -->
                             <div class="cw-field-dark full cw-rich-text-area"><label>Bio (Rich Text)</label><?php wp_editor( $meta['creator_bio'], 'creator_bio_editor', ['textarea_name' => 'creator_bio', 'media_buttons' => false, 'textarea_rows' => 4, 'teeny' => true, 'quicktags' => false, 'editor_class' => 'cw-slim-editor-dark'] ); ?></div>
                             
@@ -430,11 +440,40 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
         $my_account_url = get_permalink( wc_get_page_id( 'myaccount' ) );
         $portfolio_url = add_query_arg('tab', 'portfolio', $my_account_url);
 
+        // Fixed portfolio-relevant categories (Issue 6).
+        $cw_pf_categories = [
+            'Architecture',
+            'Branding & Logo Design',
+            'Calligraphy & Typography',
+            'Ceramics & Pottery',
+            'Crafts & Handmade',
+            'Creative Writing',
+            'Digital Art',
+            'Fashion & Textile Design',
+            'Film & Video',
+            'Game Design',
+            'Graphic Design',
+            'Illustration',
+            'Industrial / Product Design',
+            'Interior Design',
+            'Mixed Media',
+            'Music & Sound',
+            'Painting',
+            'Photography',
+            'Printmaking',
+            'Sculpture',
+            'UI / UX Design',
+            'Web Design',
+            'Others',
+        ];
         ?>
         <div class="cw-content-wrapper">
             <div class="cw-portfolio-header">
-                <div><h2><?php _e('My Portfolio', 'creativewings-core'); ?></h2><p style="color:#666;"><?php _e('Manage the projects displayed on your public profile.', 'creativewings-core'); ?></p></div>
-                <button class="cw-btn-primary" onclick="openPortfolioModal()"><i class="fas fa-plus"></i> <?php _e('Add Project', 'creativewings-core'); ?></button>
+                <div class="cw-portfolio-header-top">
+                    <h2><?php _e('My Portfolio', 'creativewings-core'); ?></h2>
+                    <button class="cw-btn-primary cw-portfolio-add-btn" onclick="openPortfolioModal()"><i class="fas fa-plus"></i> <span><?php _e('Add Project', 'creativewings-core'); ?></span></button>
+                </div>
+                <p class="cw-portfolio-header-desc"><?php _e('Manage the projects displayed on your public profile.', 'creativewings-core'); ?></p>
             </div>
             
             <?php if ( $ports ): ?>
@@ -490,42 +529,54 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                     <input type="hidden" name="pf_id" id="pf_id" value="">
                     
                     <div class="cw-modal-body">
-                        <div class="cw-modal-upload-box">
-                             <i class="fas fa-cloud-upload-alt"></i>
-                             <p class="text-sm font-medium">Drag and drop or click to upload cover image</p>
-                             <input type="file" name="pf_image" accept="image/*" class="cw-file-input-ghost">
+                        <div class="cw-modal-upload-box" id="cw-pf-cover-box">
+                             <img class="cw-pf-cover-preview" id="cw-pf-cover-preview" alt="" />
+                             <div class="cw-pf-cover-placeholder">
+                                 <i class="fas fa-cloud-upload-alt"></i>
+                                 <p class="text-sm font-medium">Drag and drop or click to upload cover image</p>
+                             </div>
+                             <button type="button" class="cw-pf-cover-remove" id="cw-pf-cover-remove" aria-label="Remove cover image">&times;</button>
+                             <input type="file" name="pf_image" id="pf_image" accept="image/*" class="cw-file-input-ghost">
                         </div>
                         <input type="text" name="pf_title" id="pf_title" required class="cw-modal-input" placeholder="Project Title">
-                        <?php
-                        // Build grouped category dropdown from product_cat taxonomy
-                        $pf_top_cats = get_terms(['taxonomy'=>'product_cat','parent'=>0,'hide_empty'=>false,'exclude'=>get_option('default_product_cat')]);
-                        ?>
+
                         <select name="pf_category" id="pf_category" required class="cw-modal-input">
                             <option value="">— Select Category —</option>
-                            <?php if ($pf_top_cats && !is_wp_error($pf_top_cats)): foreach ($pf_top_cats as $ptc):
-                                $pf_children = get_terms(['taxonomy'=>'product_cat','parent'=>$ptc->term_id,'hide_empty'=>false]);
-                                if ($pf_children && !is_wp_error($pf_children) && count($pf_children)):
-                            ?>
-                                <optgroup label="<?php echo esc_attr($ptc->name); ?>">
-                                    <?php foreach ($pf_children as $pfc): ?>
-                                        <option value="<?php echo esc_attr($pfc->name); ?>"><?php echo esc_html($pfc->name); ?></option>
-                                    <?php endforeach; ?>
-                                </optgroup>
-                            <?php else: ?>
-                                <option value="<?php echo esc_attr($ptc->name); ?>"><?php echo esc_html($ptc->name); ?></option>
-                            <?php endif; endforeach; endif; ?>
+                            <?php foreach ( $cw_pf_categories as $cw_pf_cat ): ?>
+                                <option value="<?php echo esc_attr( $cw_pf_cat ); ?>"><?php echo esc_html( $cw_pf_cat ); ?></option>
+                            <?php endforeach; ?>
                         </select>
-                        <textarea name="pf_desc" id="pf_desc_editor" rows="3" class="cw-modal-input" placeholder="Brief description of this project…"></textarea>
+                        <div class="cw-pf-cat-other-wrap" id="pf_category_other_wrap" style="display:none;">
+                            <input type="text" name="pf_category_other" id="pf_category_other" class="cw-modal-input" placeholder="<?php esc_attr_e('Enter your category', 'creativewings-core'); ?>">
+                        </div>
+
+                        <div class="cw-wysiwyg-wrap">
+                            <div class="cw-wysiwyg-toolbar" role="toolbar" aria-label="<?php esc_attr_e('Formatting', 'creativewings-core'); ?>">
+                                <button type="button" class="cw-wys-btn" data-cmd="bold" title="<?php esc_attr_e('Bold', 'creativewings-core'); ?>"><b>B</b></button>
+                                <button type="button" class="cw-wys-btn" data-cmd="italic" title="<?php esc_attr_e('Italic', 'creativewings-core'); ?>"><i>I</i></button>
+                                <button type="button" class="cw-wys-btn" data-cmd="underline" title="<?php esc_attr_e('Underline', 'creativewings-core'); ?>"><u>U</u></button>
+                                <span class="cw-wys-sep" aria-hidden="true"></span>
+                                <button type="button" class="cw-wys-btn" data-cmd="insertUnorderedList" title="<?php esc_attr_e('Bulleted list', 'creativewings-core'); ?>"><i class="fas fa-list-ul"></i></button>
+                                <button type="button" class="cw-wys-btn" data-cmd="insertOrderedList" title="<?php esc_attr_e('Numbered list', 'creativewings-core'); ?>"><i class="fas fa-list-ol"></i></button>
+                                <span class="cw-wys-sep" aria-hidden="true"></span>
+                                <button type="button" class="cw-wys-btn" data-cmd="createLink" title="<?php esc_attr_e('Insert link', 'creativewings-core'); ?>"><i class="fas fa-link"></i></button>
+                                <button type="button" class="cw-wys-btn" data-cmd="unlink" title="<?php esc_attr_e('Remove link', 'creativewings-core'); ?>"><i class="fas fa-unlink"></i></button>
+                            </div>
+                            <div id="pf_desc_editor" class="cw-wysiwyg-area" contenteditable="true" data-placeholder="<?php esc_attr_e('Brief description of this project…', 'creativewings-core'); ?>"></div>
+                            <textarea name="pf_desc" id="pf_desc_hidden" class="cw-wys-hidden-input" hidden></textarea>
+                        </div>
+
                         <div class="cw-modal-gallery-field">
                             <div class="cw-modal-gallery-box">
                                 <i class="fas fa-images"></i>
                                 <span>Add gallery images <small>(optional, multiple)</small></span>
-                                <input type="file" name="pf_gallery[]" multiple accept="image/*" class="cw-file-input-ghost">
+                                <input type="file" name="pf_gallery[]" id="pf_gallery_input" multiple accept="image/*" class="cw-file-input-ghost">
                             </div>
+                            <div class="cw-pf-gallery-preview-grid" id="cw-pf-gallery-preview-grid"></div>
                         </div>
                     </div>
                     <div class="cw-modal-footer">
-                        <button type="submit" class="cw-modal-btn-submit">Create Project</button>
+                        <button type="submit" class="cw-modal-btn-submit" id="cw-pf-submit-btn"><?php _e('Create Project', 'creativewings-core'); ?></button>
                     </div>
                 </form>
             </div>
@@ -543,7 +594,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                         <span class="cw-pf-view-cat-badge" id="cw-pf-view-cat"></span>
                     </div>
                     <h2 class="cw-pf-view-title" id="cw-pf-view-title"></h2>
-                    <p class="cw-pf-view-desc" id="cw-pf-view-desc"></p>
+                    <div class="cw-pf-view-desc" id="cw-pf-view-desc"></div>
                     <div id="cw-pf-gallery-section" style="display:none;">
                         <p class="cw-pf-gallery-label">Gallery</p>
                         <div class="cw-pf-gallery-grid" id="cw-pf-gallery-grid"></div>
@@ -553,28 +604,149 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
         </div>
 
         <script>
+            const CW_PF_CATEGORIES = <?php echo wp_json_encode( $cw_pf_categories ); ?>;
+
+            function cwPfResetCoverPreview(){
+                const preview = document.getElementById('cw-pf-cover-preview');
+                const box     = document.getElementById('cw-pf-cover-box');
+                const fileEl  = document.getElementById('pf_image');
+                if (preview) { preview.src = ''; preview.removeAttribute('src'); }
+                if (box)     { box.classList.remove('has-preview'); }
+                if (fileEl)  { fileEl.value = ''; }
+            }
+            function cwPfSetCoverPreview(url){
+                const preview = document.getElementById('cw-pf-cover-preview');
+                const box     = document.getElementById('cw-pf-cover-box');
+                if (!preview || !box) return;
+                if (url) { preview.src = url; box.classList.add('has-preview'); }
+                else     { cwPfResetCoverPreview(); }
+            }
+            function cwPfClearGalleryPreviews(){
+                const grid = document.getElementById('cw-pf-gallery-preview-grid');
+                if (grid) grid.innerHTML = '';
+                const fileEl = document.getElementById('pf_gallery_input');
+                if (fileEl) fileEl.value = '';
+            }
+            function cwPfRenderGalleryPreviews(){
+                const grid   = document.getElementById('cw-pf-gallery-preview-grid');
+                const fileEl = document.getElementById('pf_gallery_input');
+                if (!grid || !fileEl) return;
+                grid.innerHTML = '';
+                if (!fileEl.files || fileEl.files.length === 0) return;
+                Array.from(fileEl.files).forEach((file, idx) => {
+                    const item = document.createElement('div');
+                    item.className = 'cw-pf-gallery-preview-item';
+                    const img = document.createElement('img');
+                    img.alt = file.name || '';
+                    const removeBtn = document.createElement('button');
+                    removeBtn.type = 'button';
+                    removeBtn.className = 'cw-pf-gallery-preview-remove';
+                    removeBtn.setAttribute('aria-label', 'Remove image');
+                    removeBtn.innerHTML = '&times;';
+                    removeBtn.addEventListener('click', function(){
+                        const dt = new DataTransfer();
+                        Array.from(fileEl.files).forEach((f, i) => { if (i !== idx) dt.items.add(f); });
+                        fileEl.files = dt.files;
+                        cwPfRenderGalleryPreviews();
+                    });
+                    const reader = new FileReader();
+                    reader.onload = e => { img.src = e.target.result; };
+                    reader.readAsDataURL(file);
+                    item.appendChild(img);
+                    item.appendChild(removeBtn);
+                    grid.appendChild(item);
+                });
+            }
+
+            function cwPfApplyCategory(cat){
+                const sel      = document.getElementById('pf_category');
+                const otherInp = document.getElementById('pf_category_other');
+                const otherWrap= document.getElementById('pf_category_other_wrap');
+                if (!sel) return;
+                cat = cat || '';
+                if (cat && CW_PF_CATEGORIES.indexOf(cat) !== -1 && cat !== 'Others') {
+                    sel.value = cat;
+                    if (otherInp) otherInp.value = '';
+                    if (otherWrap) otherWrap.style.display = 'none';
+                    if (otherInp) otherInp.required = false;
+                } else if (cat) {
+                    sel.value = 'Others';
+                    if (otherInp)  otherInp.value = cat;
+                    if (otherWrap) otherWrap.style.display = '';
+                    if (otherInp)  otherInp.required = true;
+                } else {
+                    sel.value = '';
+                    if (otherInp)  otherInp.value = '';
+                    if (otherWrap) otherWrap.style.display = 'none';
+                    if (otherInp)  otherInp.required = false;
+                }
+            }
+            function cwPfOnCategoryChange(){
+                const sel      = document.getElementById('pf_category');
+                const otherInp = document.getElementById('pf_category_other');
+                const otherWrap= document.getElementById('pf_category_other_wrap');
+                if (!sel || !otherWrap) return;
+                if (sel.value === 'Others') {
+                    otherWrap.style.display = '';
+                    if (otherInp) otherInp.required = true;
+                } else {
+                    otherWrap.style.display = 'none';
+                    if (otherInp) { otherInp.required = false; otherInp.value = ''; }
+                }
+            }
+
+            function cwPfSetDescription(html){
+                const area = document.getElementById('pf_desc_editor');
+                if (area) area.innerHTML = html || '';
+            }
+            function cwPfSyncDescription(){
+                const area   = document.getElementById('pf_desc_editor');
+                const hidden = document.getElementById('pf_desc_hidden');
+                if (area && hidden) {
+                    let html = area.innerHTML.trim();
+                    // Treat an empty editor (only <br> or whitespace) as truly empty.
+                    if (html === '<br>' || html === '<div><br></div>' || html === '<p><br></p>') html = '';
+                    hidden.value = html;
+                }
+            }
+
             function openPortfolioModal(){
                 document.getElementById('cw-pf-modal').style.display='flex';
+                document.body.style.overflow = 'hidden';
                 document.getElementById('pf_id').value='';
                 document.getElementById('pf_title').value='';
-                document.getElementById('pf_category').value='';
-                if(document.getElementById('pf_desc_editor')) document.getElementById('pf_desc_editor').value='';
+                cwPfApplyCategory('');
+                cwPfSetDescription('');
+                cwPfResetCoverPreview();
+                cwPfClearGalleryPreviews();
+                const submit = document.getElementById('cw-pf-submit-btn');
+                if (submit) submit.textContent = <?php echo wp_json_encode( __( 'Create Project', 'creativewings-core' ) ); ?>;
+                const header = document.querySelector('#cw-pf-modal .cw-modal-header h3');
+                if (header) header.textContent = <?php echo wp_json_encode( __( 'Add New Project', 'creativewings-core' ) ); ?>;
             }
             function closeModal(){
                 document.getElementById('cw-pf-modal').style.display='none';
                 document.getElementById('cw-view-modal').style.display='none';
+                document.body.style.overflow = '';
             }
             function editProject(d){
                 document.getElementById('cw-pf-modal').style.display='flex';
-                document.getElementById('pf_id').value = d._ID;
-                document.getElementById('pf_title').value = d.title;
-                document.getElementById('pf_category').value = d.category;
-                if(document.getElementById('pf_desc_editor')) document.getElementById('pf_desc_editor').value = d.description;
+                document.body.style.overflow = 'hidden';
+                document.getElementById('pf_id').value = d._ID || '';
+                document.getElementById('pf_title').value = d.title || '';
+                cwPfApplyCategory(d.category || '');
+                cwPfSetDescription(d.description || '');
+                cwPfSetCoverPreview(d.img_url || '');
+                cwPfClearGalleryPreviews();
+                const submit = document.getElementById('cw-pf-submit-btn');
+                if (submit) submit.textContent = <?php echo wp_json_encode( __( 'Save Changes', 'creativewings-core' ) ); ?>;
+                const header = document.querySelector('#cw-pf-modal .cw-modal-header h3');
+                if (header) header.textContent = <?php echo wp_json_encode( __( 'Edit Project', 'creativewings-core' ) ); ?>;
             }
             function viewPortfolio(d){
                 document.getElementById('cw-pf-view-title').textContent = d.title || '';
                 document.getElementById('cw-pf-view-cat').textContent   = d.category || '';
-                document.getElementById('cw-pf-view-desc').textContent  = d.description || '';
+                document.getElementById('cw-pf-view-desc').innerHTML    = d.description || '';
 
                 const heroImg = document.getElementById('cw-pf-view-hero-img');
                 const heroWrap = heroImg.parentElement;
@@ -602,10 +774,74 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
 
             jQuery(document).ready(function($){
                 $(window).on('click', function(e){
-                    if($(e.target).is('#cw-view-modal, #cw-pf-modal')){ closeModal(); document.body.style.overflow = ''; }
+                    if($(e.target).is('#cw-view-modal, #cw-pf-modal')){ closeModal(); }
                 });
+
+                // Cover image: live preview when a new file is selected.
+                const coverInput = document.getElementById('pf_image');
+                if (coverInput) {
+                    coverInput.addEventListener('change', function(){
+                        if (this.files && this.files[0]) {
+                            const reader = new FileReader();
+                            reader.onload = e => cwPfSetCoverPreview(e.target.result);
+                            reader.readAsDataURL(this.files[0]);
+                        } else {
+                            cwPfResetCoverPreview();
+                        }
+                    });
+                }
+                const coverRemove = document.getElementById('cw-pf-cover-remove');
+                if (coverRemove) {
+                    coverRemove.addEventListener('click', function(ev){
+                        ev.stopPropagation();
+                        ev.preventDefault();
+                        cwPfResetCoverPreview();
+                    });
+                }
+
+                // Gallery: render previews + per-thumb remove.
+                const galInput = document.getElementById('pf_gallery_input');
+                if (galInput) {
+                    galInput.addEventListener('change', cwPfRenderGalleryPreviews);
+                }
+
+                // Category "Others" toggle.
+                const catSel = document.getElementById('pf_category');
+                if (catSel) {
+                    catSel.addEventListener('change', cwPfOnCategoryChange);
+                }
+
+                // WYSIWYG toolbar.
+                document.querySelectorAll('#cw-pf-modal .cw-wys-btn').forEach(function(btn){
+                    btn.addEventListener('mousedown', function(ev){ ev.preventDefault(); });
+                    btn.addEventListener('click', function(){
+                        const cmd  = this.getAttribute('data-cmd');
+                        const area = document.getElementById('pf_desc_editor');
+                        if (area) area.focus();
+                        if (cmd === 'createLink') {
+                            const url = window.prompt(<?php echo wp_json_encode( __( 'Enter URL', 'creativewings-core' ) ); ?>, 'https://');
+                            if (url) document.execCommand('createLink', false, url);
+                        } else {
+                            document.execCommand(cmd, false, null);
+                        }
+                        cwPfSyncDescription();
+                    });
+                });
+                const descArea = document.getElementById('pf_desc_editor');
+                if (descArea) {
+                    descArea.addEventListener('input', cwPfSyncDescription);
+                    descArea.addEventListener('blur',  cwPfSyncDescription);
+                }
+
+                // Sync description into hidden textarea right before submit.
+                const pfForm = document.querySelector('#cw-pf-modal form.cw-modal-form-wrapper');
+                if (pfForm) {
+                    pfForm.addEventListener('submit', function(){
+                        cwPfSyncDescription();
+                    });
+                }
             });
-            document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ closeModal(); document.body.style.overflow=''; } });
+            document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ closeModal(); } });
         </script>
         <?php
     }
@@ -783,8 +1019,16 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
         $base_url = get_permalink( wc_get_page_id( 'myaccount' ) );
         $activities_url = add_query_arg('tab', 'activities', $base_url);
         $current_filter = sanitize_text_field($_GET['filter'] ?? 'all');
-        $paged    = isset($_GET['cw_page']) ? max(1, intval($_GET['cw_page'])) : 1;
-        $per_page = 9;
+
+        // Per-page selector: 5 / 10 / 25 / 50 / 100 / All (default 10).
+        $allowed_per_page = ['5', '10', '25', '50', '100', 'all'];
+        $per_page_raw = isset($_GET['act_per_page']) ? sanitize_text_field($_GET['act_per_page']) : '10';
+        if ( ! in_array( $per_page_raw, $allowed_per_page, true ) ) {
+            $per_page_raw = '10';
+        }
+        $show_all = ( $per_page_raw === 'all' );
+        $per_page = $show_all ? -1 : intval( $per_page_raw );
+        $paged    = isset($_GET['act_page']) ? max(1, intval($_GET['act_page'])) : 1;
 
         $comp_term = get_term_by('slug', 'competitions', 'product_cat');
         $comp_ids  = $comp_term ? array_merge([$comp_term->term_id], get_term_children($comp_term->term_id, 'product_cat')) : [];
@@ -819,18 +1063,44 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
             $base_args['meta_query'] = [['key' => 'product_id', 'value' => $filtered_product_ids, 'compare' => 'IN']];
         }
 
-        // Count total for pagination
-        $count_args                 = $base_args;
+        // Count total for pagination (after filter is applied).
+        $count_args                   = $base_args;
         $count_args['posts_per_page'] = -1;
-        $count_args['fields']       = 'ids';
+        $count_args['fields']         = 'ids';
         $all_ids     = get_posts($count_args);
         $total_items = count($all_ids);
-        $total_pages = (int) ceil($total_items / $per_page);
+        $total_pages = ( $show_all || $per_page <= 0 ) ? 1 : (int) ceil( $total_items / $per_page );
 
-        // Paginated query
-        $base_args['posts_per_page'] = $per_page;
-        $base_args['offset']         = ($paged - 1) * $per_page;
+        // Clamp current page in case filter shrunk the result set.
+        if ( $paged > $total_pages ) {
+            $paged = max( 1, $total_pages );
+        }
+
+        // Paginated query.
+        if ( $show_all ) {
+            $base_args['posts_per_page'] = -1;
+        } else {
+            $base_args['posts_per_page'] = $per_page;
+            $base_args['offset']         = ($paged - 1) * $per_page;
+        }
         $entries = get_posts($base_args);
+
+        // Base URL used for filter pills (preserve per-page choice, reset to page 1).
+        $filter_link = function( $slug ) use ( $activities_url, $per_page_raw ) {
+            return add_query_arg([
+                'filter'       => $slug,
+                'act_per_page' => $per_page_raw,
+                'act_page'     => 1,
+            ], $activities_url);
+        };
+        // Base URL for pagination + per-page selector (preserve current filter).
+        $pagination_base_url = add_query_arg([
+            'filter'       => $current_filter,
+            'act_per_page' => $per_page_raw,
+        ], $activities_url);
+        $per_page_base_url   = add_query_arg([
+            'filter' => $current_filter,
+        ], $activities_url);
         ?>
 
         <div class="cw-content-wrapper">
@@ -841,13 +1111,13 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                 </div>
 
                 <div class="cw-filter-group">
-                    <a href="<?php echo esc_url( add_query_arg('filter', 'all', $activities_url) ); ?>"
+                    <a href="<?php echo esc_url( $filter_link('all') ); ?>"
                        class="cw-filter-btn <?php echo ($current_filter === 'all') ? 'active' : ''; ?>">All</a>
-                    <a href="<?php echo esc_url( add_query_arg('filter', 'competitions', $activities_url) ); ?>"
+                    <a href="<?php echo esc_url( $filter_link('competitions') ); ?>"
                        class="cw-filter-btn <?php echo ($current_filter === 'competitions') ? 'active' : ''; ?>">Competitions</a>
-                    <a href="<?php echo esc_url( add_query_arg('filter', 'activities', $activities_url) ); ?>"
+                    <a href="<?php echo esc_url( $filter_link('activities') ); ?>"
                        class="cw-filter-btn <?php echo ($current_filter === 'activities') ? 'active' : ''; ?>">Activities</a>
-                    <a href="<?php echo esc_url( add_query_arg('filter', 'talk-seminar', $activities_url) ); ?>"
+                    <a href="<?php echo esc_url( $filter_link('talk-seminar') ); ?>"
                        class="cw-filter-btn <?php echo ($current_filter === 'talk-seminar') ? 'active' : ''; ?>">Talk/Seminar</a>
                 </div>
             </div>
@@ -921,7 +1191,10 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                 <?php endforeach; ?>
             </div>
 
-            <?php $this->render_pagination( $paged, $total_pages, add_query_arg( 'filter', $current_filter, $activities_url ) ); ?>
+            <div class="cw-list-foot">
+                <?php $this->render_per_page_selector( 'act_per_page', $per_page_raw, $per_page_base_url, 'act_page' ); ?>
+                <?php $this->render_pagination( $paged, $total_pages, $pagination_base_url, 'act_page' ); ?>
+            </div>
 
             <?php else: ?>
                 <div class="cw-empty-state">
@@ -1105,8 +1378,8 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
        ========================================================================== */
     public function handle_save_profile() {
         if(!is_user_logged_in()||!wp_verify_nonce($_POST['_wpnonce'],'cw_profile_nonce'))wp_die('Security Error');$uid=get_current_user_id();
-        $fields=['creator_display_name', 'creator_tagline', 'creator_bio', 'awards_won', 'creator_skills', 'website_url', 'linkeden_url', 'instagram_url', 'twitter_url', 'Facebook_url', 'behave_url', 'creator_address'];
-        foreach($fields as $f){if(isset($_POST[$f])){ $val=($f==='creator_bio')?wp_kses_post($_POST['creator_bio']):sanitize_text_field($_POST[$f]); update_user_meta($uid,$f,$val); }}
+        $fields=['creator_display_name', 'creator_tagline', 'creator_bio', 'awards_won', 'creator_skills', 'website_url', 'linkeden_url', 'instagram_url', 'twitter_url', 'Facebook_url', 'behave_url', 'creator_address', 'birthdate'];
+        foreach($fields as $f){if(isset($_POST[$f])){ $val=($f==='creator_bio')?wp_kses_post($_POST['creator_bio']):trim(sanitize_text_field(wp_unslash($_POST[$f]))); update_user_meta($uid,$f,$val); }}
         $this->handle_image_upload($uid, 'creator_profile_image'); 
         $this->handle_image_upload($uid, 'creator_header_image');
         $my_account_url = get_permalink( wc_get_page_id( 'myaccount' ) );
@@ -1121,8 +1394,17 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
         global $wpdb;
         $uid=get_current_user_id();
         $table=$this->get_table_name();
-        
-        $data=['title'=>sanitize_text_field($_POST['pf_title']),'category'=>sanitize_text_field($_POST['pf_category']),'description'=>wp_kses_post($_POST['pf_desc']),'cct_modified'=>current_time('mysql'),'cct_author_id'=>$uid,'created_by'=>$uid,'cct_status'=>'publish'];
+
+        // Category: when "Others" is selected, store the user-supplied text instead.
+        $pf_category_raw = sanitize_text_field( $_POST['pf_category'] ?? '' );
+        if ( $pf_category_raw === 'Others' ) {
+            $pf_category_other = sanitize_text_field( $_POST['pf_category_other'] ?? '' );
+            if ( $pf_category_other !== '' ) {
+                $pf_category_raw = $pf_category_other;
+            }
+        }
+
+        $data=['title'=>sanitize_text_field($_POST['pf_title']),'category'=>$pf_category_raw,'description'=>wp_kses_post($_POST['pf_desc']),'cct_modified'=>current_time('mysql'),'cct_author_id'=>$uid,'created_by'=>$uid,'cct_status'=>'publish'];
         
         require_once(ABSPATH.'wp-admin/includes/image.php');
         require_once(ABSPATH.'wp-admin/includes/file.php');
@@ -1176,16 +1458,16 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
     /* ==========================================================================
        SHARED: Pagination renderer
        ========================================================================== */
-    private function render_pagination( $current_page, $total_pages, $base_url ) {
+    private function render_pagination( $current_page, $total_pages, $base_url, $page_arg = 'cw_page' ) {
         if ( $total_pages <= 1 ) return;
         ?>
         <nav class="cw-pagination-nav" aria-label="Pagination">
             <?php if ( $current_page > 1 ): ?>
-                <a href="<?php echo esc_url( add_query_arg( 'cw_page', $current_page - 1, $base_url ) ); ?>" class="cw-page-btn prev" aria-label="Previous">
+                <a href="<?php echo esc_url( add_query_arg( $page_arg, $current_page - 1, $base_url ) ); ?>" class="cw-page-btn prev" aria-label="Previous page">
                     <i class="fas fa-chevron-left"></i>
                 </a>
             <?php else: ?>
-                <span class="cw-page-btn prev disabled"><i class="fas fa-chevron-left"></i></span>
+                <span class="cw-page-btn prev disabled" aria-label="Previous page"><i class="fas fa-chevron-left"></i></span>
             <?php endif; ?>
 
             <?php
@@ -1194,13 +1476,13 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
             $end     = min( $total_pages, $current_page + $range );
 
             if ( $start > 1 ) {
-                echo '<a href="' . esc_url( add_query_arg( 'cw_page', 1, $base_url ) ) . '" class="cw-page-btn">1</a>';
+                echo '<a href="' . esc_url( add_query_arg( $page_arg, 1, $base_url ) ) . '" class="cw-page-btn">1</a>';
                 if ( $start > 2 ) echo '<span class="cw-page-ellipsis">…</span>';
             }
             for ( $i = $start; $i <= $end; $i++ ):
                 $active = ( $i === $current_page ) ? 'active' : '';
             ?>
-                <a href="<?php echo esc_url( add_query_arg( 'cw_page', $i, $base_url ) ); ?>"
+                <a href="<?php echo esc_url( add_query_arg( $page_arg, $i, $base_url ) ); ?>"
                    class="cw-page-btn <?php echo $active; ?>"
                    <?php echo $active ? 'aria-current="page"' : ''; ?>>
                     <?php echo $i; ?>
@@ -1208,18 +1490,57 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
             <?php endfor;
             if ( $end < $total_pages ) {
                 if ( $end < $total_pages - 1 ) echo '<span class="cw-page-ellipsis">…</span>';
-                echo '<a href="' . esc_url( add_query_arg( 'cw_page', $total_pages, $base_url ) ) . '" class="cw-page-btn">' . $total_pages . '</a>';
+                echo '<a href="' . esc_url( add_query_arg( $page_arg, $total_pages, $base_url ) ) . '" class="cw-page-btn">' . $total_pages . '</a>';
             }
             ?>
 
             <?php if ( $current_page < $total_pages ): ?>
-                <a href="<?php echo esc_url( add_query_arg( 'cw_page', $current_page + 1, $base_url ) ); ?>" class="cw-page-btn next" aria-label="Next">
+                <a href="<?php echo esc_url( add_query_arg( $page_arg, $current_page + 1, $base_url ) ); ?>" class="cw-page-btn next" aria-label="Next page">
                     <i class="fas fa-chevron-right"></i>
                 </a>
             <?php else: ?>
-                <span class="cw-page-btn next disabled"><i class="fas fa-chevron-right"></i></span>
+                <span class="cw-page-btn next disabled" aria-label="Next page"><i class="fas fa-chevron-right"></i></span>
             <?php endif; ?>
         </nav>
+        <?php
+    }
+
+    /* ==========================================================================
+       SHARED: Per-page selector renderer
+       ========================================================================== */
+    private function render_per_page_selector( $arg_name, $current_value, $base_url, $page_arg = 'cw_page' ) {
+        $options = [
+            '5'   => '5',
+            '10'  => '10',
+            '25'  => '25',
+            '50'  => '50',
+            '100' => '100',
+            'all' => 'All',
+        ];
+        $current_value = (string) $current_value;
+        if ( ! isset( $options[ $current_value ] ) ) {
+            $current_value = '10';
+        }
+        ?>
+        <div class="cw-per-page-wrap">
+            <label for="<?php echo esc_attr( $arg_name ); ?>-select">Per page:</label>
+            <select id="<?php echo esc_attr( $arg_name ); ?>-select"
+                    class="cw-per-page-select"
+                    aria-label="Items per page"
+                    onchange="if(this.value){ window.location.href = this.value; }">
+                <?php foreach ( $options as $val => $label ):
+                    $url = add_query_arg( [
+                        $arg_name => $val,
+                        $page_arg => 1,
+                    ], $base_url );
+                    $sel = ( $current_value === $val ) ? 'selected' : '';
+                ?>
+                    <option value="<?php echo esc_url( $url ); ?>" <?php echo $sel; ?>>
+                        <?php echo esc_html( $label ); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
         <?php
     }
 }

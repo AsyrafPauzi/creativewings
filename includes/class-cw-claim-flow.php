@@ -80,7 +80,12 @@ class CW_Claim_Flow {
             return;
         }
         $user = wp_get_current_user();
-        if ( ! class_exists( 'CW_Roles' ) || 'contestant' !== CW_Roles::get_dashboard_role( $user ) ) {
+        if ( ! class_exists( 'CW_Roles' ) ) {
+            return;
+        }
+        $dashboard_role = CW_Roles::get_dashboard_role( $user );
+        // Contestants and creators both have the link-submission tab on the custom portal.
+        if ( ! in_array( $dashboard_role, [ 'contestant', 'creator' ], true ) ) {
             return;
         }
 

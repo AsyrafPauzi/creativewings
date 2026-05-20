@@ -2,7 +2,7 @@
 /**
  * Plugin Name: CreativeWings Core Platform
  * Description: Complete ecosystem: Auth, Onboarding, Campaigns, Tournaments, and Business Logic.
- * Version: 11.0.15
+ * Version: 11.0.32
  * Author: CreativeWings Dev
  * Text Domain: creativewings-core
  * Domain Path: /languages
@@ -64,7 +64,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
         private function define_constants() {
             define( 'CW_PATH', plugin_dir_path( __FILE__ ) );
             define( 'CW_URL', plugin_dir_url( __FILE__ ) );
-            define( 'CW_VERSION', '11.0.15' );
+            define( 'CW_VERSION', '11.0.32' );
         }
 
         /**
@@ -171,7 +171,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             // 3. JS Libraries - load only where needed
             $js_deps = ['jquery'];
 
-            if ( $is_account || $is_product || is_page(['registration', 'login', 'get-started']) ) {
+            if ( $is_account || $is_product || is_page(['registration', 'login', 'get-started', 'complete-profile']) ) {
                 wp_enqueue_style( 'jquery-ui-css', 'https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.css' );
                 wp_enqueue_script( 'jquery-ui-datepicker' );
                 $js_deps[] = 'jquery-ui-datepicker';

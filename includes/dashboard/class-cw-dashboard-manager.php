@@ -33,7 +33,8 @@ class CW_Dashboard_Manager {
         $role = class_exists( 'CW_Roles' ) ? CW_Roles::get_dashboard_role( $user ) : 'contestant';
 
         // Claim flow redirects may use WC endpoint URLs; portal tabs use ?tab=link-submission.
-        if ( 'contestant' === $role && 'overview' === $current_tab ) {
+        // Both contestants and creators have the Link submission code tab.
+        if ( in_array( $role, [ 'contestant', 'creator' ], true ) && 'overview' === $current_tab ) {
             if ( ! empty( $_GET['step'] ) || ! empty( $_GET['claim_token'] ) || ! empty( $_GET['linked'] ) ) {
                 $current_tab = 'link-submission';
             } elseif ( function_exists( 'is_wc_endpoint_url' ) && is_wc_endpoint_url( 'cw-link-submission' ) ) {
@@ -50,11 +51,12 @@ class CW_Dashboard_Manager {
             ];
         } elseif ( 'creator' === $role ) {
             $menu_items = [
-                'overview'      => ['icon' => 'fa-th-large', 'label' => 'Dashboard'],
-                'explore'       => ['icon' => 'fa-bolt',     'label' => 'Explore Opportunities'], // NEW TAB
-                'activities'    => ['icon' => 'fa-running',  'label' => 'My Activities'], // CONSOLIDATED ENGAGEMENTS
-                'portfolio'     => ['icon' => 'fa-briefcase','label' => 'Portfolio'],
-                'profile'       => ['icon' => 'fa-user-cog', 'label' => 'Profile Settings'],
+                'overview'        => ['icon' => 'fa-th-large', 'label' => 'Dashboard'],
+                'explore'         => ['icon' => 'fa-bolt',     'label' => 'Explore Opportunities'], // NEW TAB
+                'activities'      => ['icon' => 'fa-running',  'label' => 'My Activities'], // CONSOLIDATED ENGAGEMENTS
+                'link-submission' => ['icon' => 'fa-link',     'label' => 'Link submission code'],
+                'portfolio'       => ['icon' => 'fa-briefcase','label' => 'Portfolio'],
+                'profile'         => ['icon' => 'fa-user-cog', 'label' => 'Profile Settings'],
                 // Removed 'competitions' as it's now part of 'activities'
             ];
         } else {
@@ -214,6 +216,12 @@ class CW_Dashboard_Manager {
                     break;
                 case 'activities': // CONSOLIDATED ENGAGEMENTS
                     if ( $this->creator_dashboard ) $this->creator_dashboard->render_my_activities(); 
+                    break;
+                case 'link-submission':
+                    // Reuse the contestant claim/link-code form (delegates to CW_Claim_Flow::render_endpoint()).
+                    if ( $this->contestant_dashboard ) {
+                        $this->contestant_dashboard->render_link_submission();
+                    }
                     break;
                 case 'portfolio': 
                     if ( $this->creator_dashboard ) $this->creator_dashboard->render_portfolio(); 
