@@ -20,6 +20,7 @@ class CW_Loader {
         require_once CW_PATH . 'includes/badges/class-cw-badges-engine.php';
         require_once CW_PATH . 'includes/badges/class-cw-badges-display.php';
         require_once CW_PATH . 'includes/class-cw-security.php';
+        require_once CW_PATH . 'includes/class-cw-flash-notices.php';
         require_once CW_PATH . 'includes/class-cw-audit-log.php';
         require_once CW_PATH . 'includes/class-cw-campaign-resolver.php';
         require_once CW_PATH . 'includes/class-cw-roles.php';

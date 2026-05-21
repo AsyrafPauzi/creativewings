@@ -644,11 +644,44 @@ class CW_Dashboard_Contestant {
                     <p class="cw-settings-subtitle"><?php esc_html_e( 'Update your personal details and account security. These details appear on certificates and leaderboards.', 'creativewings-core' ); ?></p>
                 </div>
 
-                <?php if ( isset( $_GET['updated'] ) ) : ?>
-                    <div class="cw-alert success cw-settings-alert"><i class="fas fa-check-circle"></i> <?php esc_html_e( 'Your profile has been updated.', 'creativewings-core' ); ?></div>
-                <?php endif; ?>
-                <?php if ( $err_key && isset( $error_messages[ $err_key ] ) ) : ?>
-                    <div class="cw-alert error cw-settings-alert"><i class="fas fa-exclamation-circle"></i> <?php echo esc_html( $error_messages[ $err_key ] ); ?></div>
+                <?php
+                // Status messages now surface as SweetAlert2 popups (managed below /
+                // by CW_Flash_Notices for the ?updated key).
+                $popup_payload = null;
+                if ( $err_key && isset( $error_messages[ $err_key ] ) ) {
+                    $popup_payload = [
+                        'icon'  => 'error',
+                        'title' => __( 'Please review your details', 'creativewings-core' ),
+                        'text'  => (string) $error_messages[ $err_key ],
+                    ];
+                }
+                if ( $popup_payload ) :
+                ?>
+                    <script>
+                    (function(){
+                        function fire(){
+                            if (typeof Swal === 'undefined') { return; }
+                            Swal.fire({
+                                icon: <?php echo wp_json_encode( $popup_payload['icon'] ); ?>,
+                                title: <?php echo wp_json_encode( $popup_payload['title'] ); ?>,
+                                text: <?php echo wp_json_encode( $popup_payload['text'] ); ?>,
+                                confirmButtonText: 'OK',
+                                confirmButtonColor: '#dc2626',
+                                showCloseButton: true
+                            });
+                            try {
+                                var url = new URL(window.location.href);
+                                if (url.searchParams.has('err')) {
+                                    url.searchParams.delete('err');
+                                    window.history.replaceState({}, document.title, url.pathname + (url.search || '') + url.hash);
+                                }
+                            } catch(e){}
+                        }
+                        if (document.readyState === 'loading') {
+                            document.addEventListener('DOMContentLoaded', fire);
+                        } else { fire(); }
+                    })();
+                    </script>
                 <?php endif; ?>
 
                 <form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="POST" class="cw-settings-form" autocomplete="off">

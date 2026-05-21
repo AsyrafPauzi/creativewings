@@ -890,9 +890,7 @@ class CW_Dashboard_Business {
         // 3. Get History
         $history = get_posts([ 'post_type' => 'cw_withdrawal', 'author' => $uid, 'posts_per_page' => 10 ]);
 
-        // Messages
-        if ( isset($_GET['requested']) ) echo '<div class="cw-alert success">Withdrawal request submitted.</div>';
-        if ( isset($_GET['updated']) ) echo '<div class="cw-alert success">Bank details saved.</div>';
+        // Status messages now surface via CW_Flash_Notices (SweetAlert2 popups).
 
         ?>
         <div class="cw-content-wrapper">
@@ -1616,7 +1614,7 @@ class CW_Dashboard_Business {
         ];
         $team_sizes = [ '1-10', '11-50', '51-200', '201-500', '500+' ];
 
-        if ( isset($_GET['updated']) ) echo '<div class="cw-alert success"><i class="fas fa-check-circle"></i> Profile updated successfully.</div>';
+        // Status messages surface via CW_Flash_Notices (SweetAlert2 popups).
         ?>
         <div class="cw-content-wrapper">
 

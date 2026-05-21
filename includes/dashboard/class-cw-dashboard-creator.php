@@ -457,8 +457,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
         $hdr_data = get_user_meta( $uid, 'creator_header_image', true );
         $hdr_url  = ( is_array( $hdr_data ) && isset( $hdr_data['url'] ) ) ? $hdr_data['url'] : CW_URL . 'assets/img/default-header.jpg';
 
-        if ( isset($_GET['updated']) ) echo '<div class="cw-alert success">Profile updated successfully.</div>';
-        
+        // Status messages now surface via CW_Flash_Notices (SweetAlert2 popups).
         $skills_array = array_filter(array_map('trim', explode(',', $meta['creator_skills'])));
         ?>
         <div class="cw-content-wrapper">
