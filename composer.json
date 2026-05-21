@@ -1,0 +1,19 @@
+{
+    "name": "creativewings/core-platform",
+    "description": "CreativeWings Core Platform plugin dependencies (reports exports).",
+    "type": "wordpress-plugin",
+    "require": {
+        "php": ">=7.4",
+        "phpoffice/phpspreadsheet": "^2.3",
+        "dompdf/dompdf": "^3.0"
+    },
+    "config": {
+        "platform-check": false,
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "autoload": {
+        "files": []
+    }
+}

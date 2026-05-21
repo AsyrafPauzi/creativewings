@@ -27,6 +27,46 @@ class CW_Roles {
     }
 
     /**
+     * Creator portfolio at /profile/{login}/ — creators only, not business or contestant.
+     */
+    public static function has_public_portfolio( $user = null ) {
+        $user = self::resolve_user( $user );
+        if ( ! $user || self::is_business_user( $user ) ) {
+            return false;
+        }
+        return self::is_creator_user( $user );
+    }
+
+    /**
+     * Business organiser page at /organizer/{login}/ — campaigns, not portfolio.
+     */
+    public static function has_public_organizer_page( $user = null ) {
+        return self::is_business_user( $user );
+    }
+
+    /**
+     * Public portfolio URL for a user, or empty when not applicable.
+     */
+    public static function get_public_portfolio_url( $user = null ) {
+        $user = self::resolve_user( $user );
+        if ( ! $user || ! self::has_public_portfolio( $user ) || empty( $user->user_login ) ) {
+            return '';
+        }
+        return home_url( '/profile/' . rawurlencode( $user->user_login ) . '/' );
+    }
+
+    /**
+     * Public organiser URL for a business user, or empty when not applicable.
+     */
+    public static function get_public_organizer_url( $user = null ) {
+        $user = self::resolve_user( $user );
+        if ( ! $user || ! self::has_public_organizer_page( $user ) || empty( $user->user_login ) ) {
+            return '';
+        }
+        return home_url( '/organizer/' . rawurlencode( $user->user_login ) . '/' );
+    }
+
+    /**
      * Dashboard role slug: business (incl. administrator), creator, or contestant.
      */
     public static function get_dashboard_role( $user = null ) {

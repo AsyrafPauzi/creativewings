@@ -2,7 +2,7 @@
 /**
  * Plugin Name: CreativeWings Core Platform
  * Description: Complete ecosystem: Auth, Onboarding, Campaigns, Tournaments, and Business Logic.
- * Version: 11.0.35
+ * Version: 11.0.52
  * Author: CreativeWings Dev
  * Text Domain: creativewings-core
  * Domain Path: /languages
@@ -10,6 +10,11 @@
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit; // Exit if accessed directly
+}
+
+// Composer autoload (PhpSpreadsheet + Dompdf for Reports exports).
+if ( file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
+    require_once __DIR__ . '/vendor/autoload.php';
 }
 
 // Define Main Class
@@ -64,7 +69,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
         private function define_constants() {
             define( 'CW_PATH', plugin_dir_path( __FILE__ ) );
             define( 'CW_URL', plugin_dir_url( __FILE__ ) );
-            define( 'CW_VERSION', '11.0.50' );
+            define( 'CW_VERSION', '11.0.52' );
         }
 
         /**
@@ -136,6 +141,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             $this->auth       = new CW_Auth();
             $this->wallet     = new CW_Wallet();
             $this->admin      = new CW_Admin();
+            new CW_Report_Export();
             $this->dashboard_manager = new CW_Dashboard_Manager();
         }
 

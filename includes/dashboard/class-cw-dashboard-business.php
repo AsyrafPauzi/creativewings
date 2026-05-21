@@ -62,9 +62,9 @@ class CW_Dashboard_Business {
         // Base URL for links
         $base = get_permalink( wc_get_page_id( 'myaccount' ) );
 
-        // Public organiser profile URL (visible to everyone). Falls back to login slug.
-        $public_profile_url = $u && ! empty( $u->user_login )
-            ? home_url( '/profile/' . rawurlencode( $u->user_login ) . '/' )
+        // Public organiser profile — campaigns, not portfolio (/organizer/{login}/).
+        $public_profile_url = class_exists( 'CW_Roles' )
+            ? CW_Roles::get_public_organizer_url( $u )
             : '';
 
         ?>
@@ -170,12 +170,23 @@ class CW_Dashboard_Business {
                             <i class="fas fa-arrow-right"></i>
                         </a>
 
+                        <a href="<?php echo add_query_arg('tab', 'reports', $base); ?>" class="cw-action-btn hover-blue">
+                            <div class="cw-action-content">
+                                <div class="cw-action-icon blue"><i class="fas fa-chart-bar"></i></div>
+                                <div>
+                                    <strong>Reports</strong>
+                                    <span>Analytics, exports &amp; insights</span>
+                                </div>
+                            </div>
+                            <i class="fas fa-arrow-right"></i>
+                        </a>
+
                         <a href="<?php echo add_query_arg('tab', 'wallet', $base); ?>" class="cw-action-btn hover-blue">
                             <div class="cw-action-content">
                                 <div class="cw-action-icon blue"><i class="fas fa-wallet"></i></div>
                                 <div>
                                     <strong>Wallet</strong>
-                                    <span>Check balance & payouts</span>
+                                    <span>Check balance &amp; payouts</span>
                                 </div>
                             </div>
                             <i class="fas fa-arrow-right"></i>
@@ -741,6 +752,526 @@ class CW_Dashboard_Business {
     }
 
     /* ==========================================================================
+       3b. REPORTS TAB (Analytics + Multi-format export)
+       ========================================================================== */
+    public function render_reports() {
+        if ( ! class_exists( 'CW_Business_Reports' ) ) {
+            echo '<div class="cw-content-wrapper"><div class="cw-alert error">Reports service unavailable.</div></div>';
+            return;
+        }
+
+        $uid = get_current_user_id();
+        $u   = get_userdata( $uid );
+
+        $requested_campaign = isset( $_GET['campaign_id'] ) ? (int) $_GET['campaign_id'] : 0;
+        $range              = isset( $_GET['range'] ) ? CW_Business_Reports::sanitize_range( $_GET['range'] ) : CW_Business_Reports::DEFAULT_RANGE;
+        $roster_page        = isset( $_GET['roster_page'] ) ? max( 1, (int) $_GET['roster_page'] ) : 1;
+
+        if ( $requested_campaign && ! CW_Business_Reports::user_can_view_campaign( $requested_campaign, $uid ) ) {
+            $requested_campaign = 0;
+        }
+
+        $context = CW_Business_Reports::get_context( $uid, $requested_campaign, $range );
+
+        $owned_ids = CW_Business_Reports::owned_campaign_ids( $uid );
+
+        $my_account_url   = get_permalink( wc_get_page_id( 'myaccount' ) );
+        $base_url         = add_query_arg( 'tab', 'reports', $my_account_url );
+        $manage_entries_url = add_query_arg( 'tab', 'manage_entries', $my_account_url );
+
+        $export_args = [
+            'action'      => 'cw_export_report',
+            'campaign_id' => $requested_campaign,
+            'range'       => $range,
+        ];
+        $export_base = wp_nonce_url( add_query_arg( $export_args, admin_url( 'admin-post.php' ) ), 'cw_export_report' );
+
+        $per_page    = 25;
+        $roster      = $context['roster'];
+        $total_rows  = count( $roster );
+        $total_pages = max( 1, (int) ceil( $total_rows / $per_page ) );
+        $roster_page = min( $roster_page, $total_pages );
+        $roster_slice = array_slice( $roster, ( $roster_page - 1 ) * $per_page, $per_page );
+
+        $custom_labels = CW_Business_Reports::collect_custom_field_labels( $roster );
+
+        $is_empty = empty( $owned_ids );
+        ?>
+        <div class="cw-content-wrapper cw-reports-page">
+            <div class="cw-dash-header">
+                <div>
+                    <h2 style="margin:0 0 4px;"><?php esc_html_e( 'Reports', 'creativewings-core' ); ?></h2>
+                    <p>
+                        <?php
+                        if ( $is_empty ) {
+                            esc_html_e( 'No campaigns yet — create one to start tracking analytics.', 'creativewings-core' );
+                        } else {
+                            printf(
+                                /* translators: 1: campaign name, 2: range label */
+                                esc_html__( '%1$s · %2$s', 'creativewings-core' ),
+                                esc_html( $context['campaign_title'] ),
+                                esc_html( $context['range_label'] )
+                            );
+                        }
+                        ?>
+                    </p>
+                </div>
+            </div>
+
+            <?php if ( $is_empty ) : ?>
+                <div class="cw-empty-state">
+                    <i class="fas fa-chart-bar"></i>
+                    <h3><?php esc_html_e( 'No data yet', 'creativewings-core' ); ?></h3>
+                    <p><?php esc_html_e( 'Once campaigns are published and start receiving registrations, you will see numbers, trends, and exports here.', 'creativewings-core' ); ?></p>
+                    <a href="<?php echo esc_url( add_query_arg( 'tab', 'campaigns', $my_account_url ) ); ?>" class="cw-btn-primary">
+                        <i class="fas fa-plus"></i> <?php esc_html_e( 'Create your first campaign', 'creativewings-core' ); ?>
+                    </a>
+                </div>
+            <?php else : ?>
+
+                <!-- Toolbar: filter + export -->
+                <div class="cw-reports-toolbar">
+                    <form method="GET" class="cw-reports-filters" action="<?php echo esc_url( $my_account_url ); ?>">
+                        <input type="hidden" name="tab" value="reports">
+                        <div class="cw-reports-field">
+                            <label for="cw-report-campaign"><?php esc_html_e( 'Campaign', 'creativewings-core' ); ?></label>
+                            <select id="cw-report-campaign" name="campaign_id">
+                                <option value="0"><?php esc_html_e( 'All campaigns', 'creativewings-core' ); ?></option>
+                                <?php foreach ( $owned_ids as $pid ) : ?>
+                                    <option value="<?php echo (int) $pid; ?>" <?php selected( $requested_campaign, $pid ); ?>>
+                                        <?php echo esc_html( get_the_title( $pid ) ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="cw-reports-field">
+                            <label for="cw-report-range"><?php esc_html_e( 'Date range', 'creativewings-core' ); ?></label>
+                            <select id="cw-report-range" name="range">
+                                <?php foreach ( CW_Business_Reports::range_options() as $key => $_days ) : ?>
+                                    <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $range, $key ); ?>>
+                                        <?php echo esc_html( CW_Business_Reports::range_label( $key ) ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <button type="submit" class="cw-btn-primary small">
+                            <i class="fas fa-filter"></i> <?php esc_html_e( 'Apply', 'creativewings-core' ); ?>
+                        </button>
+                    </form>
+
+                    <div class="cw-reports-exports">
+                        <span class="cw-reports-exports-label"><?php esc_html_e( 'Export', 'creativewings-core' ); ?></span>
+                        <a href="<?php echo esc_url( add_query_arg( 'format', 'csv', $export_base ) ); ?>" class="cw-btn-outline-blue small">
+                            <i class="fas fa-file-csv"></i> CSV
+                        </a>
+                        <a href="<?php echo esc_url( add_query_arg( 'format', 'xlsx', $export_base ) ); ?>" class="cw-btn-outline-blue small">
+                            <i class="fas fa-file-excel"></i> Excel
+                        </a>
+                        <a href="<?php echo esc_url( add_query_arg( 'format', 'pdf', $export_base ) ); ?>" class="cw-btn-outline-blue small">
+                            <i class="fas fa-file-pdf"></i> PDF
+                        </a>
+                    </div>
+                </div>
+
+                <!-- KPI strip -->
+                <div class="cw-stats-grid cols-4 cw-reports-kpis">
+                    <div class="cw-stat-card">
+                        <div>
+                            <span class="cw-stat-label"><?php esc_html_e( 'Campaigns', 'creativewings-core' ); ?></span>
+                            <h3 class="cw-stat-value"><?php echo (int) $context['kpis']['campaigns_total']; ?></h3>
+                            <div class="cw-stat-meta text-muted">
+                                <?php echo (int) $context['kpis']['campaigns_active']; ?> active ·
+                                <?php echo (int) $context['kpis']['campaigns_past']; ?> past ·
+                                <?php echo (int) $context['kpis']['campaigns_pending']; ?> draft
+                            </div>
+                        </div>
+                        <div class="cw-stat-icon-wrapper blue"><i class="fas fa-bullhorn"></i></div>
+                    </div>
+                    <div class="cw-stat-card">
+                        <div>
+                            <span class="cw-stat-label"><?php esc_html_e( 'Participants', 'creativewings-core' ); ?></span>
+                            <h3 class="cw-stat-value"><?php echo (int) $context['kpis']['participants']; ?></h3>
+                            <div class="cw-stat-meta text-muted"><?php esc_html_e( 'Completed registrations', 'creativewings-core' ); ?></div>
+                        </div>
+                        <div class="cw-stat-icon-wrapper green"><i class="fas fa-users"></i></div>
+                    </div>
+                    <div class="cw-stat-card">
+                        <div>
+                            <span class="cw-stat-label"><?php esc_html_e( 'Revenue', 'creativewings-core' ); ?></span>
+                            <h3 class="cw-stat-value cw-stat-money"><?php echo wp_kses_post( wc_price( $context['kpis']['revenue'] ) ); ?></h3>
+                            <div class="cw-stat-meta text-muted">
+                                <?php
+                                /* translators: %s formatted average revenue */
+                                printf( esc_html__( 'Avg %s per campaign', 'creativewings-core' ), wp_kses_post( wc_price( $context['kpis']['avg_revenue'] ) ) );
+                                ?>
+                            </div>
+                        </div>
+                        <div class="cw-stat-icon-wrapper coral"><i class="fas fa-wallet"></i></div>
+                    </div>
+                    <div class="cw-stat-card">
+                        <div>
+                            <span class="cw-stat-label"><?php esc_html_e( 'Submissions', 'creativewings-core' ); ?></span>
+                            <h3 class="cw-stat-value"><?php echo (int) ( $context['kpis']['staged'] + $context['kpis']['claimed'] ); ?></h3>
+                            <div class="cw-stat-meta text-muted">
+                                <?php echo (int) $context['kpis']['staged']; ?> staged ·
+                                <?php echo (int) $context['kpis']['claimed']; ?> claimed ·
+                                <?php echo (int) $context['kpis']['moderation_pending']; ?> pending
+                            </div>
+                        </div>
+                        <div class="cw-stat-icon-wrapper yellow"><i class="fas fa-clipboard-check"></i></div>
+                    </div>
+                </div>
+
+                <!-- Charts: Registrations + Revenue over time -->
+                <div class="cw-reports-section cw-reports-charts">
+                    <div class="cw-chart-container">
+                        <div class="cw-chart-header"><h3><?php esc_html_e( 'Registrations over time', 'creativewings-core' ); ?></h3></div>
+                        <div class="cw-chart-wrapper"><canvas id="cw-report-entries-chart"></canvas></div>
+                    </div>
+                    <div class="cw-chart-container">
+                        <div class="cw-chart-header"><h3><?php esc_html_e( 'Revenue over time', 'creativewings-core' ); ?></h3></div>
+                        <div class="cw-chart-wrapper"><canvas id="cw-report-revenue-chart"></canvas></div>
+                    </div>
+                </div>
+
+                <!-- Breakdown charts -->
+                <div class="cw-reports-section cw-reports-charts">
+                    <?php if ( $context['is_all'] && ! empty( $context['breakdowns']['category'] ) ) : ?>
+                        <div class="cw-chart-container">
+                            <div class="cw-chart-header"><h3><?php esc_html_e( 'Campaign types', 'creativewings-core' ); ?></h3></div>
+                            <div class="cw-chart-wrapper"><canvas id="cw-report-category-chart"></canvas></div>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if ( $context['is_all'] && ! empty( $context['breakdowns']['status'] ) ) : ?>
+                        <div class="cw-chart-container">
+                            <div class="cw-chart-header"><h3><?php esc_html_e( 'Campaign status', 'creativewings-core' ); ?></h3></div>
+                            <div class="cw-chart-wrapper"><canvas id="cw-report-status-chart"></canvas></div>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if ( ! empty( $context['breakdowns']['school'] ) ) : ?>
+                        <div class="cw-chart-container">
+                            <div class="cw-chart-header"><h3><?php esc_html_e( 'Submissions by school', 'creativewings-core' ); ?></h3></div>
+                            <div class="cw-chart-wrapper"><canvas id="cw-report-school-chart"></canvas></div>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if ( $context['has_competitions'] ) : ?>
+                        <div class="cw-chart-container">
+                            <div class="cw-chart-header"><h3><?php esc_html_e( 'Judge score distribution', 'creativewings-core' ); ?></h3></div>
+                            <div class="cw-chart-wrapper"><canvas id="cw-report-scores-chart"></canvas></div>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <?php if ( $context['is_all'] && ! empty( $context['campaigns'] ) ) : ?>
+                    <!-- Campaign comparison -->
+                    <div class="cw-reports-section">
+                        <h3 class="cw-reports-section-title"><?php esc_html_e( 'Campaign comparison', 'creativewings-core' ); ?></h3>
+                        <div class="cw-table-wrap">
+                            <table class="cw-report-table">
+                                <thead>
+                                    <tr>
+                                        <th><?php esc_html_e( 'Campaign', 'creativewings-core' ); ?></th>
+                                        <th><?php esc_html_e( 'Type', 'creativewings-core' ); ?></th>
+                                        <th><?php esc_html_e( 'Status', 'creativewings-core' ); ?></th>
+                                        <th class="num"><?php esc_html_e( 'Participants', 'creativewings-core' ); ?></th>
+                                        <th class="num"><?php esc_html_e( 'Revenue', 'creativewings-core' ); ?></th>
+                                        <th class="num"><?php esc_html_e( 'Staged', 'creativewings-core' ); ?></th>
+                                        <th class="num"><?php esc_html_e( 'Claimed', 'creativewings-core' ); ?></th>
+                                        <th><?php esc_html_e( 'Deadline', 'creativewings-core' ); ?></th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach ( $context['campaigns'] as $c ) : ?>
+                                    <?php
+                                    $filter_url = add_query_arg(
+                                        [
+                                            'tab'         => 'reports',
+                                            'campaign_id' => (int) $c['id'],
+                                            'range'       => $range,
+                                        ],
+                                        $my_account_url
+                                    );
+                                    ?>
+                                    <tr>
+                                        <td><strong><?php echo esc_html( $c['title'] ); ?></strong></td>
+                                        <td><?php echo esc_html( $c['type_label'] ); ?></td>
+                                        <td><span class="cw-pill cw-pill-<?php echo esc_attr( $c['state'] ); ?>"><?php echo esc_html( $c['state_label'] ); ?></span></td>
+                                        <td class="num"><?php echo (int) $c['participants']; ?></td>
+                                        <td class="num"><?php echo wp_kses_post( wc_price( $c['revenue'] ) ); ?></td>
+                                        <td class="num"><?php echo (int) $c['staged']; ?></td>
+                                        <td class="num"><?php echo (int) $c['claimed']; ?></td>
+                                        <td><?php echo esc_html( $c['deadline'] ?: '—' ); ?></td>
+                                        <td>
+                                            <a href="<?php echo esc_url( $filter_url ); ?>" class="cw-btn-outline-blue small">
+                                                <i class="fas fa-search-plus"></i> <?php esc_html_e( 'View', 'creativewings-core' ); ?>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+                <!-- Participant roster -->
+                <div class="cw-reports-section">
+                    <h3 class="cw-reports-section-title">
+                        <?php esc_html_e( 'Participant roster', 'creativewings-core' ); ?>
+                        <small><?php echo (int) $total_rows; ?> <?php esc_html_e( 'rows', 'creativewings-core' ); ?></small>
+                    </h3>
+                    <?php if ( empty( $roster_slice ) ) : ?>
+                        <div class="cw-reports-empty"><?php esc_html_e( 'No registrations in this period.', 'creativewings-core' ); ?></div>
+                    <?php else : ?>
+                        <div class="cw-table-wrap">
+                            <table class="cw-report-table">
+                                <thead>
+                                    <tr>
+                                        <th><?php esc_html_e( 'Date', 'creativewings-core' ); ?></th>
+                                        <?php if ( $context['is_all'] ) : ?><th><?php esc_html_e( 'Campaign', 'creativewings-core' ); ?></th><?php endif; ?>
+                                        <th><?php esc_html_e( 'Participant', 'creativewings-core' ); ?></th>
+                                        <th><?php esc_html_e( 'Email', 'creativewings-core' ); ?></th>
+                                        <th class="num"><?php esc_html_e( 'Order', 'creativewings-core' ); ?></th>
+                                        <th class="num"><?php esc_html_e( 'Amount', 'creativewings-core' ); ?></th>
+                                        <th><?php esc_html_e( 'Age', 'creativewings-core' ); ?></th>
+                                        <th><?php esc_html_e( 'Submission code', 'creativewings-core' ); ?></th>
+                                        <th><?php esc_html_e( 'School', 'creativewings-core' ); ?></th>
+                                        <?php if ( $context['has_competitions'] ) : ?>
+                                            <th class="num"><?php esc_html_e( 'Score', 'creativewings-core' ); ?></th>
+                                            <th><?php esc_html_e( 'Winner', 'creativewings-core' ); ?></th>
+                                        <?php endif; ?>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach ( $roster_slice as $row ) : ?>
+                                    <tr>
+                                        <td><?php echo esc_html( date_i18n( 'd M Y', strtotime( $row['date'] ) ) ); ?></td>
+                                        <?php if ( $context['is_all'] ) : ?><td><?php echo esc_html( $row['campaign'] ); ?></td><?php endif; ?>
+                                        <td><?php echo esc_html( $row['participant'] ?: '—' ); ?></td>
+                                        <td><?php echo esc_html( $row['email'] ?: '—' ); ?></td>
+                                        <td class="num"><?php echo $row['order_id'] ? '#' . (int) $row['order_id'] : '—'; ?></td>
+                                        <td class="num"><?php echo $row['amount'] !== '' ? wp_kses_post( wc_price( (float) $row['amount'] ) ) : '—'; ?></td>
+                                        <td><?php echo esc_html( $row['age_label'] ?: '—' ); ?></td>
+                                        <td><?php echo esc_html( $row['submission_code'] ?: '—' ); ?></td>
+                                        <td><?php echo esc_html( $row['school_code'] ?: '—' ); ?></td>
+                                        <?php if ( $context['has_competitions'] ) : ?>
+                                            <td class="num"><?php echo $row['score'] !== '' ? esc_html( $row['score'] ) : '—'; ?></td>
+                                            <td><?php echo $row['winner'] ? '<i class="fas fa-trophy" style="color:#d97706;"></i>' : '—'; ?></td>
+                                        <?php endif; ?>
+                                    </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <?php if ( $total_pages > 1 ) :
+                            $page_url = function ( $n ) use ( $base_url, $requested_campaign, $range ) {
+                                return add_query_arg(
+                                    [
+                                        'campaign_id' => (int) $requested_campaign,
+                                        'range'       => $range,
+                                        'roster_page' => (int) $n,
+                                    ],
+                                    $base_url
+                                );
+                            };
+                        ?>
+                            <nav class="cw-pagination" role="navigation">
+                                <?php if ( $roster_page > 1 ) : ?>
+                                    <a class="cw-page-btn prev" href="<?php echo esc_url( $page_url( $roster_page - 1 ) ); ?>">‹ <?php esc_html_e( 'Prev', 'creativewings-core' ); ?></a>
+                                <?php else : ?>
+                                    <span class="cw-page-btn prev disabled">‹ <?php esc_html_e( 'Prev', 'creativewings-core' ); ?></span>
+                                <?php endif; ?>
+                                <span class="cw-page-info"><?php printf( esc_html__( 'Page %1$d of %2$d', 'creativewings-core' ), (int) $roster_page, (int) $total_pages ); ?></span>
+                                <?php if ( $roster_page < $total_pages ) : ?>
+                                    <a class="cw-page-btn next" href="<?php echo esc_url( $page_url( $roster_page + 1 ) ); ?>"><?php esc_html_e( 'Next', 'creativewings-core' ); ?> ›</a>
+                                <?php else : ?>
+                                    <span class="cw-page-btn next disabled"><?php esc_html_e( 'Next', 'creativewings-core' ); ?> ›</span>
+                                <?php endif; ?>
+                            </nav>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+
+                <?php if ( $context['has_staged'] ) : ?>
+                    <!-- Staged submissions -->
+                    <div class="cw-reports-section">
+                        <h3 class="cw-reports-section-title">
+                            <?php esc_html_e( 'Staged submissions (school flow)', 'creativewings-core' ); ?>
+                            <small><?php echo count( $context['staged'] ); ?></small>
+                        </h3>
+                        <div class="cw-table-wrap">
+                            <table class="cw-report-table">
+                                <thead>
+                                    <tr>
+                                        <th><?php esc_html_e( 'Code', 'creativewings-core' ); ?></th>
+                                        <th><?php esc_html_e( 'Student', 'creativewings-core' ); ?></th>
+                                        <th><?php esc_html_e( 'School', 'creativewings-core' ); ?></th>
+                                        <th><?php esc_html_e( 'Status', 'creativewings-core' ); ?></th>
+                                        <th><?php esc_html_e( 'Moderation', 'creativewings-core' ); ?></th>
+                                        <th><?php esc_html_e( 'Order', 'creativewings-core' ); ?></th>
+                                        <th><?php esc_html_e( 'Created', 'creativewings-core' ); ?></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach ( array_slice( $context['staged'], 0, 100 ) as $s ) : ?>
+                                    <tr>
+                                        <td><code><?php echo esc_html( $s['submission_code'] ); ?></code></td>
+                                        <td><?php echo esc_html( $s['student_name'] ); ?></td>
+                                        <td><?php echo esc_html( $s['school_code'] ); ?></td>
+                                        <td><?php echo esc_html( $s['status'] ); ?></td>
+                                        <td><?php echo esc_html( $s['moderation_status'] ); ?></td>
+                                        <td><?php echo $s['order_id'] ? '#' . (int) $s['order_id'] : '—'; ?></td>
+                                        <td><?php echo esc_html( date_i18n( 'd M Y H:i', strtotime( $s['created_at'] ) ) ); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <?php if ( count( $context['staged'] ) > 100 ) : ?>
+                            <p class="cw-reports-empty">
+                                <?php
+                                /* translators: %d total staged rows */
+                                printf( esc_html__( 'Showing first 100 rows. Use export to view all %d staged submissions.', 'creativewings-core' ), count( $context['staged'] ) );
+                                ?>
+                            </p>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
+                <!-- Chart bootstrap data -->
+                <script type="application/json" id="cw-report-data">
+                    <?php
+                    echo wp_json_encode( [
+                        'entries'     => $context['timeseries']['entries'],
+                        'revenue'     => $context['timeseries']['revenue'],
+                        'category'    => $context['breakdowns']['category'],
+                        'status'      => $context['breakdowns']['status'],
+                        'school'      => $context['breakdowns']['school'],
+                        'scores'      => $context['breakdowns']['scores'],
+                        'currency'    => function_exists( 'get_woocommerce_currency_symbol' ) ? html_entity_decode( get_woocommerce_currency_symbol() ) : 'RM',
+                    ] );
+                    ?>
+                </script>
+                <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    if (typeof Chart === 'undefined') return;
+                    var dataEl = document.getElementById('cw-report-data');
+                    if (!dataEl) return;
+                    var d;
+                    try { d = JSON.parse(dataEl.textContent); } catch (e) { return; }
+
+                    var defaults = {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#64748b', autoSkip: true, maxRotation: 0 } },
+                            y: { beginAtZero: true, grid: { color: '#e2e8f0' }, ticks: { color: '#64748b' } }
+                        }
+                    };
+
+                    function shortLabel(s) {
+                        if (!s || s.length < 8) return s;
+                        var parts = s.split('-');
+                        return parts.length === 3 ? (parts[2] + '/' + parts[1]) : s;
+                    }
+
+                    var entryCtx = document.getElementById('cw-report-entries-chart');
+                    if (entryCtx && d.entries) {
+                        new Chart(entryCtx, {
+                            type: 'line',
+                            data: {
+                                labels: d.entries.labels.map(shortLabel),
+                                datasets: [{
+                                    label: 'Registrations',
+                                    data: d.entries.data,
+                                    borderColor: '#006599',
+                                    backgroundColor: 'rgba(0,101,153,0.12)',
+                                    fill: true,
+                                    tension: 0.35,
+                                    pointRadius: 2
+                                }]
+                            },
+                            options: defaults
+                        });
+                    }
+
+                    var revCtx = document.getElementById('cw-report-revenue-chart');
+                    if (revCtx && d.revenue) {
+                        new Chart(revCtx, {
+                            type: 'line',
+                            data: {
+                                labels: d.revenue.labels.map(shortLabel),
+                                datasets: [{
+                                    label: 'Revenue',
+                                    data: d.revenue.data,
+                                    borderColor: '#FE6261',
+                                    backgroundColor: 'rgba(254,98,97,0.12)',
+                                    fill: true,
+                                    tension: 0.35,
+                                    pointRadius: 2
+                                }]
+                            },
+                            options: Object.assign({}, defaults, {
+                                plugins: {
+                                    legend: { display: false },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function (ctx) { return (d.currency || 'RM') + ' ' + Number(ctx.parsed.y || 0).toLocaleString(); }
+                                        }
+                                    }
+                                }
+                            })
+                        });
+                    }
+
+                    function buildBar(id, dataMap, color) {
+                        var ctx = document.getElementById(id);
+                        if (!ctx || !dataMap || !Object.keys(dataMap).length) return;
+                        new Chart(ctx, {
+                            type: 'bar',
+                            data: {
+                                labels: Object.keys(dataMap),
+                                datasets: [{ data: Object.values(dataMap), backgroundColor: color, borderRadius: 6 }]
+                            },
+                            options: defaults
+                        });
+                    }
+                    function buildDoughnut(id, dataMap, palette) {
+                        var ctx = document.getElementById(id);
+                        if (!ctx || !dataMap || !Object.keys(dataMap).length) return;
+                        new Chart(ctx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: Object.keys(dataMap),
+                                datasets: [{ data: Object.values(dataMap), backgroundColor: palette }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: { legend: { position: 'bottom' } }
+                            }
+                        });
+                    }
+
+                    buildDoughnut('cw-report-category-chart', d.category, ['#006599','#FE6261','#22c55e','#f59e0b','#7c3aed']);
+                    buildDoughnut('cw-report-status-chart',   d.status,   ['#22c55e','#94a3b8','#f59e0b']);
+                    buildBar('cw-report-school-chart', d.school, '#006599');
+                    buildBar('cw-report-scores-chart', d.scores, '#7c3aed');
+                });
+                </script>
+
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    /* ==========================================================================
        4. SETTINGS TAB (Company Profile - New UI)
        ========================================================================== */
     public function render_settings() {
@@ -1072,6 +1603,11 @@ class CW_Dashboard_Business {
         $per_page   = 9;
         $paged      = max(1, intval($_GET['entries_page'] ?? 1));
 
+        $is_judged = class_exists( 'CW_Shop' ) ? CW_Shop::campaign_is_judged( $campaign_id ) : true;
+        if ( ! $is_judged && 'score' === $sort_by ) {
+            $sort_by = 'date';
+        }
+
         $entry_types = class_exists( 'CW_Shop' )
             ? CW_Shop::entry_post_types()
             : [ 'cw_competition_entry', 'cw_activity_entry' ];
@@ -1133,8 +1669,10 @@ class CW_Dashboard_Business {
                     <select class="cwb-search-input" onchange="window.location.href=this.value">
                         <option value="<?php echo esc_url($sort_date_desc_link); ?>"  <?php selected($sort_by==='date'&&$sort_order==='DESC', true); ?>>Latest First</option>
                         <option value="<?php echo esc_url($sort_date_asc_link); ?>"   <?php selected($sort_by==='date'&&$sort_order==='ASC',  true); ?>>Oldest First</option>
+                        <?php if ( $is_judged ): ?>
                         <option value="<?php echo esc_url($sort_score_high_link); ?>" <?php selected($sort_by==='score'&&$sort_order==='DESC', true); ?>>Score: High → Low</option>
                         <option value="<?php echo esc_url($sort_score_low_link); ?>"  <?php selected($sort_by==='score'&&$sort_order==='ASC',  true); ?>>Score: Low → High</option>
+                        <?php endif; ?>
                     </select>
                 </div>
             </div>
@@ -1195,7 +1733,9 @@ class CW_Dashboard_Business {
                         <h4><?php echo esc_html($entry->post_title); ?></h4>
                         <div class="cw-entry-meta" style="display:flex; flex-direction:column; gap:4px;">
                             <span>By: <strong><?php echo esc_html($name); ?></strong></span>
+                            <?php if ( $is_judged ): ?>
                             <span>Score: <strong><?php echo esc_html($score); ?></strong> / 100</span>
+                            <?php endif; ?>
                         </div>
                         <?php
                         $vote_count = (int) get_post_meta($entry->ID, 'vote_count', true);
@@ -1207,15 +1747,21 @@ class CW_Dashboard_Business {
                         ];
                         ?>
                         <div style="display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
-                            <span class="cwb-vote-badge"><i class="fas fa-heart"></i> <?php echo $vote_count; ?> votes</span>
-                            <?php if ($is_winner && $winner_rank_val && isset($rank_label[$winner_rank_val])): $rl = $rank_label[$winner_rank_val]; ?>
-                            <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:<?php echo $rl['bg']; ?>;color:<?php echo $rl['color']; ?>;border:1px solid <?php echo $rl['border']; ?>;"><?php echo $rl['label']; ?></span>
-                            <?php elseif ($is_winner): ?>
-                            <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:#fef3c7;color:#b45309;border:1px solid #fde68a;">🏆 Winner</span>
+                            <?php if ( $is_judged ): ?>
+                                <span class="cwb-vote-badge"><i class="fas fa-heart"></i> <?php echo $vote_count; ?> votes</span>
+                                <?php if ($is_winner && $winner_rank_val && isset($rank_label[$winner_rank_val])): $rl = $rank_label[$winner_rank_val]; ?>
+                                <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:<?php echo $rl['bg']; ?>;color:<?php echo $rl['color']; ?>;border:1px solid <?php echo $rl['border']; ?>;"><?php echo $rl['label']; ?></span>
+                                <?php elseif ($is_winner): ?>
+                                <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:#fef3c7;color:#b45309;border:1px solid #fde68a;">🏆 Winner</span>
+                                <?php endif; ?>
+                                <button class="cw-btn-primary small cw-open-eval-btn" style="flex:1; min-width:100px;">
+                                    <i class="fas fa-pencil-alt"></i> Evaluate
+                                </button>
+                            <?php else: ?>
+                                <span class="cw-status-badge cw-status-completed" style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:#dcfce7;color:#166534;border:1px solid #bbf7d0;">
+                                    <i class="fas fa-check-circle"></i> Completed
+                                </span>
                             <?php endif; ?>
-                            <button class="cw-btn-primary small cw-open-eval-btn" style="flex:1; min-width:100px;">
-                                <i class="fas fa-pencil-alt"></i> Evaluate
-                            </button>
                         </div>
                     </div>
                 </div>

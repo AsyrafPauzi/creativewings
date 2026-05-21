@@ -154,7 +154,8 @@ class CW_Certificate {
         }
         $issued = get_post_meta( $entry_id, 'cw_cert_issued', true ) === 'yes';
         $scored = get_post_meta( $entry_id, 'judge_score', true ) !== '';
-        if ( ! $issued && ! $scored ) {
+        $past   = self::is_deadline_passed( $product_id );
+        if ( ! $issued && ! $scored && ! $past ) {
             return false;
         }
         if ( $user_id && (int) $entry->post_author !== (int) $user_id ) {
@@ -164,6 +165,21 @@ class CW_Certificate {
             }
         }
         return true;
+    }
+
+    /**
+     * Whether the campaign's submission deadline has passed (end of deadline day).
+     */
+    public static function is_deadline_passed( $product_id ) {
+        $deadline = get_post_meta( (int) $product_id, 'submission_deadline', true );
+        if ( ! $deadline ) {
+            return false;
+        }
+        $ts = strtotime( $deadline . ' 23:59:59' );
+        if ( ! $ts ) {
+            return false;
+        }
+        return $ts < current_time( 'timestamp' );
     }
 
     public static function download_url( $entry_id, $for_user_id = 0 ) {
@@ -844,7 +860,8 @@ class CW_Certificate {
         }
         $issued = get_post_meta( $entry_id, 'cw_cert_issued', true ) === 'yes';
         $scored = get_post_meta( $entry_id, 'judge_score', true ) !== '';
-        return $issued || $scored;
+        $past   = self::is_deadline_passed( $product_id );
+        return $issued || $scored || $past;
     }
 
     public function handle_download() {

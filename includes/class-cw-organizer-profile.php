@@ -67,7 +67,7 @@ class CW_Organizer_Profile {
     public function maybe_render_organizer_template( $template ) {
         $slug = get_query_var( self::QUERY_VAR );
         if ( empty( $slug ) && isset( $_SERVER['REQUEST_URI'] )
-             && preg_match( '#^/?' . self::ORG_BASE . '/([^/?#]+)/?#', (string) $_SERVER['REQUEST_URI'], $m ) ) {
+             && preg_match( '~^/?' . self::ORG_BASE . '/([^/?#]+)/?~', (string) $_SERVER['REQUEST_URI'], $m ) ) {
             $slug = sanitize_title( $m[1] );
         }
 
@@ -77,6 +77,13 @@ class CW_Organizer_Profile {
 
         $user = get_user_by( 'login', $slug );
         if ( ! $user ) {
+            global $wp_query;
+            $wp_query->set_404();
+            status_header( 404 );
+            return get_404_template();
+        }
+
+        if ( class_exists( 'CW_Roles' ) && ! CW_Roles::has_public_organizer_page( $user ) ) {
             global $wp_query;
             $wp_query->set_404();
             status_header( 404 );
@@ -107,6 +114,9 @@ class CW_Organizer_Profile {
 
         if ( $slug !== '' ) {
             $user = get_user_by( 'login', $slug );
+            if ( $user && class_exists( 'CW_Roles' ) && ! CW_Roles::has_public_organizer_page( $user ) ) {
+                $user = null;
+            }
         }
 
         if ( ! $user && is_user_logged_in() ) {

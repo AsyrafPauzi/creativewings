@@ -164,6 +164,12 @@ class CW_Ajax {
     $winner_status = sanitize_text_field($_POST['winner_status'] ?? 'no');
     $winner_rank   = sanitize_text_field($_POST['winner_rank']   ?? '');
 
+    // Reject scoring for non-judged campaigns (Activity / Talk-Seminar).
+    $entry_pid = (int) get_post_meta( $eid, 'product_id', true );
+    if ( class_exists( 'CW_Shop' ) && ! CW_Shop::campaign_is_judged( $entry_pid ) ) {
+        wp_send_json_error( [ 'message' => 'Scoring is disabled for this campaign type.' ] );
+    }
+
     // Only allow recognised rank values
     $valid_ranks = ['1st', '2nd', '3rd', 'mention', ''];
     if (!in_array($winner_rank, $valid_ranks, true)) $winner_rank = '';
@@ -244,6 +250,12 @@ class CW_Ajax {
         $entry_id = intval( $_POST['entry_id'] ?? 0 );
         if ( ! $entry_id || get_post_type( $entry_id ) !== 'cw_competition_entry' ) {
             wp_send_json_error( [ 'message' => 'Invalid entry.' ] );
+        }
+
+        // Belt-and-braces: seminars currently share the competition entry type, but voting is competition-only.
+        $vote_pid = (int) get_post_meta( $entry_id, 'product_id', true );
+        if ( class_exists( 'CW_Shop' ) && ! CW_Shop::campaign_is_judged( $vote_pid ) ) {
+            wp_send_json_error( [ 'message' => 'Voting is disabled for this campaign type.' ] );
         }
 
         // Resolve visitor IP (proxy-aware)

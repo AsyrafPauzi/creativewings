@@ -26,7 +26,7 @@
     isolation: isolate;
     position: relative;
     z-index: 0;
-    padding-bottom: 56px;
+    padding-bottom: 36px;
 }
 
 .cw-org-page *,
@@ -46,7 +46,7 @@
 .cw-org-page .cw-org-hero {
     position: relative;
     width: 100%;
-    height: 280px;
+    height: 220px;
     overflow: hidden;
     background: linear-gradient(135deg, #00466b 0%, var(--cw-org-primary) 55%, #0089cc 100%);
 }
@@ -67,22 +67,22 @@
 /* ── 2. Identity row ──────────────────────────────────────────────── */
 .cw-org-page .cw-org-identity {
     position: relative;
-    margin-top: -84px;
+    margin-top: -68px;
     display: flex;
     align-items: flex-end;
-    gap: 24px;
+    gap: 20px;
     flex-wrap: wrap;
     z-index: 1;
-    padding-bottom: 8px;
+    padding-bottom: 4px;
 }
 
 .cw-org-page .cw-org-logo-card {
-    width: 120px;
-    height: 120px;
-    border-radius: 18px;
+    width: 104px;
+    height: 104px;
+    border-radius: 16px;
     background: #fff;
     box-shadow: 0 8px 28px rgba(15, 23, 42, 0.12);
-    padding: 12px;
+    padding: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -109,27 +109,27 @@
 .cw-org-page .cw-org-identity-text {
     flex: 1 1 320px;
     color: #fff;
-    padding-bottom: 8px;
+    padding-bottom: 4px;
 }
 .cw-org-page .cw-org-name {
-    font-size: 30px;
+    font-size: 26px;
     font-weight: 800;
     line-height: 1.2;
     color: #fff;
-    margin: 0 0 8px;
+    margin: 0 0 6px;
     text-shadow: 0 1px 6px rgba(0,0,0,0.25);
 }
 .cw-org-page .cw-org-tagline {
-    font-size: 15px;
+    font-size: 14px;
     color: rgba(255,255,255,0.92);
-    margin: 6px 0 14px;
+    margin: 4px 0 10px;
     max-width: 720px;
     text-shadow: 0 1px 4px rgba(0,0,0,0.20);
 }
 .cw-org-page .cw-org-meta-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
     margin: 0 0 4px;
 }
 .cw-org-page .cw-org-pill {
@@ -155,17 +155,17 @@
 .cw-org-page .cw-org-pill--industry i { color: #fff; }
 
 .cw-org-page .cw-org-cta-row {
-    margin-top: 14px;
+    margin-top: 10px;
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 8px;
 }
 
 .cw-org-page .cw-org-btn {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 11px 20px;
+    padding: 9px 16px;
     border-radius: 999px;
     font-size: 14px;
     font-weight: 700;
@@ -202,29 +202,29 @@
 .cw-org-page .cw-org-kpi-row {
     display: grid;
     grid-template-columns: repeat(6, 1fr);
-    gap: 14px;
-    margin: 32px 0 28px;
+    gap: 10px;
+    margin: 18px 0 16px;
 }
 .cw-org-page .cw-org-kpi {
     background: var(--cw-org-card-bg);
     border: 1px solid var(--cw-org-border);
     border-radius: var(--cw-org-radius-sm);
     box-shadow: var(--cw-org-shadow);
-    padding: 16px 18px;
+    padding: 12px 14px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    min-height: 92px;
+    gap: 3px;
+    min-height: 0;
 }
 .cw-org-page .cw-org-kpi-label {
-    font-size: 11px;
+    font-size: 10.5px;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.6px;
+    letter-spacing: 0.5px;
     color: var(--cw-org-text-soft);
 }
 .cw-org-page .cw-org-kpi-value {
-    font-size: 22px;
+    font-size: 18px;
     font-weight: 800;
     color: var(--cw-org-text);
     line-height: 1.2;
@@ -235,57 +235,57 @@
 .cw-org-page .cw-org-about-section {
     display: grid;
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-    gap: 20px;
-    margin: 0 0 28px;
+    gap: 14px;
+    margin: 0 0 16px;
 }
 .cw-org-page .cw-org-card {
     background: var(--cw-org-card-bg);
     border: 1px solid var(--cw-org-border);
     border-radius: var(--cw-org-radius);
     box-shadow: var(--cw-org-shadow);
-    padding: 24px 26px;
+    padding: 16px 18px;
 }
 .cw-org-page .cw-org-section-title {
-    font-size: 22px;
+    font-size: 17px;
     font-weight: 800;
     color: var(--cw-org-text);
-    margin: 0 0 14px;
+    margin: 0 0 10px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: wrap;
 }
 .cw-org-page .cw-org-sub-title {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.7px;
+    letter-spacing: 0.6px;
     color: var(--cw-org-text-soft);
-    margin: 0 0 14px;
+    margin: 0 0 10px;
 }
 .cw-org-page .cw-org-about-body {
-    font-size: 15px;
-    line-height: 1.75;
+    font-size: 14px;
+    line-height: 1.6;
     color: #334155;
 }
-.cw-org-page .cw-org-about-body p { margin: 0 0 12px; }
+.cw-org-page .cw-org-about-body p { margin: 0 0 10px; }
 .cw-org-page .cw-org-about-body p:last-child { margin-bottom: 0; }
 .cw-org-page .cw-org-about-body ul,
-.cw-org-page .cw-org-about-body ol { margin: 0 0 12px 1.2em; }
+.cw-org-page .cw-org-about-body ol { margin: 0 0 10px 1.2em; }
 .cw-org-page .cw-org-about-body a { text-decoration: underline; }
 
 .cw-org-page .cw-org-facts-list {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
     margin: 0;
 }
 .cw-org-page .cw-org-fact {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    gap: 14px;
-    padding: 0 0 12px;
+    gap: 12px;
+    padding: 0 0 8px;
     border-bottom: 1px solid var(--cw-org-border);
 }
 .cw-org-page .cw-org-fact:last-child { border-bottom: 0; padding-bottom: 0; }
@@ -306,23 +306,23 @@
 }
 
 /* ── 5. Contact card ─────────────────────────────────────────────── */
-.cw-org-page .cw-org-contact-card { margin: 0 0 28px; }
+.cw-org-page .cw-org-contact-card { margin: 0 0 16px; }
 .cw-org-page .cw-org-contact-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-    gap: 28px;
+    gap: 18px;
 }
-.cw-org-page .cw-org-contact-rows { display: flex; flex-direction: column; gap: 12px; }
+.cw-org-page .cw-org-contact-rows { display: flex; flex-direction: column; gap: 8px; }
 .cw-org-page .cw-org-contact-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 14px;
-    padding: 12px 14px;
+    gap: 12px;
+    padding: 9px 12px;
     background: #f8fafc;
     border-radius: var(--cw-org-radius-sm);
     border: 1px solid var(--cw-org-border);
-    font-size: 14px;
+    font-size: 13.5px;
 }
 .cw-org-page .cw-org-contact-label {
     display: inline-flex;
@@ -398,15 +398,15 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
 .cw-org-page .cw-org-socials {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-    margin: 0 0 28px;
+    gap: 8px;
+    margin: 0 0 16px;
 }
 .cw-org-page .cw-org-social {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
+    width: 38px;
+    height: 38px;
     border-radius: 50%;
     background: #fff;
     border: 1px solid var(--cw-org-border);
@@ -414,7 +414,7 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
     text-decoration: none;
     transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
-.cw-org-page .cw-org-social i { font-size: 17px; line-height: 1; }
+.cw-org-page .cw-org-social i { font-size: 15px; line-height: 1; }
 .cw-org-page .cw-org-social:hover { transform: translateY(-2px); color: #fff; box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
 .cw-org-page .cw-org-social[data-net="facebook"]:hover  { background: #1877f2; border-color: #1877f2; }
 .cw-org-page .cw-org-social[data-net="instagram"]:hover {
@@ -428,17 +428,17 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
 .cw-org-page .cw-org-social[data-net="tiktok"]:hover    { background: #000;    border-color: #000;    }
 
 /* ── 7. Campaigns section ────────────────────────────────────────── */
-.cw-org-page .cw-org-campaigns { margin: 12px 0 32px; }
+.cw-org-page .cw-org-campaigns { margin: 4px 0 20px; }
 .cw-org-page .cw-org-campaigns-head {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 14px;
-    margin: 0 0 22px;
+    gap: 12px;
+    margin: 0 0 14px;
 }
 .cw-org-page .cw-org-count {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--cw-org-text-soft);
 }
@@ -470,7 +470,7 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
 .cw-org-page .cw-org-campaign-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
+    gap: 14px;
 }
 .cw-org-page .cw-org-campaign-card {
     background: var(--cw-org-card-bg);
@@ -489,7 +489,7 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
 .cw-org-page .cw-org-campaign-thumb {
     position: relative;
     display: block;
-    height: 180px;
+    height: 160px;
     overflow: hidden;
     background: #eef2f7;
 }
@@ -533,10 +533,10 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
 .cw-org-page .cw-org-campaign-state--active { color: #047857; background: #d1fae5; }
 
 .cw-org-page .cw-org-campaign-body {
-    padding: 16px 18px 20px;
+    padding: 12px 14px 14px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     flex: 1;
 }
 .cw-org-page .cw-org-campaign-title {
@@ -566,16 +566,16 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
 }
 .cw-org-page .cw-org-campaign-stats i { color: var(--cw-org-primary); margin-right: 6px; }
 .cw-org-page .cw-org-campaign-cta {
-    margin-top: 12px;
+    margin-top: 8px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    padding: 9px 14px;
+    padding: 7px 12px;
     background: var(--cw-org-primary-soft);
     color: var(--cw-org-primary);
     border-radius: 999px;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 800;
     text-decoration: none;
     align-self: flex-start;
@@ -591,7 +591,7 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
     background: var(--cw-org-card-bg);
     border: 1px dashed var(--cw-org-border);
     border-radius: var(--cw-org-radius);
-    padding: 48px 24px;
+    padding: 28px 20px;
     text-align: center;
     color: var(--cw-org-text-soft);
 }
@@ -611,30 +611,30 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
 
 /* ── 8. Footer CTA strip ─────────────────────────────────────────── */
 .cw-org-page .cw-org-footer-cta {
-    margin-top: 12px;
+    margin-top: 8px;
     background: linear-gradient(135deg, var(--cw-org-primary) 0%, #0089cc 100%);
     border-radius: var(--cw-org-radius);
     color: #fff;
-    padding: 26px 28px;
+    padding: 18px 22px;
     box-shadow: var(--cw-org-shadow);
 }
 .cw-org-page .cw-org-footer-cta-inner {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 18px;
+    gap: 14px;
     flex-wrap: wrap;
 }
 .cw-org-page .cw-org-footer-cta h3 {
-    margin: 0 0 4px;
-    font-size: 20px;
+    margin: 0 0 2px;
+    font-size: 17px;
     font-weight: 800;
     color: #fff;
 }
 .cw-org-page .cw-org-footer-cta p {
     margin: 0;
     color: rgba(255,255,255,0.88);
-    font-size: 14px;
+    font-size: 13.5px;
 }
 .cw-org-page .cw-org-footer-cta .cw-org-btn--primary {
     background: #fff;
@@ -656,12 +656,12 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
 }
 
 @media (max-width: 768px) {
-    .cw-org-page .cw-org-hero { height: 220px; }
+    .cw-org-page .cw-org-hero { height: 180px; }
     .cw-org-page .cw-org-identity {
         flex-direction: column;
         align-items: flex-start;
-        margin-top: -64px;
-        gap: 16px;
+        margin-top: -54px;
+        gap: 12px;
     }
     .cw-org-page .cw-org-identity-text {
         flex-basis: auto;
@@ -669,7 +669,7 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
         color: var(--cw-org-text);
         padding-bottom: 0;
     }
-    .cw-org-page .cw-org-name { color: var(--cw-org-text); text-shadow: none; font-size: 26px; }
+    .cw-org-page .cw-org-name { color: var(--cw-org-text); text-shadow: none; font-size: 22px; }
     .cw-org-page .cw-org-tagline { color: var(--cw-org-text-soft); text-shadow: none; }
     .cw-org-page .cw-org-pill { background: #fff; border: 1px solid var(--cw-org-border); }
     .cw-org-page .cw-org-pill--industry { background: var(--cw-org-primary); color: #fff; border-color: var(--cw-org-primary); }
@@ -679,19 +679,23 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
         border-color: var(--cw-org-border);
     }
     .cw-org-page .cw-org-kpi-row { grid-template-columns: repeat(2, 1fr); }
-    .cw-org-page .cw-org-campaign-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .cw-org-page .cw-org-campaign-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .cw-org-page .cw-org-footer-cta-inner { flex-direction: column; align-items: flex-start; }
 }
 
 @media (max-width: 480px) {
-    .cw-org-page .cw-org-shell { padding: 0 16px; }
-    .cw-org-page .cw-org-hero { height: 200px; }
-    .cw-org-page .cw-org-identity { margin-top: -56px; }
-    .cw-org-page .cw-org-logo-card { width: 96px; height: 96px; border-radius: 14px; padding: 10px; }
-    .cw-org-page .cw-org-name { font-size: 22px; }
+    .cw-org-page .cw-org-shell { padding: 0 14px; }
+    .cw-org-page .cw-org-hero { height: 160px; }
+    .cw-org-page .cw-org-identity { margin-top: -46px; }
+    .cw-org-page .cw-org-logo-card { width: 84px; height: 84px; border-radius: 12px; padding: 8px; }
+    .cw-org-page .cw-org-name { font-size: 20px; }
+    .cw-org-page .cw-org-tagline { font-size: 13px; margin-bottom: 8px; }
     .cw-org-page .cw-org-kpi-row { grid-template-columns: 1fr; }
-    .cw-org-page .cw-org-card { padding: 18px 18px; }
-    .cw-org-page .cw-org-campaign-grid { grid-template-columns: 1fr; gap: 14px; }
+    .cw-org-page .cw-org-card { padding: 14px 14px; }
+    .cw-org-page .cw-org-section-title { font-size: 16px; margin-bottom: 8px; }
+    .cw-org-page .cw-org-campaign-grid { grid-template-columns: 1fr; gap: 12px; }
+    .cw-org-page .cw-org-footer-cta { padding: 16px 16px; }
+    .cw-org-page .cw-org-footer-cta h3 { font-size: 16px; }
     .cw-org-page .cw-org-contact-row {
         flex-direction: column;
         align-items: flex-start;

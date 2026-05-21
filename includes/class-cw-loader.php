@@ -33,6 +33,8 @@ class CW_Loader {
         require_once CW_PATH . 'includes/class-cw-onboarding.php';
         require_once CW_PATH . 'includes/class-cw-business.php';
         require_once CW_PATH . 'includes/business/class-cw-campaign-persistence.php';
+        require_once CW_PATH . 'includes/business/class-cw-business-reports.php';
+        require_once CW_PATH . 'includes/business/class-cw-report-export.php';
         require_once CW_PATH . 'includes/class-cw-sponsor-coupons.php';
         require_once CW_PATH . 'includes/class-cw-moderation.php';
         require_once CW_PATH . 'includes/class-cw-shop.php';

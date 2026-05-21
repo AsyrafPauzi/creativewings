@@ -10,13 +10,17 @@ class CW_Export {
     }
 
     public function export_csv() {
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
-            wp_die( 'Unauthorized', 403 );
-        }
         check_admin_referer( 'cw_export_submissions' );
 
         $campaign_id = (int) ( $_GET['campaign_id'] ?? 0 );
         $school      = sanitize_text_field( $_GET['school_code'] ?? '' );
+
+        // Admin/WC manager can export any campaign; otherwise only the owning business user.
+        $is_admin   = current_user_can( 'manage_woocommerce' );
+        $is_owner   = $campaign_id && class_exists( 'CW_Roles' ) && CW_Roles::user_owns_campaign( $campaign_id, get_current_user_id() );
+        if ( ! $is_admin && ! $is_owner ) {
+            wp_die( 'Unauthorized', 403 );
+        }
 
         global $wpdb;
         $table = CW_Staged_Submissions::table();

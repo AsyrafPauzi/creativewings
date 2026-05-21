@@ -147,7 +147,7 @@ class CW_Dashboard_Creator {
 
         // 5. Setup Profile Info
         $display_name = get_user_meta($uid, 'creator_display_name', true) ?: $u->display_name;
-        $profile_url  = home_url('/profile/' . $u->user_login);
+        $profile_url  = class_exists( 'CW_Roles' ) ? CW_Roles::get_public_portfolio_url( $u ) : home_url( '/profile/' . $u->user_login . '/' );
 
         ?>
         <?php
@@ -161,9 +161,11 @@ class CW_Dashboard_Creator {
                 <div>
                     <h1>Welcome back, <?php echo esc_html($display_name); ?> 👋</h1>
                 </div>
-                <a href="<?php echo esc_url($profile_url); ?>" target="_blank" class="cw-public-profile-link">
+                <?php if ( $profile_url ) : ?>
+                <a href="<?php echo esc_url( $profile_url ); ?>" target="_blank" class="cw-public-profile-link">
                     <i class="fas fa-external-link-alt"></i> View Public Profile
                 </a>
+                <?php endif; ?>
             </div>
 
             <!-- 4-stat grid -->
@@ -1213,8 +1215,11 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                         $type_label = 'Activity'; $type_css = 'activity';
                     }
 
-                    if ( $is_winner )                               { $status = 'Winner';     $cls = 'winner'; }
-                    elseif ( $score !== '' && (float)$score > 0 )  { $status = 'Reviewed';   $cls = 'reviewed'; }
+                    $is_judged = class_exists( 'CW_Shop' ) ? CW_Shop::campaign_is_judged( $pid ) : ( $type_css === 'competition' );
+
+                    if ( ! $is_judged )                              { $status = 'Completed';  $cls = 'completed'; }
+                    elseif ( $is_winner )                            { $status = 'Winner';     $cls = 'winner'; }
+                    elseif ( $score !== '' && (float)$score > 0 )    { $status = 'Reviewed';   $cls = 'reviewed'; }
                     else                                             { $status = 'Registered'; $cls = 'registered'; }
 
                     $thumb = get_the_post_thumbnail_url( $pid, 'medium' ) ?: CW_URL . 'assets/img/placeholder.jpg';
@@ -1226,17 +1231,26 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                         $entry_vote_count = (int) get_post_meta( $e->ID, 'vote_count', true );
                     }
 
+                    $entry_cert_enabled = get_post_meta( $pid, 'cw_enable_certificate', true ) === 'yes';
+                    $entry_cert_available = $entry_cert_enabled && class_exists( 'CW_Certificate' ) && CW_Certificate::entry_cert_available( $e->ID );
+                    $entry_cert_eta_raw   = get_post_meta( $pid, 'submission_deadline', true );
+                    $entry_cert_eta       = $entry_cert_eta_raw ? date_i18n( get_option( 'date_format', 'd M Y' ), strtotime( $entry_cert_eta_raw ) ) : '';
+                    $entry_cert_url       = ( $entry_cert_enabled && class_exists( 'CW_Certificate' ) ) ? CW_Certificate::download_url( $e->ID ) : '';
+
                     $modal_data = htmlspecialchars( json_encode([
-                        'id'           => $e->ID,
-                        'title'        => $product->get_name(),
-                        'date'         => get_the_date( 'Y-m-d', $e->ID ),
-                        'status'       => strtoupper( $status ),
-                        'score'        => $score ?: '0',
-                        'comment'      => get_post_meta( $e->ID, 'judge_comment', true ) ?: 'No feedback provided yet.',
-                        'cert_enabled' => get_post_meta( $pid, 'cw_enable_certificate', true ) === 'yes',
-                        'details'      => get_post_meta( $e->ID, 'participant_details', true ) ?: [],
-                        'vote_count'   => $entry_vote_count,
-                        'voting_on'    => $entry_voting_on,
+                        'id'             => $e->ID,
+                        'title'          => $product->get_name(),
+                        'date'           => get_the_date( 'Y-m-d', $e->ID ),
+                        'status'         => strtoupper( $status ),
+                        'score'          => $score ?: '0',
+                        'comment'        => get_post_meta( $e->ID, 'judge_comment', true ) ?: 'No feedback provided yet.',
+                        'cert_enabled'   => $entry_cert_enabled,
+                        'cert_available' => $entry_cert_available,
+                        'cert_eta'       => $entry_cert_eta,
+                        'cert_url'       => $entry_cert_url,
+                        'details'        => get_post_meta( $e->ID, 'participant_details', true ) ?: [],
+                        'vote_count'     => $entry_vote_count,
+                        'voting_on'      => $entry_voting_on,
                     ]), ENT_QUOTES, 'UTF-8' );
                 ?>
                 <div class="cw-activity-card">
@@ -1401,16 +1415,22 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
             }
 
             // Certificate
-            const certBox    = jQuery('#m-cert-bar');
-            const canDownload = (st === 'REVIEWED' || st === 'WINNER') && data.cert_enabled;
-            if (canDownload) {
+            const certBox = jQuery('#m-cert-bar');
+            if (data.cert_enabled && data.cert_available && data.cert_url) {
                 certBox.html(`
                     <div class="cw-entry-cert-banner">
                         <div><strong>🎓 Certificate Ready</strong><p>Download your achievement certificate.</p></div>
-                        <a href="${cwCertActionUrl}?action=cw_download_cert&entry_id=${data.id}"
-                           class="cw-btn-primary cw-btn-sm" target="_blank">
+                        <a href="${data.cert_url}" class="cw-btn-primary cw-btn-sm" target="_blank" rel="noopener">
                             <i class="fas fa-download"></i> Download
                         </a>
+                    </div>`);
+            } else if (data.cert_enabled && data.cert_eta) {
+                certBox.html(`
+                    <div class="cw-entry-cert-banner" style="background:#fff7ed;border-color:#fed7aa;">
+                        <div><strong>🎓 Certificate Coming Soon</strong><p>Available after the event ends on <strong>${data.cert_eta}</strong>.</p></div>
+                        <button class="cw-btn-disabled cw-btn-sm" disabled>
+                            <i class="fas fa-clock"></i> Not yet available
+                        </button>
                     </div>`);
             } else {
                 certBox.empty();

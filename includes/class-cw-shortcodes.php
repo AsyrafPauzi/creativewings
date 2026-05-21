@@ -533,7 +533,9 @@ class CW_Shortcodes {
         // Visibility toggles (default: visible). Stored as '1' / '0' user meta — empty string also = visible.
         $org_show_email = ! $org_id || ( get_user_meta($org_id, 'cw_show_org_email', true) !== '0' );
         $org_show_phone = ! $org_id || ( get_user_meta($org_id, 'cw_show_org_phone', true) !== '0' );
-        $org_profile_url = $org_login ? home_url( '/profile/' . rawurlencode( $org_login ) . '/' ) : '';
+        $org_profile_url = ( $org_user && class_exists( 'CW_Roles' ) )
+            ? CW_Roles::get_public_organizer_url( $org_user )
+            : '';
 
         // ── SDG ───────────────────────────────────────────────────────────────
         $sdg_base  = 'https://creativewings.asia/wp-content/uploads/2025/12/';

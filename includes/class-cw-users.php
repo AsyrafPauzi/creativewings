@@ -27,6 +27,19 @@ class CW_Users {
             if ( ! $user ) { 
                 global $wp_query; $wp_query->set_404(); status_header( 404 ); return get_404_template(); 
             }
+
+            if ( class_exists( 'CW_Roles' ) ) {
+                if ( CW_Roles::has_public_organizer_page( $user ) ) {
+                    wp_safe_redirect( CW_Roles::get_public_organizer_url( $user ), 301 );
+                    exit;
+                }
+                if ( ! CW_Roles::has_public_portfolio( $user ) ) {
+                    global $wp_query;
+                    $wp_query->set_404();
+                    status_header( 404 );
+                    return get_404_template();
+                }
+            }
             
             $uid = $user->ID;
             $current_user_id = get_current_user_id();
@@ -86,6 +99,12 @@ class CW_Users {
 
     public function render_public_profile_html( $u ) {
         $uid = $u->ID;
+
+        if ( class_exists( 'CW_Roles' ) && ! CW_Roles::has_public_portfolio( $u ) ) {
+            status_header( 404 );
+            echo '<!DOCTYPE html><html><body><p>' . esc_html__( 'Profile not found.', 'creativewings-core' ) . '</p></body></html>';
+            return;
+        }
 
         // ── Business meta (used as fallback when creator-shaped meta is empty) ──
         $biz_name      = get_user_meta( $uid, 'business_name', true );

@@ -44,10 +44,11 @@ class CW_Dashboard_Manager {
 
         if ( 'business' === $role ) {
             $menu_items = [
-                'overview'  => ['icon' => 'fa-th-large', 'label' => 'Dashboard'],
-                'campaigns' => ['icon' => 'fa-bullhorn', 'label' => 'My Campaigns'],
-                'wallet'    => ['icon' => 'fa-wallet',   'label' => 'Wallet'],
-                'biz-info'  => ['icon' => 'fa-building', 'label' => 'Company Profile'],
+                'overview'  => ['icon' => 'fa-th-large',  'label' => 'Dashboard'],
+                'campaigns' => ['icon' => 'fa-bullhorn',  'label' => 'My Campaigns'],
+                'reports'   => ['icon' => 'fa-chart-bar', 'label' => 'Reports'],
+                'wallet'    => ['icon' => 'fa-wallet',    'label' => 'Wallet'],
+                'biz-info'  => ['icon' => 'fa-building',  'label' => 'Company Profile'],
             ];
         } elseif ( 'creator' === $role ) {
             $menu_items = [
@@ -198,6 +199,9 @@ class CW_Dashboard_Manager {
                     break;
                 case 'wallet': 
                     if ( $this->business_dashboard ) $this->business_dashboard->render_wallet(); 
+                    break;
+                case 'reports':
+                    if ( $this->business_dashboard ) $this->business_dashboard->render_reports();
                     break;
                 case 'biz-info': 
                     if ( $this->business_dashboard ) $this->business_dashboard->render_settings(); 

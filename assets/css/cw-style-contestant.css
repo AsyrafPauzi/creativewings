@@ -523,28 +523,72 @@
     color: var(--cw-primary);
 }
 
-/* Details button */
+/* Footer row: status pill + CTA */
+.cw-activity-card .cw-activity-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: auto;
+    flex-wrap: wrap;
+}
+.cw-activity-card .cw-activity-footer .cw-status-badge {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+/* Details button — clear primary CTA */
 .cw-activity-card .cw-btn-details {
-    width: 100%;
-    padding: 10px 0;
+    flex: 0 1 auto;
+    padding: 9px 18px;
     border-radius: var(--cw-radius-sm);
-    background: var(--cw-bg);
-    color: var(--cw-text-soft);
+    background: var(--cw-primary);
+    color: #fff;
     font-weight: 700;
     font-size: 13px;
+    line-height: 1.2;
     text-decoration: none;
-    display: block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     text-align: center;
-    transition: all 0.2s;
-    border: 1.5px solid var(--cw-border);
+    transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    border: 1.5px solid var(--cw-primary);
     cursor: pointer;
     font-family: inherit;
-    margin-top: auto;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0, 101, 153, 0.18);
 }
-.cw-activity-card .cw-btn-details:hover {
-    background: var(--cw-primary-light);
-    color: var(--cw-primary);
-    border-color: var(--cw-primary);
+.cw-activity-card .cw-btn-details:hover,
+.cw-activity-card .cw-btn-details:focus-visible {
+    background: #004f78;
+    border-color: #004f78;
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(0, 101, 153, 0.25);
+    outline: none;
+}
+.cw-activity-card .cw-btn-details:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(0, 101, 153, 0.2);
+}
+
+/* Mobile / narrow card: stack the footer and let the button fill the row */
+@media (max-width: 480px) {
+    .cw-activity-card .cw-activity-footer {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+    .cw-activity-card .cw-activity-footer .cw-status-badge {
+        align-self: flex-start;
+    }
+    .cw-activity-card .cw-btn-details {
+        width: 100%;
+        padding: 11px 16px;
+        font-size: 14px;
+    }
 }
 
 

@@ -126,6 +126,11 @@ class CW_School_Upload {
                 .cw-code-status.error{background:#fef2f2;color:#b91c1c}
                 .cw-code-status.loading{background:#f8fafc;color:#64748b}
                 input.cw-code-from-qr{background:#f0f9ff;border-color:#7dd3fc;color:#0c4a6e;font-weight:600;letter-spacing:.04em}
+                .cw-code-masked{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#f0f9ff;border:1px solid #7dd3fc;border-radius:8px;padding:10px 12px;margin-top:4px}
+                .cw-code-masked-info{display:flex;align-items:center;gap:8px;font-size:13px;color:#0c4a6e;font-weight:600}
+                .cw-code-masked-info i{color:#0284c7;font-size:14px}
+                .cw-code-masked-hint{font-size:11.5px;color:#0369a1;font-weight:500}
+                .cw-code-masked-dots{letter-spacing:.18em;font-weight:700}
             </style>
         </head>
         <body>
@@ -159,11 +164,30 @@ class CW_School_Upload {
                     <?php esc_html_e( 'This QR code is for a different school than this upload link. Ask your organizer for the correct school link.', 'creativewings-core' ); ?>
                 </div>
                 <?php endif; ?>
-                <label for="cw-submission-code"><?php esc_html_e( 'Submission code (13-14 digits)', 'creativewings-core' ); ?></label>
-                <input type="text" id="cw-submission-code" name="submission_code" required minlength="13" maxlength="14" inputmode="numeric" autocomplete="off"
-                    value="<?php echo esc_attr( $code_value ); ?>"
-                    placeholder="0020500100001"
-                    <?php echo ( $from_qr && $code_value && ! $code_mismatch ) ? 'readonly class="cw-code-from-qr"' : ''; ?>>
+                <?php
+                $code_locked = ( $from_qr && $code_value && ! $code_mismatch );
+                $code_tail   = $code_value !== '' ? substr( preg_replace( '/\D+/', '', $code_value ), -4 ) : '';
+                ?>
+                <?php if ( $code_locked ) : ?>
+                    <label for="cw-submission-code-masked"><?php esc_html_e( 'Submission code', 'creativewings-core' ); ?></label>
+                    <div class="cw-code-masked" id="cw-submission-code-masked">
+                        <span class="cw-code-masked-info">
+                            <i class="fas fa-shield-alt" aria-hidden="true"></i>
+                            <span><?php esc_html_e( 'Locked from QR scan', 'creativewings-core' ); ?>
+                                <?php if ( $code_tail ) : ?>
+                                    · <span class="cw-code-masked-dots">•••• <?php echo esc_html( $code_tail ); ?></span>
+                                <?php endif; ?>
+                            </span>
+                        </span>
+                        <span class="cw-code-masked-hint"><?php esc_html_e( 'Hidden for safety', 'creativewings-core' ); ?></span>
+                    </div>
+                    <input type="hidden" id="cw-submission-code" name="submission_code" value="<?php echo esc_attr( $code_value ); ?>">
+                <?php else : ?>
+                    <label for="cw-submission-code"><?php esc_html_e( 'Submission code (13-14 digits)', 'creativewings-core' ); ?></label>
+                    <input type="text" id="cw-submission-code" name="submission_code" required minlength="13" maxlength="14" inputmode="numeric" autocomplete="off"
+                        value="<?php echo esc_attr( $code_value ); ?>"
+                        placeholder="0020500100001">
+                <?php endif; ?>
                 <div id="cw-code-status" class="cw-code-status" role="status" aria-live="polite"></div>
 
                 <label for="cw-student-name"><?php esc_html_e( 'Student name', 'creativewings-core' ); ?></label>
@@ -240,6 +264,24 @@ class CW_School_Upload {
             <?php $this->render_upload_script(); ?>
             <?php endif; ?>
         </div>
+        <script>
+        (function(){
+            try {
+                var loc = window.location;
+                if (!loc || !loc.search || !window.history || !window.history.replaceState) return;
+                var qs = new URLSearchParams(loc.search);
+                var changed = false;
+                if (qs.has('code'))  { qs.delete('code'); changed = true; }
+                if (qs.has('saved')) { qs.delete('saved'); }
+                if (qs.has('error')) { qs.delete('error'); }
+                if (changed || !loc.search) {
+                    var cleanQs = qs.toString();
+                    var newUrl  = loc.pathname + (cleanQs ? '?' + cleanQs : '') + loc.hash;
+                    window.history.replaceState(null, '', newUrl);
+                }
+            } catch (e) {}
+        })();
+        </script>
         </body>
         </html>
         <?php
@@ -738,7 +780,7 @@ class CW_School_Upload {
         $existing = CW_Staged_Submissions::get_by_code( $parsed['normalized'], $campaign_id );
 
         if ( $existing && ( $existing['status'] ?? '' ) === 'claimed' ) {
-            wp_safe_redirect( add_query_arg( [ 'code' => $parsed['normalized'], 'error' => rawurlencode( 'Already claimed - cannot edit via staff link.' ) ], $base ) );
+            wp_safe_redirect( add_query_arg( [ 'error' => rawurlencode( 'Already claimed - cannot edit via staff link.' ) ], $base ) );
             exit;
         }
 
@@ -838,7 +880,7 @@ class CW_School_Upload {
             CW_Pending_Parent_Link::on_staged_uploaded( $sid, $campaign_id, $parsed['normalized'] );
         }
 
-        wp_safe_redirect( add_query_arg( [ 'saved' => '1', 'code' => $parsed['normalized'] ], $base ) );
+        wp_safe_redirect( add_query_arg( [ 'saved' => '1' ], $base ) );
         exit;
     }
 

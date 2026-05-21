@@ -790,6 +790,43 @@ class CW_Shop {
     }
 
     /**
+     * Whether a campaign is judged (i.e. accepts scores, winners, judge comments, voting).
+     *
+     * Talk/seminar and activity-rooted campaigns are non-judged; only competitions are.
+     * Used at every render and write site so behavior is consistent.
+     */
+    public static function campaign_is_judged( $product_id ) {
+        $product_id = (int) $product_id;
+        if ( ! $product_id ) {
+            return true;
+        }
+
+        $terms = get_the_terms( $product_id, 'product_cat' );
+        if ( ! $terms || is_wp_error( $terms ) ) {
+            return true;
+        }
+
+        foreach ( $terms as $t ) {
+            $root_slug = strtolower( (string) $t->slug );
+            if ( $t->parent ) {
+                $parent = get_term( $t->parent, 'product_cat' );
+                if ( $parent && ! is_wp_error( $parent ) ) {
+                    $root_slug = strtolower( (string) $parent->slug );
+                }
+            }
+
+            if ( in_array( $root_slug, [ 'activities', 'talk-seminar' ], true ) ) {
+                return false;
+            }
+            if ( false !== strpos( $root_slug, 'seminar' ) || false !== strpos( $root_slug, 'talk' ) ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Resolve which entry CPT a campaign product should use.
      */
     public static function get_entry_post_type_for_product( $product_id ) {
@@ -876,9 +913,9 @@ class CW_Shop {
                         update_post_meta( $entry_id, 'customer_id', $user_id );
                         update_post_meta( $entry_id, 'cw_participant_name', $final_name );
                         update_post_meta( $entry_id, 'participant_details', $fields );
-                        
-                        // Set Default Scores
-                        if(!$is_activity) {
+
+                        // Only judged campaigns (Competitions) get score / vote_count placeholders.
+                        if ( self::campaign_is_judged( $product_id ) ) {
                             update_post_meta($entry_id, 'vote_count', 0);
                             update_post_meta($entry_id, 'judge_score', 0); // Init Score
                         }
@@ -1025,7 +1062,7 @@ class CW_Shop {
             update_post_meta( $entry_id, 'upload_document', $art_url );
         }
 
-        if ( $post_type === 'cw_competition_entry' ) {
+        if ( self::campaign_is_judged( $product_id ) ) {
             update_post_meta( $entry_id, 'vote_count', 0 );
             update_post_meta( $entry_id, 'judge_score', 0 );
         }

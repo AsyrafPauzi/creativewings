@@ -25,9 +25,13 @@ class CW_Dashboard_Contestant {
         $entries = get_posts([ 'post_type' => ['cw_competition_entry', 'cw_activity_entry'], 'meta_key' => 'customer_id', 'meta_value' => $uid, 'posts_per_page' => -1 ]);
         $entries_count = count( $entries );
         
-        // Count entries by status for Pending Review (A basic placeholder)
+        // Count entries by status for Pending Review — competition campaigns only.
         $pending_review_count = 0;
         foreach($entries as $e) {
+            $entry_pid = (int) get_post_meta( $e->ID, 'product_id', true );
+            if ( class_exists( 'CW_Shop' ) && ! CW_Shop::campaign_is_judged( $entry_pid ) ) {
+                continue;
+            }
             if (get_post_meta($e->ID, 'judge_score', true) === '' && get_post_meta($e->ID, 'upload_document', true) !== '') {
                 $pending_review_count++;
             }
@@ -50,14 +54,26 @@ class CW_Dashboard_Contestant {
 
             $is_activity = has_term( 'activities', 'product_cat', $pid );
             $score       = get_post_meta( $e->ID, 'judge_score', true );
+            $is_judged   = class_exists( 'CW_Shop' ) ? CW_Shop::campaign_is_judged( $pid ) : true;
+
+            if ( ! $is_judged ) {
+                $status_label = 'Completed';
+                $status_class = 'cw-status-completed';
+            } elseif ( $score !== '' && $score > 0 ) {
+                $status_label = 'Completed';
+                $status_class = 'cw-status-completed';
+            } else {
+                $status_label = 'Pending';
+                $status_class = 'cw-status-pending';
+            }
 
             $renderable_recent[] = [
                 'entry'        => $e,
                 'pid'          => $pid,
                 'product'      => $product,
                 'type_tag'     => $is_activity ? 'Activity' : 'Competition',
-                'status_label' => ( $score !== '' && $score > 0 ) ? 'Completed' : 'Pending',
-                'status_class' => ( $score !== '' && $score > 0 ) ? 'cw-status-completed' : 'cw-status-pending',
+                'status_label' => $status_label,
+                'status_class' => $status_class,
             ];
         }
 
@@ -196,22 +212,33 @@ class CW_Dashboard_Contestant {
                     $cert_enabled  = get_post_meta( $pid, 'cw_enable_certificate', true ) === 'yes';
                     $is_activity   = has_term( 'activities', 'product_cat', $pid );
                     $type_tag      = $is_activity ? 'Activity' : 'Competition';
+                    $is_judged     = class_exists( 'CW_Shop' ) ? CW_Shop::campaign_is_judged( $pid ) : true;
 
-                    if ( $score !== '' && $score > 0 ) {
+                    if ( ! $is_judged ) {
+                        $status_label = 'Completed'; $status_cls = 'completed';
+                    } elseif ( $score !== '' && $score > 0 ) {
                         $status_label = 'Completed'; $status_cls = 'completed';
                     } else {
                         $status_label = 'Registered'; $status_cls = 'registered';
                     }
 
+                    $cert_available = $cert_enabled && class_exists( 'CW_Certificate' ) && CW_Certificate::entry_cert_available( $e->ID );
+                    $cert_eta_raw   = get_post_meta( $pid, 'submission_deadline', true );
+                    $cert_eta_label = $cert_eta_raw ? date_i18n( get_option( 'date_format', 'd M Y' ), strtotime( $cert_eta_raw ) ) : '';
+                    $cert_url       = ( $cert_enabled && class_exists( 'CW_Certificate' ) ) ? CW_Certificate::download_url( $e->ID ) : '';
+
                     $modal_data = htmlspecialchars( json_encode([
-                        'id'           => $e->ID,
-                        'title'        => $title,
-                        'date'         => $date,
-                        'status'       => $status_label,
-                        'score'        => $score ?: 'N/A',
-                        'comment'      => $comment ?: 'No feedback yet.',
-                        'details'      => $entry_details ?: [],
-                        'cert_enabled' => $cert_enabled,
+                        'id'             => $e->ID,
+                        'title'          => $title,
+                        'date'           => $date,
+                        'status'         => $status_label,
+                        'score'          => $score ?: 'N/A',
+                        'comment'        => $comment ?: 'No feedback yet.',
+                        'details'        => $entry_details ?: [],
+                        'cert_enabled'   => $cert_enabled,
+                        'cert_available' => $cert_available,
+                        'cert_eta'       => $cert_eta_label,
+                        'cert_url'       => $cert_url,
                     ]), ENT_QUOTES, 'UTF-8' );
                 ?>
                 <div class="cw-activity-card">
@@ -273,29 +300,44 @@ class CW_Dashboard_Contestant {
         ?>
         <!-- MODAL CSS/STRUCTURE -->
         <style>
-            #cw-activity-detail-modal { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
-            .cw-detail-box { background: #fff; width: 90%; max-width: 650px; border-radius: 12px; position: relative; padding: 30px; }
-            .cw-detail-header h3 { margin-top: 0; font-size: 24px; font-weight: 700; }
-            .cw-detail-header p { font-size: 14px; color: #64748b; margin-top: 5px; }
-            .cw-detail-close { position: absolute; top: 20px; right: 20px; font-size: 20px; cursor: pointer; color: #94a3b8; }
-            
-            /* Status/Score Cards */
-            .cw-status-score-grid { display: flex; gap: 20px; margin-bottom: 30px; }
-            .cw-status-card { flex: 1; padding: 20px; border-radius: 8px; }
-            .cw-status-card.status { flex: 1; padding: 20px; border-radius: 8px; background: #e0f2fe; border: 1px solid #a7b7ff; }
-            .cw-status-card.score { flex: 1; padding: 20px; border-radius: 8px; background: #fffbe6; border: 1px solid #fce88e; }
-            .cw-status-card strong { display: block; font-size: 12px; color: #64748b; margin-bottom: 5px; }
-            .cw-status-card .value { font-size: 24px; font-weight: 800; }
+            #cw-activity-detail-modal { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; padding: 16px; }
+            .cw-detail-box { background: #fff; width: 100%; max-width: 620px; max-height: calc(100vh - 32px); overflow-y: auto; border-radius: 12px; position: relative; padding: 20px 22px; }
+            .cw-detail-header { padding-right: 32px; }
+            .cw-detail-header h3 { margin-top: 0; margin-bottom: 4px; font-size: 18px; font-weight: 700; line-height: 1.3; }
+            .cw-detail-header p { font-size: 12px; color: #64748b; margin: 0 0 16px; }
+            .cw-detail-close { position: absolute; top: 12px; right: 14px; font-size: 18px; cursor: pointer; color: #94a3b8; line-height: 1; }
+
+            /* Status/Score Cards — compact */
+            .cw-status-score-grid { display: flex; gap: 10px; margin-bottom: 16px; }
+            .cw-status-card { flex: 1; padding: 10px 12px; border-radius: 8px; min-width: 0; }
+            .cw-status-card.status { background: #e0f2fe; border: 1px solid #a7b7ff; }
+            .cw-status-card.score  { background: #fffbe6; border: 1px solid #fce88e; }
+            .cw-status-card strong { display: block; font-size: 10px; color: #64748b; margin-bottom: 2px; letter-spacing: 0.4px; text-transform: uppercase; font-weight: 700; }
+            .cw-status-card .value { font-size: 15px; font-weight: 700; line-height: 1.2; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+            .cw-status-card .value i { font-size: 14px; }
 
             /* Details Table */
-            .cw-detail-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            #modal-details-table { margin-bottom: 16px; }
+            .cw-detail-table { width: 100%; border-collapse: collapse; }
             .cw-detail-table tr { border-bottom: 1px solid #f1f5f9; }
-            .cw-detail-table td { padding: 10px 0; font-size: 14px; }
-            .cw-detail-table td:first-child { font-weight: 600; width: 40%; color: #475569; }
+            .cw-detail-table td { padding: 7px 8px; font-size: 13px; vertical-align: top; }
+            .cw-detail-table td:first-child { font-weight: 600; width: 38%; color: #475569; }
+
+            /* Submission Details heading */
+            .cw-submission-heading { font-weight: 700; font-size: 14px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
 
             /* Host Feedback */
-            .cw-host-feedback { background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
-            .cw-host-feedback h4 { font-weight: 700; margin: 0 0 10px; }
+            .cw-host-feedback { background: #f8fafc; padding: 12px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+            .cw-host-feedback h4 { font-weight: 700; margin: 0 0 6px; font-size: 13px; }
+
+            @media (max-width: 480px) {
+                .cw-detail-box { padding: 16px; }
+                .cw-status-score-grid { flex-direction: column; gap: 8px; }
+                .cw-status-card { padding: 10px 12px; }
+                .cw-status-card .value { font-size: 14px; }
+                .cw-detail-header h3 { font-size: 16px; }
+                .cw-detail-table td { padding: 7px 6px; font-size: 12px; }
+            }
         </style>
         
         <div id="cw-activity-detail-modal" class="cw-modal">
@@ -321,7 +363,7 @@ class CW_Dashboard_Contestant {
                     <!-- Certificate bar injected here -->
                 </div>
 
-                <h4 style="font-weight:700; margin-bottom:15px;"><i class="fas fa-file-invoice" style="margin-right:10px;"></i>Submission Details</h4>
+                <h4 class="cw-submission-heading"><i class="fas fa-file-invoice"></i>Submission Details</h4>
                 <div id="modal-details-table">
                     <!-- Dynamic table content injected here -->
                 </div>
@@ -330,7 +372,9 @@ class CW_Dashboard_Contestant {
                     <!-- Host feedback injected here -->
                 </div>
 
-                <button class="cw-btn-primary" style="float:right;" onclick="closeContestantModal()">Close</button>
+                <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+                    <button class="cw-btn-primary" style="padding:8px 18px; font-size:13px;" onclick="closeContestantModal()">Close</button>
+                </div>
 
             </div>
         </div>
@@ -375,17 +419,25 @@ class CW_Dashboard_Contestant {
             
             // Certificate Bar Logic
             const certBar = jQuery('#modal-certificate-bar');
-            
-            // NOTE: Assuming cert_enabled is true if the campaign is completed
-            if (data.status === 'Completed' && data.cert_enabled) { // Use data.cert_enabled if you passed it
-                 certBar.html(`
-                    <div style="background:#e6f3ff; border:1px solid #b3d9ff; padding:20px; border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-                        <div>
-                            <strong>Certificate Available</strong>
-                            <p style="font-size:14px; margin:5px 0 0 0;">Great job! You can download your certificate of completion.</p>
+
+            if (data.cert_enabled && data.cert_available && data.cert_url) {
+                certBar.html(`
+                    <div style="background:#e6f3ff; border:1px solid #b3d9ff; padding:12px 14px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                        <div style="min-width:0; flex:1 1 200px;">
+                            <strong style="font-size:13px;">Certificate Available</strong>
+                            <p style="font-size:12px; margin:2px 0 0; color:#475569;">Download your certificate of completion.</p>
                         </div>
-                        <!-- FIX: Download Button - Link should point to the Certificate generation action -->
-                         <a href="<?php echo admin_url('admin-post.php'); ?>?action=cw_download_cert&entry_id=${data.id}" class="cw-btn-primary" style="padding:10px 20px; font-size:14px;"><i class="fas fa-download"></i> Download</a>
+                        <a href="${data.cert_url}" class="cw-btn-primary" style="padding:7px 14px; font-size:12px;" target="_blank" rel="noopener"><i class="fas fa-download"></i> Download</a>
+                    </div>
+                `);
+            } else if (data.cert_enabled && data.cert_eta) {
+                certBar.html(`
+                    <div style="background:#fff7ed; border:1px solid #fed7aa; padding:12px 14px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                        <div style="min-width:0; flex:1 1 200px;">
+                            <strong style="font-size:13px;">Certificate Coming Soon</strong>
+                            <p style="font-size:12px; margin:2px 0 0; color:#475569;">Available after the event ends on <strong>${data.cert_eta}</strong>.</p>
+                        </div>
+                        <button class="cw-btn-disabled" style="padding:7px 14px; font-size:12px;" disabled><i class="fas fa-clock"></i> Not yet available</button>
                     </div>
                 `);
             } else {
