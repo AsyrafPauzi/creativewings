@@ -62,12 +62,18 @@ class CW_Business_Save {
             $aid = media_handle_upload( 'campaign_image', $pid );
             if ( ! is_wp_error( $aid ) ) {
                 set_post_thumbnail( $pid, $aid );
+                if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                    CW_Image_Optimizer::optimize_attachment( $aid, 'campaign_thumb' );
+                }
             }
         }
         if ( ! empty( $_FILES['cw_cert_template']['name'] ) ) {
             $cid = media_handle_upload( 'cw_cert_template', $pid );
             if ( ! is_wp_error( $cid ) ) {
                 update_post_meta( $pid, 'cw_cert_template', wp_get_attachment_url( $cid ) );
+                if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                    CW_Image_Optimizer::optimize_attachment( $cid, 'hero' );
+                }
             }
         }
 
@@ -151,6 +157,9 @@ class CW_Business_Save {
         if ( ! empty( $_FILES['business_logo']['name'] ) ) {
             $lid = media_handle_upload( 'business_logo', 0 );
             if ( ! is_wp_error( $lid ) ) {
+                if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                    CW_Image_Optimizer::optimize_attachment( $lid, 'logo' );
+                }
                 $logo_data = [ 'id' => $lid, 'url' => wp_get_attachment_url( $lid ) ];
                 update_user_meta( $uid, 'business_logo', $logo_data );
                 update_user_meta( $uid, 'creator_profile_image', $logo_data );
@@ -162,6 +171,9 @@ class CW_Business_Save {
         if ( ! empty( $_FILES['business_cover']['name'] ) ) {
             $cid = media_handle_upload( 'business_cover', 0 );
             if ( ! is_wp_error( $cid ) ) {
+                if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                    CW_Image_Optimizer::optimize_attachment( $cid, 'cover' );
+                }
                 $cover_data = [ 'id' => $cid, 'url' => wp_get_attachment_url( $cid ) ];
                 update_user_meta( $uid, 'business_cover', $cover_data );
                 update_user_meta( $uid, 'creator_header_image', $cover_data );

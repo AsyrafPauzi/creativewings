@@ -1,0 +1,23 @@
+{
+  "name": "creativewings-core",
+  "private": true,
+  "version": "1.0.0",
+  "description": "CreativeWings WordPress plugin asset build pipeline.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "watch": "vite build --watch --mode development",
+    "vendor:fetch": "node scripts/fetch-vendor.mjs"
+  },
+  "devDependencies": {
+    "cssnano": "^7.0.6",
+    "postcss": "^8.4.49",
+    "terser": "^5.36.0",
+    "vite": "^5.4.10"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.6",
+    "sweetalert2": "^11.14.5"
+  }
+}

@@ -93,6 +93,9 @@ class CW_Security {
         require_once ABSPATH . 'wp-admin/includes/image.php';
 
         $aid = media_handle_upload( $file_key, 0 );
+        if ( ! is_wp_error( $aid ) && class_exists( 'CW_Image_Optimizer' ) ) {
+            CW_Image_Optimizer::optimize_attachment( (int) $aid, 'attachment' );
+        }
         return is_wp_error( $aid ) ? $aid : (int) $aid;
     }
 
@@ -120,6 +123,12 @@ class CW_Security {
         require_once ABSPATH . 'wp-admin/includes/media.php';
         require_once ABSPATH . 'wp-admin/includes/image.php';
         $aid = media_handle_upload( $file_key, 0 );
+        if ( ! is_wp_error( $aid ) && class_exists( 'CW_Image_Optimizer' ) ) {
+            $ext_lc = strtolower( pathinfo( (string) get_attached_file( (int) $aid ), PATHINFO_EXTENSION ) );
+            if ( in_array( $ext_lc, [ 'jpg', 'jpeg', 'png' ], true ) ) {
+                CW_Image_Optimizer::optimize_attachment( (int) $aid, 'attachment' );
+            }
+        }
         return is_wp_error( $aid ) ? $aid : (int) $aid;
     }
 }

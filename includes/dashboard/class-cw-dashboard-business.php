@@ -10,8 +10,34 @@ class CW_Dashboard_Business {
         add_action( 'woocommerce_account_cw-biz-campaigns_endpoint', [ $this, 'render_campaigns' ] );
         add_action( 'woocommerce_account_cw-biz-wallet_endpoint', [ $this, 'render_wallet' ] );
         add_action( 'woocommerce_account_cw-biz-info_endpoint', [ $this, 'render_settings' ] );
-        
+
+        // Overview chart range AJAX refresh.
+        add_action( 'wp_ajax_cw_biz_chart_series', [ $this, 'ajax_chart_series' ] );
+
         // Note: The save handler 'admin_post_cw_save_biz_info' is located in CW_Business class.
+    }
+
+    /**
+     * AJAX: return revenue + participants time series for the current business user.
+     * Used by the overview chart range selector.
+     */
+    public function ajax_chart_series() {
+        check_ajax_referer( 'cw_biz_chart_series', 'nonce' );
+
+        $uid = get_current_user_id();
+        if ( ! $uid || ! ( class_exists( 'CW_Roles' ) ? CW_Roles::is_business_user( $uid ) : current_user_can( 'edit_posts' ) ) ) {
+            wp_send_json_error( [ 'message' => __( 'Not authorized.', 'creativewings-core' ) ], 403 );
+        }
+
+        if ( ! class_exists( 'CW_Business_Reports' ) ) {
+            wp_send_json_error( [ 'message' => __( 'Reports service unavailable.', 'creativewings-core' ) ], 500 );
+        }
+
+        $range_raw = isset( $_POST['range'] ) ? sanitize_text_field( wp_unslash( $_POST['range'] ) ) : '30';
+        $range     = ( $range_raw === 'all' ) ? 'all' : (string) max( 1, (int) $range_raw );
+
+        $series = CW_Business_Reports::get_chart_series( $uid, $range );
+        wp_send_json_success( $series );
     }
 
     /* ==========================================================================
@@ -28,34 +54,48 @@ class CW_Dashboard_Business {
             $wallet = CW_Wallet::get_wallet_stats( $uid );
         }
 
-        // 2. Get Campaign Stats
-        $campaigns = get_posts(
-            class_exists( 'CW_Roles' ) ? CW_Roles::get_business_campaign_query_args( $uid ) : [
+        // 2. Get Campaign Stats — fetch IDs + status only (lighter than full posts).
+        $campaign_query_args = class_exists( 'CW_Roles' )
+            ? CW_Roles::get_business_campaign_query_args( $uid )
+            : [
                 'post_type'      => 'product',
                 'author'         => $uid,
                 'post_status'    => [ 'publish', 'pending', 'draft' ],
                 'posts_per_page' => -1,
-            ]
-        );
+            ];
+        $campaign_query_args['posts_per_page'] = -1;
+        $campaign_query_args['fields']         = 'ids';
+        $campaign_ids = (array) get_posts( $campaign_query_args );
 
         $total_active  = 0;
         $total_pending = 0;
         $total_entries = 0;
 
-        foreach ( $campaigns as $c ) {
-            $status = get_post_status( $c->ID );
-            if ( $status == 'publish' ) $total_active++;
-            else $total_pending++;
+        if ( ! empty( $campaign_ids ) ) {
+            global $wpdb;
+            $placeholders = implode( ',', array_fill( 0, count( $campaign_ids ), '%d' ) );
+            $rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT post_status, COUNT(*) AS c FROM {$wpdb->posts}
+                 WHERE ID IN ($placeholders) GROUP BY post_status",
+                $campaign_ids
+            ), ARRAY_A );
+            foreach ( (array) $rows as $r ) {
+                if ( $r['post_status'] === 'publish' ) {
+                    $total_active = (int) $r['c'];
+                } else {
+                    $total_pending += (int) $r['c'];
+                }
+            }
         }
+        $campaigns = $campaign_ids; // back-compat for any legacy reference below
 
-        // Total entries across all campaigns
-        global $wpdb;
-        if ( $campaigns ) {
-            $pids = array_map( fn($c) => $c->ID, $campaigns );
-            $placeholders = implode(',', array_fill(0, count($pids), '%d'));
+        // Total entries across all campaigns (single query).
+        if ( ! empty( $campaign_ids ) ) {
+            global $wpdb;
+            $placeholders = implode(',', array_fill(0, count($campaign_ids), '%d'));
             $total_entries = (int) $wpdb->get_var( $wpdb->prepare(
                 "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key = 'product_id' AND meta_value IN ($placeholders)",
-                ...$pids
+                $campaign_ids
             ) );
         }
 
@@ -66,6 +106,23 @@ class CW_Dashboard_Business {
         $public_profile_url = class_exists( 'CW_Roles' )
             ? CW_Roles::get_public_organizer_url( $u )
             : '';
+
+        // Directory completeness — show a nudge banner if missing any basic field.
+        $missing_dir_fields = [];
+        if ( class_exists( 'CW_Roles' ) ) {
+            $check = CW_Roles::organizer_missing_basics( $u );
+            if ( is_array( $check ) ) {
+                $missing_dir_fields = $check;
+            }
+        }
+        $missing_dir_labels = [
+            'business_name'     => __( 'Business name', 'creativewings-core' ),
+            'business_logo'     => __( 'Logo', 'creativewings-core' ),
+            'business_industry' => __( 'Industry', 'creativewings-core' ),
+            'business_about'    => __( 'About / description', 'creativewings-core' ),
+            'business_location' => __( 'City or country', 'creativewings-core' ),
+        ];
+        $biz_info_url = add_query_arg( 'tab', 'biz-info', $base );
 
         ?>
         <style>
@@ -95,6 +152,112 @@ class CW_Dashboard_Business {
                     </a>
                 </div>
             </div>
+
+            <?php if ( ! empty( $missing_dir_fields ) ) : ?>
+                <div class="cw-dir-nudge" role="status">
+                    <div class="cw-dir-nudge-icon"><i class="fas fa-eye-slash"></i></div>
+                    <div class="cw-dir-nudge-body">
+                        <h3><?php esc_html_e( 'Complete your business info to appear in the public directory', 'creativewings-core' ); ?></h3>
+                        <p>
+                            <?php esc_html_e( 'You won\'t be listed on the organizers directory until these basics are filled in:', 'creativewings-core' ); ?>
+                        </p>
+                        <div class="cw-dir-nudge-chips">
+                            <?php foreach ( $missing_dir_fields as $field ) :
+                                $label = $missing_dir_labels[ $field ] ?? ucwords( str_replace( [ 'business_', '_' ], [ '', ' ' ], $field ) );
+                                ?>
+                                <span class="cw-dir-nudge-chip"><i class="fas fa-times-circle"></i> <?php echo esc_html( $label ); ?></span>
+                            <?php endforeach; ?>
+                        </div>
+                        <a href="<?php echo esc_url( $biz_info_url ); ?>" class="cw-btn-primary cw-dir-nudge-cta">
+                            <i class="fas fa-pen-to-square"></i> <?php esc_html_e( 'Complete business info', 'creativewings-core' ); ?>
+                        </a>
+                    </div>
+                </div>
+                <style>
+                    .cw-dir-nudge {
+                        display: flex;
+                        gap: 14px;
+                        align-items: flex-start;
+                        background: linear-gradient(135deg, #fff7ed 0%, #fffbeb 100%);
+                        border: 1px solid #fde68a;
+                        border-radius: 14px;
+                        padding: 16px 18px;
+                        margin: 0 0 20px;
+                        box-shadow: 0 2px 10px rgba(180, 83, 9, 0.06);
+                    }
+                    .cw-dir-nudge-icon {
+                        width: 42px;
+                        height: 42px;
+                        border-radius: 50%;
+                        background: #fef3c7;
+                        color: #b45309;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 18px;
+                        flex-shrink: 0;
+                    }
+                    .cw-dir-nudge-body { flex: 1; min-width: 0; }
+                    .cw-dir-nudge-body h3 {
+                        margin: 0 0 4px;
+                        font-size: 15px;
+                        font-weight: 800;
+                        color: #92400e;
+                        line-height: 1.35;
+                    }
+                    .cw-dir-nudge-body p {
+                        margin: 0 0 10px;
+                        font-size: 13px;
+                        color: #78350f;
+                    }
+                    .cw-dir-nudge-chips {
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 6px;
+                        margin: 0 0 12px;
+                    }
+                    .cw-dir-nudge-chip {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        background: #fff;
+                        border: 1px solid #fde68a;
+                        color: #92400e;
+                        font-size: 12px;
+                        font-weight: 700;
+                        padding: 4px 10px;
+                        border-radius: 999px;
+                    }
+                    .cw-dir-nudge-chip i { color: #b45309; font-size: 10px; }
+                    .cw-dir-nudge-cta {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        text-decoration: none;
+                    }
+                    @media (max-width: 600px) {
+                        .cw-dir-nudge { flex-direction: column; gap: 10px; padding: 14px; }
+                        .cw-dir-nudge-icon { width: 36px; height: 36px; font-size: 16px; }
+                    }
+                </style>
+            <?php endif; ?>
+
+            <?php
+            if ( class_exists( 'CW_Badges_Engine' ) && class_exists( 'CW_Badges_Display' ) ) {
+                $owned_badges = CW_Badges_Engine::get_user_badges( get_current_user_id() );
+                if ( ! empty( $owned_badges ) ) :
+                    $badges_tab_url = add_query_arg( 'tab', 'badges', get_permalink( wc_get_page_id( 'myaccount' ) ) );
+                    ?>
+                    <div class="cw-badges cw-badges-latest">
+                        <h4><i class="fas fa-trophy" style="color:#facc15;margin-right:6px;"></i><?php esc_html_e( 'Latest achievements', 'creativewings-core' ); ?></h4>
+                        <?php echo CW_Badges_Display::render_strip( $owned_badges, 4, [ 'size' => 'sm', 'show_label' => false, 'show_tier' => false ] ); ?>
+                        <a href="<?php echo esc_url( $badges_tab_url ); ?>" style="margin-left:auto;font-size:13px;font-weight:600;color:#0ea5e9;text-decoration:none;">
+                            <?php esc_html_e( 'See all badges', 'creativewings-core' ); ?> &rarr;
+                        </a>
+                    </div>
+                <?php endif;
+            }
+            ?>
 
             <!-- STATS GRID (4 cols) -->
             <div class="cw-stats-grid cols-4">
@@ -134,10 +297,19 @@ class CW_Dashboard_Business {
             <!-- SPLIT SECTION (Chart + Actions) -->
             <div class="cw-split-section">
 
-                <!-- LEFT: REVENUE CHART -->
+                <!-- LEFT: REVENUE + PARTICIPANTS CHART -->
+                <?php
+                $default_range  = '30';
+                $initial_series = class_exists( 'CW_Business_Reports' )
+                    ? CW_Business_Reports::get_chart_series( $uid, $default_range )
+                    : [ 'labels' => [], 'revenue' => [], 'participants' => [], 'range' => $default_range ];
+
+                $currency_symbol = function_exists( 'get_woocommerce_currency_symbol' ) ? get_woocommerce_currency_symbol() : '$';
+                $chart_nonce     = wp_create_nonce( 'cw_biz_chart_series' );
+                ?>
                 <div class="cw-chart-container">
                     <div class="cw-chart-header">
-                        <h3>Revenue Overview</h3>
+                        <h3>Revenue &amp; Participants</h3>
                         <select class="cw-chart-filter" id="cw-revenue-range" aria-label="Date range">
                             <option value="1">Today</option>
                             <option value="3">Last 3 days</option>
@@ -151,6 +323,10 @@ class CW_Dashboard_Business {
                     </div>
                     <div class="cw-chart-wrapper">
                         <canvas id="revenueChart"></canvas>
+                    </div>
+                    <div class="cw-chart-legend-note" aria-hidden="true">
+                        <span class="cw-chart-legend-dot cw-chart-legend-dot--rev"></span> <?php esc_html_e( 'Revenue', 'creativewings-core' ); ?>
+                        <span class="cw-chart-legend-dot cw-chart-legend-dot--part"></span> <?php esc_html_e( 'Participants', 'creativewings-core' ); ?>
                     </div>
                 </div>
 
@@ -228,95 +404,165 @@ class CW_Dashboard_Business {
             const ctx = document.getElementById('revenueChart');
             if (!ctx || typeof Chart === 'undefined') return;
 
-            const totalEarned = <?php echo floatval($wallet['total_earned']); ?>;
-            const ctx2d = ctx.getContext('2d');
-            let gradient = ctx2d.createLinearGradient(0, 0, 0, 400);
-            gradient.addColorStop(0, 'rgba(15, 103, 150, 0.2)');
-            gradient.addColorStop(1, 'rgba(15, 103, 150, 0)');
+            const currencySymbol = <?php echo wp_json_encode( $currency_symbol ); ?>;
+            const ajaxUrl        = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+            const ajaxNonce      = <?php echo wp_json_encode( $chart_nonce ); ?>;
+            const initialSeries  = <?php echo wp_json_encode( $initial_series ); ?>;
 
-            // Build labels + data series for a given range value.
-            // NOTE: Real per-day revenue isn't queried yet — we render an empty trend
-            // with the lifetime "total earned" on the latest bucket so the chart still
-            // reflects the dashboard total. Hook this up to a real timeseries later.
-            function buildSeries(range) {
-                let labels = [];
-                if (range === '1') {
-                    labels = ['Today'];
-                } else if (range === '3') {
-                    labels = ['-2d', '-1d', 'Today'];
-                } else if (range === '7') {
-                    labels = ['-6d', '-5d', '-4d', '-3d', '-2d', '-1d', 'Today'];
-                } else if (range === '14') {
-                    for (let i = 13; i >= 0; i--) labels.push(i === 0 ? 'Today' : ('-' + i + 'd'));
-                } else if (range === '30') {
-                    for (let i = 29; i >= 0; i -= 3) labels.push(i === 0 ? 'Today' : ('-' + i + 'd'));
-                    if (labels[labels.length - 1] !== 'Today') labels.push('Today');
-                } else if (range === '180') {
-                    const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                    const today = new Date();
-                    for (let i = 5; i >= 0; i--) {
-                        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-                        labels.push(m[d.getMonth()]);
+            const ctx2d = ctx.getContext('2d');
+            const revGradient = ctx2d.createLinearGradient(0, 0, 0, 400);
+            revGradient.addColorStop(0, 'rgba(15, 103, 150, 0.22)');
+            revGradient.addColorStop(1, 'rgba(15, 103, 150, 0)');
+
+            // Pretty-print labels (YYYY-MM-DD or YYYY-MM) for the x-axis.
+            function prettyLabels(raw) {
+                const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                return (raw || []).map(function(l) {
+                    if (typeof l !== 'string') return l;
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(l)) {
+                        const parts = l.split('-');
+                        return parts[2] + ' ' + monthShort[parseInt(parts[1], 10) - 1];
                     }
-                } else if (range === '365') {
-                    const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                    const today = new Date();
-                    for (let i = 11; i >= 0; i--) {
-                        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-                        labels.push(m[d.getMonth()]);
+                    if (/^\d{4}-\d{2}$/.test(l)) {
+                        const parts = l.split('-');
+                        return monthShort[parseInt(parts[1], 10) - 1] + ' ' + parts[0].slice(2);
                     }
-                } else { // all
-                    labels = ['Year 1', 'Year 2', 'Year 3', 'This year'];
-                }
-                const data = labels.map(function () { return 0; });
-                data[data.length - 1] = totalEarned;
-                return { labels: labels, data: data };
+                    return l;
+                });
             }
 
-            const initialRange = (document.getElementById('cw-revenue-range') || {}).value || '30';
-            const init = buildSeries(initialRange);
-
             const chart = new Chart(ctx, {
-                type: 'line',
                 data: {
-                    labels: init.labels,
-                    datasets: [{
-                        label: 'Revenue',
-                        data: init.data,
-                        borderColor: '#0F6796',
-                        borderWidth: 3,
-                        backgroundColor: gradient,
-                        fill: true,
-                        tension: 0.4,
-                        pointRadius: 3,
-                        pointHoverRadius: 6
-                    }]
+                    labels: prettyLabels(initialSeries.labels || []),
+                    datasets: [
+                        {
+                            type: 'line',
+                            label: 'Revenue',
+                            data: initialSeries.revenue || [],
+                            borderColor: '#0F6796',
+                            borderWidth: 3,
+                            backgroundColor: revGradient,
+                            fill: true,
+                            tension: 0.35,
+                            pointRadius: 3,
+                            pointHoverRadius: 6,
+                            yAxisID: 'yRev',
+                            order: 1
+                        },
+                        {
+                            type: 'bar',
+                            label: 'Participants',
+                            data: initialSeries.participants || [],
+                            backgroundColor: 'rgba(254, 98, 97, 0.55)',
+                            borderColor: '#FE6261',
+                            borderWidth: 1,
+                            borderRadius: 4,
+                            maxBarThickness: 22,
+                            yAxisID: 'yPart',
+                            order: 2
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: { display: false },
-                        tooltip: { backgroundColor: '#fff', titleColor: '#000', bodyColor: '#0F6796', borderColor: '#e2e8f0', borderWidth: 1 }
+                        tooltip: {
+                            backgroundColor: '#fff',
+                            titleColor: '#0f172a',
+                            bodyColor: '#0F6796',
+                            borderColor: '#e2e8f0',
+                            borderWidth: 1,
+                            padding: 10,
+                            callbacks: {
+                                label: function (item) {
+                                    const v = item.parsed.y;
+                                    if (item.dataset.label === 'Revenue') {
+                                        return '  Revenue: ' + currencySymbol + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                    }
+                                    return '  Participants: ' + Number(v).toLocaleString();
+                                }
+                            }
+                        }
                     },
                     scales: {
-                        y: { beginAtZero: true, grid: { borderDash: [5, 5], color: '#e2e8f0' }, ticks: { color: '#64748b' } },
-                        x: { grid: { display: false }, ticks: { color: '#64748b', maxRotation: 0, autoSkip: true, autoSkipPadding: 12 } }
+                        yRev: {
+                            position: 'left',
+                            beginAtZero: true,
+                            grid: { borderDash: [5, 5], color: '#e2e8f0' },
+                            ticks: {
+                                color: '#0F6796',
+                                callback: function (v) {
+                                    if (Math.abs(v) >= 1000) return currencySymbol + (v / 1000).toFixed(1) + 'k';
+                                    return currencySymbol + v;
+                                }
+                            },
+                            title: { display: true, text: 'Revenue', color: '#0F6796', font: { size: 11, weight: '700' } }
+                        },
+                        yPart: {
+                            position: 'right',
+                            beginAtZero: true,
+                            grid: { display: false },
+                            ticks: { color: '#FE6261', precision: 0 },
+                            title: { display: true, text: 'Participants', color: '#FE6261', font: { size: 11, weight: '700' } }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#64748b', maxRotation: 0, autoSkip: true, autoSkipPadding: 12 }
+                        }
                     }
                 }
             });
 
+            function applySeries(series) {
+                chart.data.labels                = prettyLabels(series.labels || []);
+                chart.data.datasets[0].data      = series.revenue || [];
+                chart.data.datasets[1].data      = series.participants || [];
+                chart.update();
+            }
+
             const rangeEl = document.getElementById('cw-revenue-range');
             if (rangeEl) {
                 rangeEl.addEventListener('change', function () {
-                    const s = buildSeries(this.value);
-                    chart.data.labels = s.labels;
-                    chart.data.datasets[0].data = s.data;
-                    chart.update();
+                    const range = this.value;
+                    const form  = new FormData();
+                    form.append('action', 'cw_biz_chart_series');
+                    form.append('nonce', ajaxNonce);
+                    form.append('range', range);
+
+                    if (window.fetch) {
+                        fetch(ajaxUrl, { method: 'POST', body: form, credentials: 'same-origin' })
+                            .then(function (r) { return r.json(); })
+                            .then(function (j) {
+                                if (j && j.success && j.data) applySeries(j.data);
+                            })
+                            .catch(function () {});
+                    }
                 });
             }
         });
         </script>
+        <style>
+            .cw-chart-legend-note {
+                margin-top: 6px;
+                font-size: 12px;
+                color: #64748b;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex-wrap: wrap;
+            }
+            .cw-chart-legend-note .cw-chart-legend-dot {
+                display: inline-block;
+                width: 10px; height: 10px; border-radius: 50%;
+                margin-right: 4px;
+            }
+            .cw-chart-legend-note .cw-chart-legend-dot--rev  { background: #0F6796; }
+            .cw-chart-legend-note .cw-chart-legend-dot--part { background: #FE6261; }
+            .cw-chart-legend-note .cw-chart-legend-dot:not(:first-child) { margin-left: 14px; }
+        </style>
         <?php
     }
 
@@ -357,6 +603,20 @@ class CW_Dashboard_Business {
 
         $query        = new WP_Query($args);
         $found_posts  = (int) $query->found_posts;
+
+        // Prime caches once for the current page's campaigns so the card grid
+        // foreach (lines ~634-688) avoids N+1 meta + earnings + count queries.
+        $cw_card_pids       = array_map( static fn( $p ) => (int) $p->ID, (array) $query->posts );
+        $cw_earnings_map    = ( ! empty( $cw_card_pids ) && class_exists( 'CW_Wallet' ) )
+            ? CW_Wallet::get_product_earnings_map( $cw_card_pids )
+            : [];
+        $cw_entries_map     = ( ! empty( $cw_card_pids ) && class_exists( 'CW_Wallet' ) )
+            ? CW_Wallet::get_product_entries_count_map( $cw_card_pids )
+            : [];
+        if ( ! empty( $cw_card_pids ) ) {
+            update_meta_cache( 'post', $cw_card_pids );
+            update_object_term_cache( $cw_card_pids, 'product' );
+        }
         $total_pages  = (int) $query->max_num_pages;
         $is_filtered  = ($cw_q !== '' || $cw_status !== 'any');
 
@@ -426,11 +686,8 @@ class CW_Dashboard_Business {
                         if ($status == 'pending') $pill_class = 'bg-yellow';
 
                         $img = get_the_post_thumbnail_url( $pid, 'medium' ) ?: CW_URL . 'assets/img/placeholder.jpg';
-                        $earnings = class_exists( 'CW_Wallet' ) ? CW_Wallet::get_product_earnings( $pid ) : 0;
-                        global $wpdb;
-                        $entries_count = (int) $wpdb->get_var( $wpdb->prepare(
-                            "SELECT COUNT(meta_value) FROM {$wpdb->postmeta} WHERE meta_key = 'product_id' AND meta_value = %d", $pid
-                        ) );
+                        $earnings = (float) ( $cw_earnings_map[ $pid ] ?? 0 );
+                        $entries_count = (int) ( $cw_entries_map[ $pid ] ?? 0 );
 
                         $is_competition = has_term('competitions', 'product_cat', $pid);
                         $cat_label      = $is_competition ? 'Competition' : 'Activity';
@@ -1337,7 +1594,7 @@ class CW_Dashboard_Business {
                     <!-- Cover Photo Banner (uploader) -->
                     <div class="cw-profile-banner<?php echo $cover_url ? ' has-cover' : ''; ?>">
                         <?php if ( $cover_url ): ?>
-                            <img src="<?php echo esc_url( $cover_url ); ?>" id="cw-biz-cover-preview" alt="Cover photo">
+                            <img src="<?php echo esc_url( $cover_url ); ?>" id="cw-biz-cover-preview" alt="Cover photo" loading="lazy" decoding="async">
                         <?php else: ?>
                             <img src="" id="cw-biz-cover-preview" alt="Cover photo" style="display:none;">
                         <?php endif; ?>
@@ -1356,7 +1613,7 @@ class CW_Dashboard_Business {
                         <div class="cw-profile-avatar-wrap">
                             <div class="cw-avatar-circle">
                                 <?php if($logo_url): ?>
-                                    <img src="<?php echo esc_url($logo_url); ?>" id="cw-biz-logo-preview">
+                                    <img src="<?php echo esc_url($logo_url); ?>" id="cw-biz-logo-preview" loading="lazy" decoding="async">
                                 <?php else: ?>
                                     <img src="" id="cw-biz-logo-preview" style="display:none;">
                                     <div class="cw-avatar-placeholder" id="cw-biz-logo-placeholder"><i class="fas fa-building"></i></div>
@@ -1614,15 +1871,17 @@ class CW_Dashboard_Business {
 
         $args = [
             'post_type'      => $entry_types,
-            'posts_per_page' => -1,
+            'posts_per_page' => $per_page,
+            'paged'          => $paged,
             'meta_query'     => [[
                 'key'     => 'product_id',
                 'value'   => $campaign_id,
                 'compare' => '=',
                 'type'    => 'NUMERIC',
             ]],
-            'orderby' => 'date',
-            'order'   => $sort_order,
+            'orderby'        => 'date',
+            'order'          => $sort_order,
+            'no_found_rows'  => false,
         ];
 
         if ($sort_by === 'score') {
@@ -1631,10 +1890,19 @@ class CW_Dashboard_Business {
             $args['meta_type'] = 'NUMERIC';
         }
 
-        $all_entries  = get_posts($args);
-        $total_entries = count($all_entries);
-        $total_pages   = (int) ceil($total_entries / $per_page);
-        $entries       = array_slice($all_entries, ($paged - 1) * $per_page, $per_page);
+        $entries_q     = new WP_Query( $args );
+        $entries       = $entries_q->posts;
+        $total_entries = (int) $entries_q->found_posts;
+        $total_pages   = (int) $entries_q->max_num_pages;
+
+        // Prime postmeta cache once so the per-entry get_post_meta calls below hit memory.
+        if ( ! empty( $entries ) ) {
+            $entry_ids = array_map( static fn( $e ) => (int) $e->ID, $entries );
+            update_meta_cache( 'post', $entry_ids );
+        }
+
+        // Back-compat: code below uses $all_entries to detect "any entries exist at all".
+        $all_entries = $total_entries > 0 ? $entries : [];
 
         $campaign_title      = get_the_title($campaign_id);
         $my_account_page_url = get_permalink(wc_get_page_id('myaccount'));
@@ -1694,7 +1962,7 @@ class CW_Dashboard_Business {
                     if($file_url) {
                         $download_link = $file_url;
                         if(preg_match('/\.(jpg|jpeg|png|gif)$/i', $file_url)) {
-                            $img_display = '<img src="'.esc_url($file_url).'" alt="Artwork Preview">';
+                            $img_display = '<img src="'.esc_url($file_url).'" alt="Artwork Preview" loading="lazy" decoding="async">';
                             $file_class = 'image-preview';
                         } else {
                             $img_display = '<i class="fas fa-file-alt file-icon"></i>';

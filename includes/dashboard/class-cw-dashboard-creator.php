@@ -105,7 +105,13 @@ class CW_Dashboard_Creator {
             require_once(ABSPATH.'wp-admin/includes/file.php');
             require_once(ABSPATH.'wp-admin/includes/media.php');
             $aid=media_handle_upload($file_key,0);
-            if(!is_wp_error($aid)) update_user_meta($uid, $file_key, ['id'=>$aid, 'url'=>wp_get_attachment_url($aid)]);
+            if(!is_wp_error($aid)) {
+                if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                    $ctx = ( strpos( $file_key, 'header' ) !== false ) ? 'cover' : 'avatar';
+                    CW_Image_Optimizer::optimize_attachment( $aid, $ctx );
+                }
+                update_user_meta($uid, $file_key, ['id'=>$aid, 'url'=>wp_get_attachment_url($aid)]);
+            }
         }
     }
 
@@ -125,21 +131,29 @@ class CW_Dashboard_Creator {
         $port_count = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE created_by = %d", $uid ) );
         $recent_ports = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM $table WHERE created_by = %d ORDER BY _ID DESC LIMIT 3", $uid ) );
 
-        // 3. Get Submission Stats
+        // 3. Get Submission Stats — single query for IDs, single query for judge_score scan.
         $submissions = get_posts([
-            'post_type' => ['cw_competition_entry', 'cw_activity_entry'],
-            'meta_key' => 'customer_id',
-            'meta_value' => $uid,
+            'post_type'      => ['cw_competition_entry', 'cw_activity_entry'],
+            'meta_key'       => 'customer_id',
+            'meta_value'     => $uid,
             'posts_per_page' => -1,
-            'fields' => 'ids'
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
         ]);
-        $entries_total = count($submissions);
+        $entries_total      = count($submissions);
         $active_engagements = 0;
         $completed_entries  = 0;
-        foreach ($submissions as $sid) {
-            $score = get_post_meta($sid, 'judge_score', true);
-            if ($score === '') $active_engagements++;
-            else $completed_entries++;
+        if ( ! empty( $submissions ) ) {
+            $placeholders  = implode(',', array_fill(0, count($submissions), '%d'));
+            $scored_count  = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->postmeta}
+                 WHERE meta_key = 'judge_score'
+                   AND meta_value <> ''
+                   AND post_id IN ($placeholders)",
+                $submissions
+            ) );
+            $completed_entries  = $scored_count;
+            $active_engagements = max( 0, $entries_total - $scored_count );
         }
 
         // 4. Get Total Views for the stat box
@@ -148,6 +162,21 @@ class CW_Dashboard_Creator {
         // 5. Setup Profile Info
         $display_name = get_user_meta($uid, 'creator_display_name', true) ?: $u->display_name;
         $profile_url  = class_exists( 'CW_Roles' ) ? CW_Roles::get_public_portfolio_url( $u ) : home_url( '/profile/' . $u->user_login . '/' );
+
+        // Directory completeness — show a nudge banner if missing any basic field.
+        $missing_dir_fields = [];
+        if ( class_exists( 'CW_Roles' ) ) {
+            $check = CW_Roles::creator_missing_basics( $u );
+            if ( is_array( $check ) ) {
+                $missing_dir_fields = $check;
+            }
+        }
+        $missing_dir_labels = [
+            'creator_display_name'  => __( 'Display name', 'creativewings-core' ),
+            'creator_profile_image' => __( 'Profile photo', 'creativewings-core' ),
+            'creator_tagline'       => __( 'Tagline', 'creativewings-core' ),
+            'creator_address'       => __( 'Location', 'creativewings-core' ),
+        ];
 
         ?>
         <?php
@@ -167,6 +196,112 @@ class CW_Dashboard_Creator {
                 </a>
                 <?php endif; ?>
             </div>
+
+            <?php if ( ! empty( $missing_dir_fields ) ) : ?>
+                <div class="cw-dir-nudge" role="status">
+                    <div class="cw-dir-nudge-icon"><i class="fas fa-eye-slash"></i></div>
+                    <div class="cw-dir-nudge-body">
+                        <h3><?php esc_html_e( 'Complete your profile to appear in the public directory', 'creativewings-core' ); ?></h3>
+                        <p>
+                            <?php esc_html_e( 'You won\'t be listed on the creators directory until these basics are filled in:', 'creativewings-core' ); ?>
+                        </p>
+                        <div class="cw-dir-nudge-chips">
+                            <?php foreach ( $missing_dir_fields as $field ) :
+                                $label = $missing_dir_labels[ $field ] ?? ucwords( str_replace( [ 'creator_', '_' ], [ '', ' ' ], $field ) );
+                                ?>
+                                <span class="cw-dir-nudge-chip"><i class="fas fa-times-circle"></i> <?php echo esc_html( $label ); ?></span>
+                            <?php endforeach; ?>
+                        </div>
+                        <a href="<?php echo esc_url( $profile_tab ); ?>" class="cw-btn-primary cw-dir-nudge-cta">
+                            <i class="fas fa-pen-to-square"></i> <?php esc_html_e( 'Complete profile', 'creativewings-core' ); ?>
+                        </a>
+                    </div>
+                </div>
+                <style>
+                    .cw-dir-nudge {
+                        display: flex;
+                        gap: 14px;
+                        align-items: flex-start;
+                        background: linear-gradient(135deg, #fff7ed 0%, #fffbeb 100%);
+                        border: 1px solid #fde68a;
+                        border-radius: 14px;
+                        padding: 16px 18px;
+                        margin: 0 0 20px;
+                        box-shadow: 0 2px 10px rgba(180, 83, 9, 0.06);
+                    }
+                    .cw-dir-nudge-icon {
+                        width: 42px;
+                        height: 42px;
+                        border-radius: 50%;
+                        background: #fef3c7;
+                        color: #b45309;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 18px;
+                        flex-shrink: 0;
+                    }
+                    .cw-dir-nudge-body { flex: 1; min-width: 0; }
+                    .cw-dir-nudge-body h3 {
+                        margin: 0 0 4px;
+                        font-size: 15px;
+                        font-weight: 800;
+                        color: #92400e;
+                        line-height: 1.35;
+                    }
+                    .cw-dir-nudge-body p {
+                        margin: 0 0 10px;
+                        font-size: 13px;
+                        color: #78350f;
+                    }
+                    .cw-dir-nudge-chips {
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 6px;
+                        margin: 0 0 12px;
+                    }
+                    .cw-dir-nudge-chip {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        background: #fff;
+                        border: 1px solid #fde68a;
+                        color: #92400e;
+                        font-size: 12px;
+                        font-weight: 700;
+                        padding: 4px 10px;
+                        border-radius: 999px;
+                    }
+                    .cw-dir-nudge-chip i { color: #b45309; font-size: 10px; }
+                    .cw-dir-nudge-cta {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        text-decoration: none;
+                    }
+                    @media (max-width: 600px) {
+                        .cw-dir-nudge { flex-direction: column; gap: 10px; padding: 14px; }
+                        .cw-dir-nudge-icon { width: 36px; height: 36px; font-size: 16px; }
+                    }
+                </style>
+            <?php endif; ?>
+
+            <?php
+            // Latest-achievement strip (badges system).
+            if ( class_exists( 'CW_Badges_Engine' ) && class_exists( 'CW_Badges_Display' ) ) {
+                $owned_badges = CW_Badges_Engine::get_user_badges( $uid );
+                if ( ! empty( $owned_badges ) ) :
+                    $badges_tab_url = add_query_arg( 'tab', 'badges', $my_account_url ); ?>
+                    <div class="cw-badges cw-badges-latest">
+                        <h4><i class="fas fa-trophy" style="color:#facc15;margin-right:6px;"></i><?php esc_html_e( 'Latest achievements', 'creativewings-core' ); ?></h4>
+                        <?php echo CW_Badges_Display::render_strip( $owned_badges, 4, [ 'size' => 'sm', 'show_label' => false, 'show_tier' => false ] ); ?>
+                        <a href="<?php echo esc_url( $badges_tab_url ); ?>" style="margin-left:auto;font-size:13px;font-weight:600;color:#0ea5e9;text-decoration:none;">
+                            <?php esc_html_e( 'See all badges', 'creativewings-core' ); ?> &rarr;
+                        </a>
+                    </div>
+                <?php endif;
+            }
+            ?>
 
             <!-- 4-stat grid -->
             <div class="cw-overview-stats-grid cw-stats-4col">
@@ -326,7 +461,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                     
                     <!-- 1. Banner/Avatar Composite Section -->
                     <div class="cw-settings-header">
-                        <img src="<?php echo esc_url($hdr_url); ?>" alt="Header Banner" class="cw-banner-image" />
+                        <img src="<?php echo esc_url($hdr_url); ?>" alt="Header Banner" class="cw-banner-image" loading="lazy" decoding="async" />
                         
                         <!-- Upload Button Overlay (Header) -->
                         <label for="creator_header_image_upload" class="cw-header-upload-btn">
@@ -336,7 +471,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
 
                         <!-- Avatar -->
                         <div class="cw-avatar-composite">
-                            <img src="<?php echo esc_url($img_url); ?>" alt="Profile Avatar" class="cw-profile-avatar" />
+                            <img src="<?php echo esc_url($img_url); ?>" alt="Profile Avatar" class="cw-profile-avatar" loading="lazy" decoding="async" />
                             <div class="cw-profile-status-dot"></div>
                             
                             <!-- Avatar Upload Button (Overlays avatar) -->
@@ -536,7 +671,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                     ?>
                     <div class="cw-project-card-v2 cw-pf-vis-<?php echo esc_attr( $visibility ); ?>" onclick="viewPortfolio(<?php echo $edit_json; ?>)">
                         <div class="cw-project-image-wrap">
-                            <img src="<?php echo esc_url( $img_url ); ?>" alt="<?php echo esc_attr($p->title); ?>" />
+                            <img src="<?php echo esc_url( $img_url ); ?>" alt="<?php echo esc_attr($p->title); ?>" loading="lazy" decoding="async" />
                             <?php if ( $visibility === 'private' ): ?>
                                 <span class="cw-pf-private-badge" title="<?php esc_attr_e( 'Only you can see this project', 'creativewings-core' ); ?>">
                                     <i class="fas fa-lock"></i> <?php esc_html_e( 'Private', 'creativewings-core' ); ?>
@@ -958,19 +1093,52 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
         $opportunities = $query->posts;
         $total_pages   = $query->max_num_pages;
 
-        // Pre-load products this user has already joined (performance: one query)
+        // Prime caches once so the per-card foreach below doesn't N+1 on meta/terms.
+        if ( ! empty( $opportunities ) ) {
+            $opportunity_ids = array_map( static fn( $p ) => (int) $p->ID, $opportunities );
+            update_meta_cache( 'post', $opportunity_ids );
+            update_object_term_cache( $opportunity_ids, 'product' );
+        }
+
+        // Pre-load products this user has already joined (single SQL: postmeta JOIN posts).
         $joined_product_ids = [];
         if ( $uid ) {
-            $joined_entries = get_posts([
-                'post_type'      => ['cw_competition_entry', 'cw_activity_entry'],
-                'meta_key'       => 'customer_id',
-                'meta_value'     => $uid,
-                'posts_per_page' => -1,
-                'fields'         => 'ids',
-            ]);
-            foreach ( $joined_entries as $eid ) {
-                $epid = (int) get_post_meta( $eid, 'product_id', true );
-                if ( $epid ) $joined_product_ids[$epid] = true;
+            global $wpdb;
+            $rows = $wpdb->get_col( $wpdb->prepare(
+                "SELECT pm.meta_value
+                 FROM {$wpdb->postmeta} pm
+                 INNER JOIN {$wpdb->postmeta} cm
+                    ON cm.post_id = pm.post_id
+                   AND cm.meta_key = 'customer_id'
+                   AND cm.meta_value = %d
+                 INNER JOIN {$wpdb->posts} p
+                    ON p.ID = pm.post_id
+                   AND p.post_type IN ('cw_competition_entry','cw_activity_entry')
+                 WHERE pm.meta_key = 'product_id'",
+                $uid
+            ) );
+            foreach ( (array) $rows as $pid ) {
+                $pid = (int) $pid;
+                if ( $pid ) $joined_product_ids[ $pid ] = true;
+            }
+        }
+
+        // Pre-resolve organizer business names referenced by the cards (one query).
+        $organizer_names_map = [];
+        if ( ! empty( $opportunities ) ) {
+            $org_ids = [];
+            foreach ( $opportunities as $product ) {
+                $oid = (int) get_post_meta( $product->ID, 'organizer_id', true );
+                if ( $oid > 0 ) {
+                    $org_ids[ $oid ] = true;
+                }
+            }
+            $org_ids = array_keys( $org_ids );
+            if ( ! empty( $org_ids ) ) {
+                update_meta_cache( 'user', $org_ids );
+                foreach ( $org_ids as $oid ) {
+                    $organizer_names_map[ $oid ] = (string) get_user_meta( $oid, 'business_name', true );
+                }
             }
         }
 
@@ -1015,8 +1183,8 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                         }
                     }
 
-                    $organizer_id   = get_post_meta( $product_id, 'organizer_id', true );
-                    $organizer_name = get_user_meta( $organizer_id, 'business_name', true ) ?: 'Host';
+                    $organizer_id   = (int) get_post_meta( $product_id, 'organizer_id', true );
+                    $organizer_name = ( $organizer_names_map[ $organizer_id ] ?? '' ) ?: 'Host';
                     $date           = get_post_meta( $product_id, 'cw_submission_start', true ) ?: get_the_date( 'Y-m-d', $product_id );
                     $price          = $wc_product->get_price();
                     $join_link      = get_permalink( $product_id );
@@ -1140,27 +1308,42 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
             $base_args['meta_query'] = [['key' => 'product_id', 'value' => $filtered_product_ids, 'compare' => 'IN']];
         }
 
-        // Count total for pagination (after filter is applied).
-        $count_args                   = $base_args;
-        $count_args['posts_per_page'] = -1;
-        $count_args['fields']         = 'ids';
-        $all_ids     = get_posts($count_args);
-        $total_items = count($all_ids);
-        $total_pages = ( $show_all || $per_page <= 0 ) ? 1 : (int) ceil( $total_items / $per_page );
+        // Single WP_Query: get the page slice AND total count via found_posts.
+        if ( $show_all ) {
+            $paged_args                   = $base_args;
+            $paged_args['posts_per_page'] = -1;
+            $paged_args['no_found_rows']  = true;
+        } else {
+            $paged_args                   = $base_args;
+            $paged_args['posts_per_page'] = $per_page;
+            $paged_args['paged']          = $paged;
+            $paged_args['no_found_rows']  = false;
+        }
+        $entries_q   = new WP_Query( $paged_args );
+        $entries     = $entries_q->posts;
+        $total_items = $show_all ? count( $entries ) : (int) $entries_q->found_posts;
+        $total_pages = ( $show_all || $per_page <= 0 ) ? 1 : max( 1, (int) $entries_q->max_num_pages );
 
-        // Clamp current page in case filter shrunk the result set.
+        // Clamp current page in case the filter shrunk the result set.
         if ( $paged > $total_pages ) {
             $paged = max( 1, $total_pages );
         }
 
-        // Paginated query.
-        if ( $show_all ) {
-            $base_args['posts_per_page'] = -1;
-        } else {
-            $base_args['posts_per_page'] = $per_page;
-            $base_args['offset']         = ($paged - 1) * $per_page;
+        // Prime postmeta cache for the displayed entries + their associated product_ids.
+        if ( ! empty( $entries ) ) {
+            $entry_ids = array_map( static fn( $e ) => (int) $e->ID, $entries );
+            update_meta_cache( 'post', $entry_ids );
+            $referenced_pids = [];
+            foreach ( $entry_ids as $eid ) {
+                $rpid = (int) get_post_meta( $eid, 'product_id', true );
+                if ( $rpid ) $referenced_pids[ $rpid ] = true;
+            }
+            $referenced_pids = array_keys( $referenced_pids );
+            if ( ! empty( $referenced_pids ) ) {
+                update_meta_cache( 'post', $referenced_pids );
+                update_object_term_cache( $referenced_pids, 'product' );
+            }
         }
-        $entries = get_posts($base_args);
 
         // Base URL used for filter pills (preserve per-page choice, reset to page 1).
         $filter_link = function( $slug ) use ( $activities_url, $per_page_raw ) {
@@ -1255,7 +1438,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                 ?>
                 <div class="cw-activity-card">
                     <div class="cw-activity-image-wrap">
-                        <img src="<?php echo esc_url( $thumb ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>">
+                        <img src="<?php echo esc_url( $thumb ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>" loading="lazy" decoding="async">
                         <span class="cw-activity-type-badge <?php echo esc_attr( $type_css ); ?>"><?php echo esc_html( $type_label ); ?></span>
                     </div>
                     <div class="cw-activity-info">
@@ -1508,18 +1691,28 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
         
         if(!empty($_FILES['pf_image']['name'])){
             $aid=media_handle_upload('pf_image',0);
-            if(!is_wp_error($aid))$data['image']=serialize(['id'=>$aid,'url'=>wp_get_attachment_url($aid)]);
+            if(!is_wp_error($aid)){
+                if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                    CW_Image_Optimizer::optimize_attachment( $aid, 'portfolio' );
+                }
+                $data['image']=serialize(['id'=>$aid,'url'=>wp_get_attachment_url($aid)]);
+            }
         }
-        if(!empty($_FILES['pf_gallery']['name'][0])){ 
+        if(!empty($_FILES['pf_gallery']['name'][0])){
             $gals=[]; $files=$_FILES['pf_gallery'];
             foreach($files['name'] as $k=>$v){
                 if($files['name'][$k]){
                     $_FILES['s_file']=['name'=>$files['name'][$k],'type'=>$files['type'][$k],'tmp_name'=>$files['tmp_name'][$k],'error'=>$files['error'][$k],'size'=>$files['size'][$k]];
                     $gid=media_handle_upload('s_file',0);
-                    if(!is_wp_error($gid))$gals[]=['id'=>$gid,'url'=>wp_get_attachment_url($gid)];
+                    if(!is_wp_error($gid)){
+                        if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                            CW_Image_Optimizer::optimize_attachment( $gid, 'gallery' );
+                        }
+                        $gals[]=['id'=>$gid,'url'=>wp_get_attachment_url($gid)];
+                    }
                 }
             }
-            if($gals)$data['gallery']=serialize($gals); 
+            if($gals)$data['gallery']=serialize($gals);
         }
         
         if(!empty($_POST['pf_id'])){

@@ -630,6 +630,17 @@ class CW_Users {
                     <?php endif; ?>
 
                     <?php
+                    if ( class_exists( 'CW_Badges_Engine' ) && class_exists( 'CW_Badges_Display' ) ) {
+                        $cr_badges = CW_Badges_Engine::get_user_badges( $uid );
+                        if ( ! empty( $cr_badges ) ) :
+                    ?>
+                    <div class="cw-pub-sidebar-block">
+                        <h4><i class="fas fa-medal" style="color:#facc15;margin-right:6px;"></i><?php esc_html_e( 'Badges', 'creativewings-core' ); ?> <span style="background:#f1f5f9;color:#64748b;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:6px;"><?php echo (int) count( $cr_badges ); ?></span></h4>
+                        <?php echo CW_Badges_Display::render_strip( $cr_badges, 8, [ 'size' => 'sm', 'show_label' => true, 'show_tier' => true ] ); ?>
+                    </div>
+                    <?php endif; } ?>
+
+                    <?php
                     // Organiser Info — only render if at least one piece of business meta exists.
                     $has_org_info = ! empty( $biz_founded ) || ! empty( $biz_team_size ) || ! empty( $biz_industry );
                     if ( $has_org_info ): ?>

@@ -31,6 +31,10 @@ class CW_Shop {
         // UI
         add_filter('woocommerce_add_to_cart_redirect', [ $this, 'redirect_to_checkout' ]);
         add_action('wp', [ $this, 'remove_loop_add_to_cart' ]);
+
+        // Hide /shop/ archive — campaigns live on /activities/ and /competitions/ instead.
+        add_action( 'template_redirect', [ $this, 'redirect_shop_archive' ], 1 );
+        add_filter( 'woocommerce_return_to_shop_redirect', [ $this, 'filter_return_to_shop_url' ] );
         
         // Deadline Check
         add_filter( 'woocommerce_is_purchasable', [ $this, 'check_deadline_status' ], 99, 2 );
@@ -624,6 +628,13 @@ class CW_Shop {
         if ( isset( $move['error'] ) || empty( $move['url'] ) ) {
             return '';
         }
+        // Best-effort: optimize raster uploads in place (no attachment id yet).
+        if ( ! empty( $move['file'] ) && class_exists( 'CW_Image_Optimizer' ) ) {
+            $ext = strtolower( pathinfo( $move['file'], PATHINFO_EXTENSION ) );
+            if ( in_array( $ext, [ 'jpg', 'jpeg', 'png', 'webp' ], true ) ) {
+                CW_Image_Optimizer::optimize_path( $move['file'], 'attachment' );
+            }
+        }
         return esc_url_raw( $move['url'] );
     }
 
@@ -1079,4 +1090,52 @@ class CW_Shop {
     public function redirect_to_checkout( $url ) { return wc_get_checkout_url(); }
     public function remove_loop_add_to_cart() { if(is_shop()||is_product_category()||is_product_tag()){remove_action('woocommerce_after_shop_loop_item','woocommerce_template_loop_add_to_cart',10);add_action('woocommerce_after_shop_loop_item',[$this,'replace_loop_button'],10);}}
     public function replace_loop_button(){global $product;echo '<a href="'.$product->get_permalink().'" class="button">' . __('View Details', 'creativewings-core') . '</a>';}
+
+    /**
+     * Redirect the WooCommerce shop archive (/shop/) to the Activities page.
+     * Campaigns are surfaced via /activities/ and /competitions/ shortcode pages
+     * instead, so the generic shop archive is redundant.
+     *
+     * Only the shop archive itself is redirected — single product pages and
+     * product category / tag archives are left intact.
+     */
+    public function redirect_shop_archive() {
+        if ( is_admin() ) {
+            return;
+        }
+        if ( ! function_exists( 'is_shop' ) || ! is_shop() ) {
+            return;
+        }
+        $target = self::get_shop_fallback_url();
+        if ( $target ) {
+            wp_safe_redirect( $target, 301 );
+            exit;
+        }
+    }
+
+    /**
+     * Replace WooCommerce's "Return to shop" URL (empty cart, checkout failure, etc.)
+     * with the Activities page.
+     */
+    public function filter_return_to_shop_url( $url ) {
+        $target = self::get_shop_fallback_url();
+        return $target ?: $url;
+    }
+
+    /**
+     * Resolve the URL to use anywhere we'd normally send shoppers to /shop/.
+     * Prefers /activities/ when that page exists, otherwise /competitions/, otherwise home.
+     */
+    public static function get_shop_fallback_url() {
+        $candidates = [ 'activities', 'competitions' ];
+        foreach ( $candidates as $slug ) {
+            $page = get_page_by_path( $slug );
+            if ( $page instanceof WP_Post && $page->post_status === 'publish' ) {
+                return get_permalink( $page );
+            }
+        }
+        // Fall back to a hard-coded /activities/ URL (matches the convention used
+        // elsewhere in the plugin), then home as a last resort.
+        return home_url( '/activities/' );
+    }
 }

@@ -599,6 +599,188 @@ class CW_Business_Reports {
     }
 
     /**
+     * Public time-series helper for the Business dashboard chart.
+     *
+     * Supports the dashboard's granular day ranges (1, 3, 7, 14, 30, 180, 365, all)
+     * — wider than the strict {@see range_options()} whitelist used by the Reports
+     * tab. Always scoped to the user's owned campaigns.
+     *
+     * @param int        $user_id     Business user ID.
+     * @param int|string $days_or_all Positive integer days, or the string "all".
+     * @return array{
+     *     labels: string[],
+     *     revenue: float[],
+     *     participants: int[],
+     *     range: string
+     * }
+     */
+    public static function get_chart_series( $user_id, $days_or_all = '30' ) {
+        $user_id = (int) $user_id;
+        $range   = $days_or_all === 'all' ? 'all' : max( 1, (int) $days_or_all );
+
+        $empty = [
+            'labels'       => [],
+            'revenue'      => [],
+            'participants' => [],
+            'range'        => (string) $range,
+        ];
+
+        if ( ! $user_id ) {
+            return $empty;
+        }
+
+        // Short cache hides repeated calls on dashboard render + AJAX range switch.
+        if ( class_exists( 'CW_Cache' ) ) {
+            return CW_Cache::remember(
+                "chart:{$user_id}:{$range}",
+                'reports',
+                5 * MINUTE_IN_SECONDS,
+                function () use ( $user_id, $range, $empty ) {
+                    return self::compute_chart_series_uncached( $user_id, $range, $empty );
+                }
+            );
+        }
+        return self::compute_chart_series_uncached( $user_id, $range, $empty );
+    }
+
+    /**
+     * Same body as the original get_chart_series, extracted so the cache wrapper
+     * above can produce on miss.
+     */
+    private static function compute_chart_series_uncached( $user_id, $range, array $empty ) {
+        $ids = self::owned_campaign_ids( $user_id );
+        if ( empty( $ids ) ) {
+            return $empty;
+        }
+
+        global $wpdb;
+        $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+        $entry_types  = self::entry_post_types_sql_list();
+
+        // Resolve range start (inclusive midnight). null => no lower bound (all-time).
+        $range_start = null;
+        if ( $range !== 'all' ) {
+            $days        = (int) $range;
+            $ts          = current_time( 'timestamp' ) - ( ( $days - 1 ) * DAY_IN_SECONDS );
+            $range_start = date_i18n( 'Y-m-d 00:00:00', $ts );
+        }
+
+        // Participants per day (any entry CPT linked to a target product_id).
+        $entry_sql  = "SELECT DATE(p.post_date) AS d, COUNT(*) AS c
+                       FROM {$wpdb->posts} p
+                       INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = 'product_id'
+                       WHERE p.post_type IN ({$entry_types})
+                         AND p.post_status = 'publish'
+                         AND pm.meta_value IN ({$placeholders})";
+        $entry_args = $ids;
+        if ( $range_start ) {
+            $entry_sql   .= ' AND p.post_date >= %s';
+            $entry_args[] = $range_start;
+        }
+        $entry_sql .= ' GROUP BY d ORDER BY d ASC';
+        $entry_rows = $wpdb->get_results( $wpdb->prepare( $entry_sql, $entry_args ), ARRAY_A );
+
+        $entries_map = [];
+        foreach ( (array) $entry_rows as $r ) {
+            $entries_map[ $r['d'] ] = (int) $r['c'];
+        }
+
+        // Revenue per day (line items on completed/processing orders for target products).
+        $revenue_sql  = "SELECT DATE(p.post_date) AS d, SUM(total_meta.meta_value) AS revenue
+                         FROM {$wpdb->prefix}woocommerce_order_itemmeta AS total_meta
+                         JOIN {$wpdb->prefix}woocommerce_order_items AS woi ON total_meta.order_item_id = woi.order_item_id
+                         JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS pid_meta ON woi.order_item_id = pid_meta.order_item_id AND pid_meta.meta_key = '_product_id'
+                         JOIN {$wpdb->posts} AS p ON woi.order_id = p.ID
+                         WHERE woi.order_item_type = 'line_item'
+                           AND total_meta.meta_key = '_line_total'
+                           AND p.post_status IN ('wc-completed', 'wc-processing')
+                           AND pid_meta.meta_value IN ({$placeholders})";
+        $rev_args = $ids;
+        if ( $range_start ) {
+            $revenue_sql .= ' AND p.post_date >= %s';
+            $rev_args[]   = $range_start;
+        }
+        $revenue_sql .= ' GROUP BY d ORDER BY d ASC';
+        $revenue_rows = $wpdb->get_results( $wpdb->prepare( $revenue_sql, $rev_args ), ARRAY_A );
+
+        $revenue_map = [];
+        foreach ( (array) $revenue_rows as $r ) {
+            $revenue_map[ $r['d'] ] = (float) $r['revenue'];
+        }
+
+        // Build the date axis. For short windows (≤ 90 days) bucket per day; otherwise
+        // bucket per month to keep the chart readable.
+        $bucket_monthly = ( $range === 'all' ) || ( (int) $range > 90 );
+
+        if ( ! $bucket_monthly ) {
+            $days   = (int) $range;
+            $today  = current_time( 'timestamp' );
+            $labels = [];
+            for ( $i = $days - 1; $i >= 0; $i-- ) {
+                $ts       = $today - ( $i * DAY_IN_SECONDS );
+                $labels[] = date_i18n( 'Y-m-d', $ts );
+            }
+
+            return [
+                'labels'       => $labels,
+                'revenue'      => array_map( static function ( $d ) use ( $revenue_map ) {
+                    return round( $revenue_map[ $d ] ?? 0, 2 );
+                }, $labels ),
+                'participants' => array_map( static function ( $d ) use ( $entries_map ) {
+                    return (int) ( $entries_map[ $d ] ?? 0 );
+                }, $labels ),
+                'range'        => (string) $range,
+            ];
+        }
+
+        // Monthly buckets.
+        if ( $range === 'all' ) {
+            $first_dates = [];
+            if ( ! empty( $revenue_map ) ) { $first_dates[] = min( array_keys( $revenue_map ) ); }
+            if ( ! empty( $entries_map ) ) { $first_dates[] = min( array_keys( $entries_map ) ); }
+            $start_ym = empty( $first_dates )
+                ? date_i18n( 'Y-m', current_time( 'timestamp' ) )
+                : substr( min( $first_dates ), 0, 7 );
+        } else {
+            $months   = max( 1, (int) ceil( (int) $range / 30 ) );
+            $start_ts = current_time( 'timestamp' ) - ( ( $months - 1 ) * 30 * DAY_IN_SECONDS );
+            $start_ym = date_i18n( 'Y-m', $start_ts );
+        }
+
+        $end_ym  = date_i18n( 'Y-m', current_time( 'timestamp' ) );
+        $cursor  = strtotime( $start_ym . '-01' );
+        $end_ts  = strtotime( $end_ym . '-01' );
+        $month_labels = [];
+        while ( $cursor <= $end_ts ) {
+            $month_labels[] = date_i18n( 'Y-m', $cursor );
+            $cursor = strtotime( '+1 month', $cursor );
+        }
+
+        $rev_monthly = array_fill_keys( $month_labels, 0.0 );
+        $ent_monthly = array_fill_keys( $month_labels, 0 );
+
+        foreach ( $revenue_map as $d => $v ) {
+            $ym = substr( $d, 0, 7 );
+            if ( isset( $rev_monthly[ $ym ] ) ) {
+                $rev_monthly[ $ym ] += (float) $v;
+            }
+        }
+        foreach ( $entries_map as $d => $v ) {
+            $ym = substr( $d, 0, 7 );
+            if ( isset( $ent_monthly[ $ym ] ) ) {
+                $ent_monthly[ $ym ] += (int) $v;
+            }
+        }
+
+        return [
+            'labels'       => $month_labels,
+            'revenue'      => array_map( static function ( $v ) { return round( (float) $v, 2 ); }, array_values( $rev_monthly ) ),
+            'participants' => array_map( 'intval', array_values( $ent_monthly ) ),
+            'range'        => (string) $range,
+        ];
+    }
+
+    /**
      * Aggregate breakdowns (category, status, school, scores).
      *
      * @param int[] $ids
@@ -617,21 +799,44 @@ class CW_Business_Reports {
 
         $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
 
-        // Category (competition / activity / talk-seminar) — from per-campaign helper.
-        $cat_totals = [];
+        // Prime caches in one shot so campaign_type() reads from memory below.
+        update_meta_cache( 'post', $ids );
+        update_object_term_cache( $ids, 'product' );
+
+        // Status + submission_deadline in ONE query (replaces per-pid get_post_status + get_post_meta).
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT p.ID, p.post_status, pm.meta_value AS deadline
+             FROM {$wpdb->posts} p
+             LEFT JOIN {$wpdb->postmeta} pm
+                ON pm.post_id = p.ID
+               AND pm.meta_key = 'submission_deadline'
+             WHERE p.ID IN ($placeholders)",
+            $ids
+        ), ARRAY_A );
+
+        $status_by_id  = [];
+        $deadline_by_id = [];
+        foreach ( (array) $rows as $r ) {
+            $rid = (int) $r['ID'];
+            $status_by_id[ $rid ]   = (string) $r['post_status'];
+            $deadline_by_id[ $rid ] = (string) $r['deadline'];
+        }
+
+        $cat_totals   = [];
         $state_totals = [];
-        $now_ts = current_time( 'timestamp' );
+        $now_ts       = current_time( 'timestamp' );
+
         foreach ( $ids as $pid ) {
+            $pid  = (int) $pid;
             $type = self::campaign_type( $pid );
             $cat_totals[ $type['label'] ] = ( $cat_totals[ $type['label'] ] ?? 0 ) + 1;
 
-            $status = get_post_status( $pid );
+            $status = $status_by_id[ $pid ] ?? '';
             if ( 'publish' !== $status ) {
                 $state_totals['Draft'] = ( $state_totals['Draft'] ?? 0 ) + 1;
                 continue;
             }
-            $deadline = get_post_meta( $pid, 'submission_deadline', true );
-            $deadline_ts = $deadline ? strtotime( $deadline ) : 0;
+            $deadline_ts = ! empty( $deadline_by_id[ $pid ] ) ? strtotime( $deadline_by_id[ $pid ] ) : 0;
             if ( $deadline_ts && $deadline_ts < $now_ts ) {
                 $state_totals['Past'] = ( $state_totals['Past'] ?? 0 ) + 1;
             } else {

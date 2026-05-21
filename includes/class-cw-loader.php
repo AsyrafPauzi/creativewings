@@ -10,6 +10,15 @@ class CW_Loader {
 
     public static function init_core() {
         require_once CW_PATH . 'includes/class-cw-activator.php';
+        require_once CW_PATH . 'includes/class-cw-image-optimizer.php';
+        require_once CW_PATH . 'includes/class-cw-cache.php';
+        CW_Cache::register_invalidation_hooks();
+
+        // Badges system (data model + engine).
+        require_once CW_PATH . 'includes/badges/class-cw-badges-installer.php';
+        require_once CW_PATH . 'includes/badges/class-cw-badges-cpt.php';
+        require_once CW_PATH . 'includes/badges/class-cw-badges-engine.php';
+        require_once CW_PATH . 'includes/badges/class-cw-badges-display.php';
         require_once CW_PATH . 'includes/class-cw-security.php';
         require_once CW_PATH . 'includes/class-cw-audit-log.php';
         require_once CW_PATH . 'includes/class-cw-campaign-resolver.php';
@@ -41,6 +50,7 @@ class CW_Loader {
         require_once CW_PATH . 'includes/class-cw-checkout.php';
         require_once CW_PATH . 'includes/class-cw-shortcodes.php';
         require_once CW_PATH . 'includes/class-cw-organizer-profile.php';
+        require_once CW_PATH . 'includes/class-cw-directory.php';
         require_once CW_PATH . 'includes/class-cw-ajax.php';
         require_once CW_PATH . 'includes/class-cw-wallet.php';
         require_once CW_PATH . 'includes/class-cw-admin.php';
@@ -59,6 +69,9 @@ class CW_Loader {
 
         if ( is_admin() ) {
             require_once CW_PATH . 'includes/business/class-cw-campaign-import.php';
+            require_once CW_PATH . 'includes/admin/class-cw-image-bulk-optimizer.php';
+            require_once CW_PATH . 'includes/admin/class-cw-badges-admin.php';
+            require_once CW_PATH . 'includes/admin/class-cw-sync-center.php';
         }
 
         return true;

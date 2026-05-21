@@ -139,10 +139,15 @@ class CW_Ajax {
             $attach_data = wp_generate_attachment_metadata( $attach_id, $move_file['file'] );
             wp_update_attachment_metadata( $attach_id, $attach_data );
 
+            // Optimize raster images on the fly (skips PDF/DOC which fail the mime gate inside).
+            if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                CW_Image_Optimizer::optimize_attachment( (int) $attach_id, 'attachment' );
+            }
+
             // Save Attachment ID to WooCommerce Session
             $session_key = sanitize_text_field($_POST['session_key']);
             WC()->session->set($session_key, $attach_id);
-            
+
             wp_send_json_success( ['url' => wp_get_attachment_url($attach_id), 'attach_id' => $attach_id] );
         } else {
             wp_send_json_error( 'Upload failed: ' . ($move_file['error'] ?? 'Unknown error') );

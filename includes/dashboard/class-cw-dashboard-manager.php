@@ -48,6 +48,7 @@ class CW_Dashboard_Manager {
                 'campaigns' => ['icon' => 'fa-bullhorn',  'label' => 'My Campaigns'],
                 'reports'   => ['icon' => 'fa-chart-bar', 'label' => 'Reports'],
                 'wallet'    => ['icon' => 'fa-wallet',    'label' => 'Wallet'],
+                'badges'    => ['icon' => 'fa-medal',     'label' => 'My Badges'],
                 'biz-info'  => ['icon' => 'fa-building',  'label' => 'Company Profile'],
             ];
         } elseif ( 'creator' === $role ) {
@@ -57,6 +58,7 @@ class CW_Dashboard_Manager {
                 'activities'      => ['icon' => 'fa-running',  'label' => 'My Activities'], // CONSOLIDATED ENGAGEMENTS
                 'link-submission' => ['icon' => 'fa-link',     'label' => 'Link submission code'],
                 'portfolio'       => ['icon' => 'fa-briefcase','label' => 'Portfolio'],
+                'badges'          => ['icon' => 'fa-medal',    'label' => 'My Badges'],
                 'profile'         => ['icon' => 'fa-user-cog', 'label' => 'Profile Settings'],
                 // Removed 'competitions' as it's now part of 'activities'
             ];
@@ -205,7 +207,10 @@ class CW_Dashboard_Manager {
                     break;
                 case 'biz-info': 
                     if ( $this->business_dashboard ) $this->business_dashboard->render_settings(); 
-                    break; 
+                    break;
+                case 'badges':
+                    $this->render_badges_tab( $role );
+                    break;
                 default: 
                     if ( $this->business_dashboard ) $this->business_dashboard->render_overview();
                     break;
@@ -233,6 +238,9 @@ class CW_Dashboard_Manager {
                     break;
                 case 'profile': 
                     if ( $this->creator_dashboard ) $this->creator_dashboard->render_profile(); 
+                    break;
+                case 'badges':
+                    $this->render_badges_tab( $role );
                     break;
                 case 'competitions': // Retained logic for old hook compatibility, defaults to activities
                 case 'saved': 
@@ -274,5 +282,36 @@ class CW_Dashboard_Manager {
                     break;
             }
         }
+    }
+
+    /**
+     * Render the "My Badges" tab — shared by creator & business.
+     */
+    private function render_badges_tab( $role ) {
+        if ( ! class_exists( 'CW_Badges_Display' ) ) return;
+        $uid = get_current_user_id();
+
+        // Handle opt-in form submit.
+        if ( isset( $_POST['cw_badge_pref_nonce'] ) && wp_verify_nonce( $_POST['cw_badge_pref_nonce'], 'cw_badge_pref_' . $uid ) ) {
+            update_user_meta( $uid, 'cw_badge_email_opt_in', ! empty( $_POST['cw_badge_email_opt_in'] ) ? '1' : '0' );
+            echo '<div class="cw-alert success" style="margin:0 0 16px;padding:10px 14px;border-radius:8px;background:#dcfce7;color:#166534;border:1px solid #bbf7d0;font-size:13px;font-weight:600;">' . esc_html__( 'Notification preferences saved.', 'creativewings-core' ) . '</div>';
+        }
+        $opt_in = (string) get_user_meta( $uid, 'cw_badge_email_opt_in', true ) === '1';
+        ?>
+        <div class="cw-tab-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:8px;">
+            <div>
+                <h1 style="margin:0 0 6px;font-size:1.6rem;font-weight:800;color:#0f172a;"><i class="fas fa-medal" style="color:#facc15;margin-right:8px;"></i><?php esc_html_e( 'My Badges', 'creativewings-core' ); ?></h1>
+                <p style="margin:0;color:#64748b;font-size:14px;"><?php esc_html_e( 'Earn badges by participating, hosting campaigns, and growing your profile.', 'creativewings-core' ); ?></p>
+            </div>
+            <form method="post" style="display:flex;align-items:center;gap:10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:999px;padding:6px 14px;font-size:13px;color:#475569;">
+                <?php wp_nonce_field( 'cw_badge_pref_' . $uid, 'cw_badge_pref_nonce' ); ?>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;">
+                    <input type="checkbox" name="cw_badge_email_opt_in" value="1" <?php checked( $opt_in ); ?> onchange="this.form.submit();">
+                    <?php esc_html_e( 'Email me when I earn a badge', 'creativewings-core' ); ?>
+                </label>
+            </form>
+        </div>
+        <?php echo CW_Badges_Display::render_progress_grid( $uid ); ?>
+        <?php
     }
 }

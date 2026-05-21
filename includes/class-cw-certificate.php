@@ -560,6 +560,9 @@ class CW_Certificate {
             require_once ABSPATH . 'wp-admin/includes/image.php';
             $aid = media_handle_upload( 'cw_cert_template_file', $post_id );
             if ( ! is_wp_error( $aid ) ) {
+                if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                    CW_Image_Optimizer::optimize_attachment( $aid, 'hero' );
+                }
                 update_post_meta( $post_id, 'cw_cert_template', wp_get_attachment_url( $aid ) );
             }
         }

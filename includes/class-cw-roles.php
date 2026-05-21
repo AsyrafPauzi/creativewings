@@ -67,6 +67,95 @@ class CW_Roles {
     }
 
     /**
+     * Required fields a business user must fill before being listed publicly
+     * (in the directory). Keep this small — it is the "basic for display" set,
+     * not the full company info.
+     *
+     * Required: business_name + business_logo + business_industry + business_about
+     * + at least one of (business_city, business_country).
+     *
+     * @return true|string[] true when complete, or an array of missing field keys.
+     */
+    public static function organizer_missing_basics( $user = null ) {
+        $user = self::resolve_user( $user );
+        if ( ! $user ) {
+            return [ 'business_name', 'business_logo', 'business_industry', 'business_about', 'business_location' ];
+        }
+        $uid = (int) $user->ID;
+
+        $missing = [];
+        if ( trim( (string) get_user_meta( $uid, 'business_name', true ) ) === '' ) {
+            $missing[] = 'business_name';
+        }
+        $logo = get_user_meta( $uid, 'business_logo', true );
+        if ( ! ( is_array( $logo ) && ! empty( $logo['url'] ) ) ) {
+            $missing[] = 'business_logo';
+        }
+        if ( trim( (string) get_user_meta( $uid, 'business_industry', true ) ) === '' ) {
+            $missing[] = 'business_industry';
+        }
+        if ( trim( (string) get_user_meta( $uid, 'business_about', true ) ) === '' ) {
+            $missing[] = 'business_about';
+        }
+        $city    = trim( (string) get_user_meta( $uid, 'business_city', true ) );
+        $country = trim( (string) get_user_meta( $uid, 'business_country', true ) );
+        if ( $city === '' && $country === '' ) {
+            $missing[] = 'business_location';
+        }
+
+        return empty( $missing ) ? true : $missing;
+    }
+
+    public static function has_complete_organizer_profile( $user = null ) {
+        return self::organizer_missing_basics( $user ) === true;
+    }
+
+    /**
+     * Required fields a creator must fill before being listed publicly.
+     *
+     * Required: display name (creator_display_name OR user display_name)
+     * + creator_profile_image + creator_tagline + creator_address.
+     *
+     * @return true|string[] true when complete, or an array of missing field keys.
+     */
+    public static function creator_missing_basics( $user = null ) {
+        $user = self::resolve_user( $user );
+        if ( ! $user ) {
+            return [ 'creator_display_name', 'creator_profile_image', 'creator_tagline', 'creator_address' ];
+        }
+        $uid = (int) $user->ID;
+
+        $missing = [];
+
+        $display = trim( (string) get_user_meta( $uid, 'creator_display_name', true ) );
+        if ( $display === '' ) {
+            $display = trim( (string) ( $user->display_name ?? '' ) );
+        }
+        if ( $display === '' ) {
+            $missing[] = 'creator_display_name';
+        }
+
+        $avatar = get_user_meta( $uid, 'creator_profile_image', true );
+        if ( ! ( is_array( $avatar ) && ! empty( $avatar['url'] ) ) ) {
+            $missing[] = 'creator_profile_image';
+        }
+
+        if ( trim( (string) get_user_meta( $uid, 'creator_tagline', true ) ) === '' ) {
+            $missing[] = 'creator_tagline';
+        }
+
+        if ( trim( (string) get_user_meta( $uid, 'creator_address', true ) ) === '' ) {
+            $missing[] = 'creator_address';
+        }
+
+        return empty( $missing ) ? true : $missing;
+    }
+
+    public static function has_complete_creator_profile( $user = null ) {
+        return self::creator_missing_basics( $user ) === true;
+    }
+
+    /**
      * Dashboard role slug: business (incl. administrator), creator, or contestant.
      */
     public static function get_dashboard_role( $user = null ) {

@@ -17,6 +17,17 @@ class CW_Activator {
         // 3. Create Custom Database Tables
         self::create_tables();
 
+        // 3b. Badge ledger table + default catalog (badges system).
+        if ( ! class_exists( 'CW_Badges_CPT' ) && file_exists( CW_PATH . 'includes/badges/class-cw-badges-cpt.php' ) ) {
+            require_once CW_PATH . 'includes/badges/class-cw-badges-cpt.php';
+        }
+        if ( ! class_exists( 'CW_Badges_Installer' ) && file_exists( CW_PATH . 'includes/badges/class-cw-badges-installer.php' ) ) {
+            require_once CW_PATH . 'includes/badges/class-cw-badges-installer.php';
+        }
+        if ( class_exists( 'CW_Badges_Installer' ) ) {
+            CW_Badges_Installer::maybe_install();
+        }
+
         // 4. Add Rewrite Endpoints
         add_rewrite_endpoint( 'cw-profile', EP_ROOT | EP_PAGES );
         add_rewrite_endpoint( 'cw-portfolio', EP_ROOT | EP_PAGES );
@@ -54,9 +65,16 @@ class CW_Activator {
         $target = '1.3.0';
         $ver    = get_option( 'cw_db_version', '0' );
         if ( version_compare( $ver, $target, '>=' ) ) {
+            // Even when the core DB is current, badge schema/seed may still need work.
+            if ( class_exists( 'CW_Badges_Installer' ) ) {
+                CW_Badges_Installer::maybe_install();
+            }
             return;
         }
         self::create_tables();
+        if ( class_exists( 'CW_Badges_Installer' ) ) {
+            CW_Badges_Installer::maybe_install();
+        }
         update_option( 'cw_db_version', $target );
         if ( ! get_option( 'cw_webhook_secret' ) ) {
             update_option( 'cw_webhook_secret', wp_generate_password( 32, false, false ) );

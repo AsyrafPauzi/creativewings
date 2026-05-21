@@ -21,29 +21,66 @@ class CW_Dashboard_Contestant {
     public function render_overview() {
         $uid = get_current_user_id();
         $u   = get_userdata( $uid );
-        
-        $entries = get_posts([ 'post_type' => ['cw_competition_entry', 'cw_activity_entry'], 'meta_key' => 'customer_id', 'meta_value' => $uid, 'posts_per_page' => -1 ]);
+
+        // Fetch entries with IDs only — avoids loading full WP_Post objects we don't use.
+        $entries = get_posts([
+            'post_type'      => ['cw_competition_entry', 'cw_activity_entry'],
+            'meta_key'       => 'customer_id',
+            'meta_value'     => $uid,
+            'posts_per_page' => -1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+        ]);
         $entries_count = count( $entries );
-        
+
+        // Prime postmeta cache once so the foreach below resolves from memory, not DB.
+        if ( ! empty( $entries ) ) {
+            update_meta_cache( 'post', $entries );
+        }
+
         // Count entries by status for Pending Review — competition campaigns only.
         $pending_review_count = 0;
-        foreach($entries as $e) {
-            $entry_pid = (int) get_post_meta( $e->ID, 'product_id', true );
+        foreach($entries as $eid) {
+            $entry_pid = (int) get_post_meta( $eid, 'product_id', true );
             if ( class_exists( 'CW_Shop' ) && ! CW_Shop::campaign_is_judged( $entry_pid ) ) {
                 continue;
             }
-            if (get_post_meta($e->ID, 'judge_score', true) === '' && get_post_meta($e->ID, 'upload_document', true) !== '') {
+            if (get_post_meta($eid, 'judge_score', true) === '' && get_post_meta($eid, 'upload_document', true) !== '') {
                 $pending_review_count++;
             }
         }
-        
+
         // CRITICAL FIX: Base URL for View All Activities link
         $base_url = get_permalink( wc_get_page_id( 'myaccount' ) );
         $activities_url = add_query_arg( 'tab', 'activities', $base_url );
         $upgrade_url    = add_query_arg( 'tab', 'upgrade', $base_url );
         $explore_url    = add_query_arg( 'tab', 'explore', $base_url );
 
-        $recent_entries = get_posts([ 'post_type' => ['cw_competition_entry', 'cw_activity_entry'], 'meta_key' => 'customer_id', 'meta_value' => $uid, 'posts_per_page' => 5, 'orderby' => 'date', 'order' => 'DESC' ]);
+        $recent_entries = get_posts([
+            'post_type'      => ['cw_competition_entry', 'cw_activity_entry'],
+            'meta_key'       => 'customer_id',
+            'meta_value'     => $uid,
+            'posts_per_page' => 5,
+            'orderby'        => 'date',
+            'order'          => 'DESC',
+            'no_found_rows'  => true,
+        ]);
+
+        // Prime caches once for the recent batch (meta + referenced products).
+        if ( ! empty( $recent_entries ) ) {
+            $recent_ids = array_map( static fn( $e ) => (int) $e->ID, $recent_entries );
+            update_meta_cache( 'post', $recent_ids );
+            $referenced_pids = [];
+            foreach ( $recent_ids as $rid ) {
+                $rpid = (int) get_post_meta( $rid, 'product_id', true );
+                if ( $rpid ) $referenced_pids[ $rpid ] = true;
+            }
+            $referenced_pids = array_keys( $referenced_pids );
+            if ( ! empty( $referenced_pids ) ) {
+                update_meta_cache( 'post', $referenced_pids );
+                update_object_term_cache( $referenced_pids, 'product' );
+            }
+        }
 
         // Build a usable list (skipping entries whose product was deleted)
         $renderable_recent = [];
@@ -171,24 +208,36 @@ class CW_Dashboard_Contestant {
         $per_page    = 9;
 
         $base_args = [
-            'post_type'  => ['cw_competition_entry', 'cw_activity_entry'],
-            'meta_key'   => 'customer_id',
-            'meta_value' => $uid,
-            'orderby'    => 'date',
-            'order'      => 'DESC',
+            'post_type'      => ['cw_competition_entry', 'cw_activity_entry'],
+            'meta_key'       => 'customer_id',
+            'meta_value'     => $uid,
+            'orderby'        => 'date',
+            'order'          => 'DESC',
+            'posts_per_page' => $per_page,
+            'paged'          => $paged,
+            'no_found_rows'  => false,
         ];
 
-        // Count for pagination
-        $count_args                 = $base_args;
-        $count_args['posts_per_page'] = -1;
-        $count_args['fields']       = 'ids';
-        $all_ids     = get_posts( $count_args );
-        $total_items = count( $all_ids );
-        $total_pages = (int) ceil( $total_items / $per_page );
+        $entries_q   = new WP_Query( $base_args );
+        $entries     = $entries_q->posts;
+        $total_items = (int) $entries_q->found_posts;
+        $total_pages = max( 1, (int) $entries_q->max_num_pages );
 
-        $base_args['posts_per_page'] = $per_page;
-        $base_args['offset']         = ( $paged - 1 ) * $per_page;
-        $entries = get_posts( $base_args );
+        // Prime postmeta cache for displayed entries + referenced product IDs (avoids N+1).
+        if ( ! empty( $entries ) ) {
+            $entry_ids = array_map( static fn( $e ) => (int) $e->ID, $entries );
+            update_meta_cache( 'post', $entry_ids );
+            $referenced_pids = [];
+            foreach ( $entry_ids as $eid ) {
+                $rpid = (int) get_post_meta( $eid, 'product_id', true );
+                if ( $rpid ) $referenced_pids[ $rpid ] = true;
+            }
+            $referenced_pids = array_keys( $referenced_pids );
+            if ( ! empty( $referenced_pids ) ) {
+                update_meta_cache( 'post', $referenced_pids );
+                update_object_term_cache( $referenced_pids, 'product' );
+            }
+        }
         ?>
         <div class="cw-content-wrapper">
             <div class="cw-portfolio-header cw-activities-header">
@@ -243,7 +292,7 @@ class CW_Dashboard_Contestant {
                 ?>
                 <div class="cw-activity-card">
                     <div class="cw-activity-image-wrap">
-                        <img src="<?php echo esc_url( $img ); ?>" alt="<?php echo esc_attr( $title ); ?>">
+                        <img src="<?php echo esc_url( $img ); ?>" alt="<?php echo esc_attr( $title ); ?>" loading="lazy" decoding="async">
                         <span class="cw-activity-type-badge"><?php echo esc_html( $type_tag ); ?></span>
                     </div>
                     <div class="cw-activity-info">

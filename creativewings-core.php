@@ -2,7 +2,7 @@
 /**
  * Plugin Name: CreativeWings Core Platform
  * Description: Complete ecosystem: Auth, Onboarding, Campaigns, Tournaments, and Business Logic.
- * Version: 11.0.52
+ * Version: 11.0.60
  * Author: CreativeWings Dev
  * Text Domain: creativewings-core
  * Domain Path: /languages
@@ -69,7 +69,51 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
         private function define_constants() {
             define( 'CW_PATH', plugin_dir_path( __FILE__ ) );
             define( 'CW_URL', plugin_dir_url( __FILE__ ) );
-            define( 'CW_VERSION', '11.0.52' );
+            define( 'CW_VERSION', '11.0.60' );
+        }
+
+        /**
+         * Resolve a build-pipeline entry (e.g. 'assets/css/cw-style-general.css')
+         * to its hashed dist file. Falls back to the source path when no manifest
+         * is found (i.e. dev environments that haven't run `npm run build`).
+         *
+         * @return array { url: string, version: string }
+         */
+        public static function asset( $entry_path ) {
+            static $manifest = null;
+
+            if ( $manifest === null ) {
+                $manifest_file = CW_PATH . 'assets/dist/.vite/manifest.json';
+                if ( ! file_exists( $manifest_file ) ) {
+                    // Fallback for older Vite versions / mis-located manifests.
+                    $alt = CW_PATH . 'assets/dist/manifest.json';
+                    if ( file_exists( $alt ) ) {
+                        $manifest_file = $alt;
+                    }
+                }
+                $manifest = file_exists( $manifest_file )
+                    ? json_decode( (string) file_get_contents( $manifest_file ), true )
+                    : [];
+                if ( ! is_array( $manifest ) ) {
+                    $manifest = [];
+                }
+            }
+
+            if ( isset( $manifest[ $entry_path ] ) ) {
+                // CSS-only entries surface the built CSS via the `css` array; JS entries via `file`.
+                $entry = $manifest[ $entry_path ];
+                if ( ! empty( $entry['file'] ) && substr( $entry['file'], -3 ) === 'css' ) {
+                    return [ 'url' => CW_URL . 'assets/dist/' . $entry['file'], 'version' => null ];
+                }
+                if ( ! empty( $entry['css'][0] ) ) {
+                    return [ 'url' => CW_URL . 'assets/dist/' . $entry['css'][0], 'version' => null ];
+                }
+                if ( ! empty( $entry['file'] ) ) {
+                    return [ 'url' => CW_URL . 'assets/dist/' . $entry['file'], 'version' => null ];
+                }
+            }
+
+            return [ 'url' => CW_URL . $entry_path, 'version' => CW_VERSION ];
         }
 
         /**
@@ -92,6 +136,24 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
 
             add_action( 'init', [ 'CW_Activator', 'register_rewrite_rules' ], 10 );
             add_action( 'init', [ 'CW_Activator', 'maybe_flush_rewrite_rules' ], 99 );
+
+            // Honour `wp_script_add_data( $h, 'defer', true )` on the frontend by
+            // injecting the attribute into the rendered script tag.
+            add_filter( 'script_loader_tag', [ $this, 'maybe_defer_script_tag' ], 10, 3 );
+        }
+
+        /**
+         * Add `defer` to <script> tags when their handle was marked deferrable.
+         */
+        public function maybe_defer_script_tag( $tag, $handle, $src ) {
+            if ( is_admin() ) {
+                return $tag;
+            }
+            $defer = wp_scripts()->get_data( $handle, 'defer' );
+            if ( $defer && false === strpos( $tag, ' defer' ) ) {
+                $tag = preg_replace( '#<script\s+#', '<script defer ', $tag, 1 );
+            }
+            return $tag;
         }
 
         /**
@@ -132,11 +194,25 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             $this->claim_flow = new CW_Claim_Flow();
             if ( is_admin() ) {
                 new CW_Campaign_Import();
+                new CW_Image_Bulk_Optimizer();
+                if ( class_exists( 'CW_Badges_Admin' ) ) {
+                    new CW_Badges_Admin();
+                }
+                if ( class_exists( 'CW_Sync_Center' ) ) {
+                    new CW_Sync_Center();
+                }
             }
+
+            // Badges: register the CPT instance and wire engine hooks.
+            new CW_Badges_CPT();
+            CW_Badges_Engine::register_hooks();
+            // Render any pending award toasts inside the WP footer on the front-end.
+            add_action( 'wp_footer', [ 'CW_Badges_Display', 'maybe_render_toast' ], 50 );
             $this->shop       = new CW_Shop();
             new CW_Checkout();
             $this->shortcodes = new CW_Shortcodes();
             new CW_Organizer_Profile();
+            new CW_Directory();
             $this->ajax       = new CW_Ajax();
             $this->auth       = new CW_Auth();
             $this->wallet     = new CW_Wallet();
@@ -153,18 +229,25 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             $is_product = is_singular('product');
             $is_logged_in = is_user_logged_in();
 
-            // 1. FontAwesome 5 (always needed for icons across the site)
-            wp_enqueue_style( 'cw-fontawesome', 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css', [], '5.15.4' );
+            // 1. FontAwesome (self-hosted subset preferred; falls back to CDN).
+            $fa_local = CW_PATH . 'assets/vendor/fontawesome/css/all.min.css';
+            if ( file_exists( $fa_local ) ) {
+                wp_enqueue_style( 'cw-fontawesome', CW_URL . 'assets/vendor/fontawesome/css/all.min.css', [], CW_VERSION );
+            } else {
+                wp_enqueue_style( 'cw-fontawesome', 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css', [], '5.15.4' );
+            }
 
             if ( is_admin() || $is_logged_in ) {
                 wp_enqueue_style( 'dashicons' );
             }
 
-            // 2. CSS Files - General always loads, role-specific only on dashboard
-            wp_enqueue_style( 'cw-style-general', CW_URL . 'assets/css/cw-style-general.css', ['cw-fontawesome'], CW_VERSION );
+            // 2. CSS Files - General (core chunk) always loads; role-specific chunks only on the dashboard.
+            $core_css = self::asset( 'assets/css/cw-style-general.css' );
+            wp_enqueue_style( 'cw-style-general', $core_css['url'], ['cw-fontawesome'], $core_css['version'] );
 
             // Organizer profile: registered always, enqueued only on its own page (shortcode or /organizer/{slug}/).
-            wp_register_style( 'cw-style-organizer', CW_URL . 'assets/css/cw-style-organizer.css', ['cw-fontawesome'], CW_VERSION );
+            $org_css = self::asset( 'assets/css/cw-style-organizer.css' );
+            wp_register_style( 'cw-style-organizer', $org_css['url'], ['cw-fontawesome'], $org_css['version'] );
             $needs_org_css = (bool) get_query_var( 'cw_organizer' );
             if ( ! $needs_org_css && is_singular() ) {
                 $post = get_post();
@@ -176,17 +259,52 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
                 wp_enqueue_style( 'cw-style-organizer' );
             }
 
+            // Public directory shortcodes: register always, enqueue when a singular page contains either shortcode.
+            $dir_css = self::asset( 'assets/css/cw-style-directory.css' );
+            wp_register_style( 'cw-style-directory', $dir_css['url'], ['cw-fontawesome'], $dir_css['version'] );
+            if ( is_singular() ) {
+                $post = get_post();
+                if ( $post ) {
+                    $content = (string) $post->post_content;
+                    if ( has_shortcode( $content, 'cw_organizers_directory' ) || has_shortcode( $content, 'cw_creators_directory' ) ) {
+                        wp_enqueue_style( 'cw-style-directory' );
+                    }
+                }
+            }
+
+            // Badges CSS — register always; enqueue when dashboards, organizer profile,
+            // directory shortcodes, or any logged-in front-end view is rendered.
+            $badge_css = self::asset( 'assets/css/cw-style-badges.css' );
+            wp_register_style( 'cw-style-badges', $badge_css['url'], ['cw-style-general'], $badge_css['version'] );
+
+            $is_creator_profile_page = (bool) get_query_var( 'profile_nickname' );
+            if ( $needs_org_css || $is_account || $is_logged_in || $is_creator_profile_page ) {
+                wp_enqueue_style( 'cw-style-badges' );
+            } elseif ( is_singular() ) {
+                $post = get_post();
+                if ( $post ) {
+                    $content = (string) $post->post_content;
+                    if ( has_shortcode( $content, 'cw_organizers_directory' ) || has_shortcode( $content, 'cw_creators_directory' ) ) {
+                        wp_enqueue_style( 'cw-style-badges' );
+                    }
+                }
+            }
+
             if ( $is_account && $is_logged_in ) {
                 $user = wp_get_current_user();
                 if ( class_exists( 'CW_Roles' ) && CW_Roles::is_business_user( $user ) ) {
-                    wp_enqueue_style( 'cw-style-business', CW_URL . 'assets/css/cw-style-business.css', ['cw-style-general'], CW_VERSION );
-                    wp_enqueue_style( 'cw-style-wizard', CW_URL . 'assets/css/cw-style-wizard.css', ['cw-style-business'], CW_VERSION );
+                    $biz_css  = self::asset( 'assets/css/cw-style-business.css' );
+                    $wiz_css  = self::asset( 'assets/css/cw-style-wizard.css' );
+                    wp_enqueue_style( 'cw-style-business', $biz_css['url'], ['cw-style-general'], $biz_css['version'] );
+                    wp_enqueue_style( 'cw-style-wizard',   $wiz_css['url'], ['cw-style-business'], $wiz_css['version'] );
                 } elseif ( in_array( 'creator_role', (array) $user->roles ) ) {
-                    wp_enqueue_style( 'cw-style-creator', CW_URL . 'assets/css/cw-style-creator.css', ['cw-style-general'], CW_VERSION );
+                    $cr_css = self::asset( 'assets/css/cw-style-creator.css' );
+                    wp_enqueue_style( 'cw-style-creator', $cr_css['url'], ['cw-style-general'], $cr_css['version'] );
                 } else {
-                    wp_enqueue_style( 'cw-style-contestant', CW_URL . 'assets/css/cw-style-contestant.css', ['cw-style-general'], CW_VERSION );
-                    // Contestants also use the creator-side "Explore Opportunities" view (shared markup/styles).
-                    wp_enqueue_style( 'cw-style-creator', CW_URL . 'assets/css/cw-style-creator.css', ['cw-style-contestant'], CW_VERSION );
+                    $ct_css = self::asset( 'assets/css/cw-style-contestant.css' );
+                    $cr_css = self::asset( 'assets/css/cw-style-creator.css' );
+                    wp_enqueue_style( 'cw-style-contestant', $ct_css['url'], ['cw-style-general'], $ct_css['version'] );
+                    wp_enqueue_style( 'cw-style-creator',    $cr_css['url'], ['cw-style-contestant'], $cr_css['version'] );
                 }
             }
 
@@ -200,17 +318,31 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             }
 
             if ( $is_logged_in ) {
-                wp_enqueue_script( 'sweetalert2', 'https://cdn.jsdelivr.net/npm/sweetalert2@11', [], '11.0', true );
+                // Self-hosted SweetAlert2 if present (Phase 4), CDN fallback otherwise.
+                $sa_local = CW_PATH . 'assets/vendor/sweetalert2/sweetalert2.min.js';
+                if ( file_exists( $sa_local ) ) {
+                    wp_enqueue_script( 'sweetalert2', CW_URL . 'assets/vendor/sweetalert2/sweetalert2.min.js', [], CW_VERSION, true );
+                } else {
+                    wp_enqueue_script( 'sweetalert2', 'https://cdn.jsdelivr.net/npm/sweetalert2@11', [], '11.0', true );
+                }
                 $js_deps[] = 'sweetalert2';
             }
 
             if ( $is_account ) {
-                wp_enqueue_script( 'chart-js', 'https://cdn.jsdelivr.net/npm/chart.js', [], '4.4.0', true );
+                // Self-hosted Chart.js if present (Phase 4), CDN fallback otherwise.
+                $cj_local = CW_PATH . 'assets/vendor/chart.js/chart.umd.min.js';
+                if ( file_exists( $cj_local ) ) {
+                    wp_enqueue_script( 'chart-js', CW_URL . 'assets/vendor/chart.js/chart.umd.min.js', [], CW_VERSION, true );
+                } else {
+                    wp_enqueue_script( 'chart-js', 'https://cdn.jsdelivr.net/npm/chart.js', [], '4.4.0', true );
+                }
                 $js_deps[] = 'chart-js';
             }
 
-            // 4. Main Script
-            wp_enqueue_script( 'cw-core-script', CW_URL . 'assets/js/cw-script.js', $js_deps, CW_VERSION, true );
+            // 4. Main Script (deferred for non-blocking parse).
+            $app_js = self::asset( 'assets/js/cw-script.js' );
+            wp_enqueue_script( 'cw-core-script', $app_js['url'], $js_deps, $app_js['version'], true );
+            wp_script_add_data( 'cw-core-script', 'defer', true );
 
             // 5. Localize
             $reg_msg = get_transient('registration_message');

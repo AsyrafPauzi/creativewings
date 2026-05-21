@@ -144,34 +144,69 @@ class CW_Organizer_Profile {
      * Returns escaped HTML; never echoes directly.
      */
     public function render_html( WP_User $user ) {
+        // Cache the full rendered HTML per organizer + current language. Busted
+        // automatically by CW_Cache hooks when the org's products, profile, or
+        // entries change.
+        if ( class_exists( 'CW_Cache' ) ) {
+            $locale  = function_exists( 'determine_locale' ) ? determine_locale() : get_locale();
+            $key     = (int) $user->ID . ':' . md5( (string) $locale );
+            return (string) CW_Cache::remember(
+                $key,
+                'org_profile',
+                10 * MINUTE_IN_SECONDS,
+                function () use ( $user ) {
+                    return $this->render_html_uncached( $user );
+                }
+            );
+        }
+        return $this->render_html_uncached( $user );
+    }
+
+    /**
+     * The actual heavy renderer (uncached). Cached wrapper above calls this.
+     */
+    private function render_html_uncached( WP_User $user ) {
         $uid = (int) $user->ID;
 
-        // ── Identity / branding ─────────────────────────────────────
-        $biz_name    = (string) get_user_meta( $uid, 'business_name', true );
-        $tagline     = (string) get_user_meta( $uid, 'business_tagline', true );
-        $about       = (string) get_user_meta( $uid, 'business_about', true );
-        $founded     = (string) get_user_meta( $uid, 'business_founded_year', true );
-        $industry    = (string) get_user_meta( $uid, 'business_industry', true );
-        $team_size   = (string) get_user_meta( $uid, 'business_team_size', true );
-        $city        = (string) get_user_meta( $uid, 'business_city', true );
-        $country     = (string) get_user_meta( $uid, 'business_country', true );
-        $address     = (string) get_user_meta( $uid, 'business_address', true );
-        $ssm         = (string) get_user_meta( $uid, 'business_ssm', true );
+        // ── Bulk-load all user meta in a single query ───────────────
+        // (replaces 20+ separate get_user_meta() calls).
+        $all_meta = (array) get_user_meta( $uid );
+        $meta = static function ( $k ) use ( $all_meta ) {
+            return isset( $all_meta[ $k ][0] ) ? (string) $all_meta[ $k ][0] : '';
+        };
+        $meta_raw = static function ( $k ) use ( $all_meta ) {
+            if ( ! isset( $all_meta[ $k ][0] ) ) {
+                return null;
+            }
+            $val = $all_meta[ $k ][0];
+            // get_user_meta() returns serialized arrays as strings when fetched with $key=''. Unserialize.
+            return maybe_unserialize( $val );
+        };
 
-        $logo_meta   = get_user_meta( $uid, 'business_logo',  true );
+        // ── Identity / branding ─────────────────────────────────────
+        $biz_name    = $meta( 'business_name' );
+        $tagline     = $meta( 'business_tagline' );
+        $about       = $meta( 'business_about' );
+        $founded     = $meta( 'business_founded_year' );
+        $industry    = $meta( 'business_industry' );
+        $team_size   = $meta( 'business_team_size' );
+        $city        = $meta( 'business_city' );
+        $country     = $meta( 'business_country' );
+        $address     = $meta( 'business_address' );
+        $ssm         = $meta( 'business_ssm' );
+
+        $logo_meta   = $meta_raw( 'business_logo' );
         $logo_url    = ( is_array( $logo_meta )  && ! empty( $logo_meta['url'] ) )  ? (string) $logo_meta['url']  : '';
 
-        $cover_meta  = get_user_meta( $uid, 'business_cover', true );
+        $cover_meta  = $meta_raw( 'business_cover' );
         $cover_url   = ( is_array( $cover_meta ) && ! empty( $cover_meta['url'] ) ) ? (string) $cover_meta['url'] : '';
 
         // ── Contact (with visibility toggles) ───────────────────────
-        $phone       = (string) get_user_meta( $uid, 'business_phone',  true );
-        $website     = (string) get_user_meta( $uid, 'business_website', true );
-        $show_phone  = get_user_meta( $uid, 'cw_show_org_phone', true );
-        $show_email  = get_user_meta( $uid, 'cw_show_org_email', true );
+        $phone       = $meta( 'business_phone' );
+        $website     = $meta( 'business_website' );
         // Default visible unless explicitly stored as '0'.
-        $phone_visible = ( $show_phone !== '0' );
-        $email_visible = ( $show_email !== '0' );
+        $phone_visible = ( $meta( 'cw_show_org_phone' ) !== '0' );
+        $email_visible = ( $meta( 'cw_show_org_email' ) !== '0' );
         $email         = $email_visible ? (string) $user->user_email : '';
         $phone_display = $phone_visible ? $phone : '';
 
@@ -194,7 +229,7 @@ class CW_Organizer_Profile {
         ];
         $socials_present = [];
         foreach ( $social_map as $key => $info ) {
-            $url = trim( (string) get_user_meta( $uid, $key, true ) );
+            $url = trim( $meta( $key ) );
             if ( $url !== '' ) {
                 $socials_present[ $key ] = [ 'url' => $url ] + $info;
             }
@@ -204,8 +239,44 @@ class CW_Organizer_Profile {
         $campaigns = $this->get_published_campaigns( $uid );
         $campaign_count = count( $campaigns );
 
-        // Pre-compute total participants once (single query for all campaigns).
-        $total_participants = $this->get_total_participants( array_map( static fn( $c ) => (int) $c->ID, $campaigns ) );
+        $campaign_pids = array_map( static fn( $c ) => (int) $c->ID, $campaigns );
+
+        // Prime caches once so the per-campaign render loop hits memory, not the DB.
+        if ( ! empty( $campaign_pids ) ) {
+            update_meta_cache( 'post', $campaign_pids );
+            update_object_term_cache( $campaign_pids, 'product' );
+        }
+
+        // Per-campaign participant counts via a single GROUP BY (replaces N+1 inside the loop).
+        $participants_map   = $this->get_participants_map( $campaign_pids );
+        $total_participants = (int) array_sum( $participants_map );
+
+        // Sum of declared prize pools across all campaigns (in store currency).
+        $total_prize_value = 0.0;
+        foreach ( $campaigns as $c ) {
+            $raw = (string) get_post_meta( (int) $c->ID, 'cw_total_prize_value', true );
+            if ( $raw !== '' ) {
+                $total_prize_value += (float) preg_replace( '/[^0-9.]/', '', $raw );
+            }
+        }
+        $total_prize_display = '';
+        if ( $total_prize_value > 0 ) {
+            if ( function_exists( 'wc_price' ) ) {
+                $total_prize_display = wp_strip_all_tags( wc_price( $total_prize_value ) );
+            } else {
+                $total_prize_display = number_format( $total_prize_value, 0 );
+            }
+        }
+
+        // Years active (since founded year).
+        $years_active = 0;
+        $founded_int  = (int) preg_replace( '/\D+/', '', (string) $founded );
+        if ( $founded_int > 1900 && $founded_int <= (int) current_time( 'Y' ) ) {
+            $years_active = max( 0, (int) current_time( 'Y' ) - $founded_int );
+        }
+
+        // Verified flag — true once the basic profile is complete enough for the directory.
+        $is_verified = class_exists( 'CW_Roles' ) && CW_Roles::has_complete_organizer_profile( $user );
 
         // Active vs past split for filter pill counts.
         $now_ts = current_time( 'timestamp' );
@@ -255,6 +326,15 @@ class CW_Organizer_Profile {
                 $excerpt = wp_html_excerpt( $excerpt, 140, '…' );
             }
 
+            $prize_raw = (string) get_post_meta( $pid, 'cw_total_prize_value', true );
+            $prize_num = $prize_raw !== '' ? (float) preg_replace( '/[^0-9.]/', '', $prize_raw ) : 0;
+            $prize_lbl = '';
+            if ( $prize_num > 0 ) {
+                $prize_lbl = function_exists( 'wc_price' )
+                    ? wp_strip_all_tags( wc_price( $prize_num ) )
+                    : number_format( $prize_num, 0 );
+            }
+
             $campaign_view[] = [
                 'id'           => $pid,
                 'title'        => get_the_title( $c ),
@@ -265,40 +345,54 @@ class CW_Organizer_Profile {
                 'cat_label'    => $cat_label,
                 'cat_slug'     => $cat_slug,
                 'deadline'     => $deadline_ts ? date_i18n( get_option( 'date_format', 'd M Y' ), $deadline_ts ) : '',
-                'participants' => $this->get_participants_for_pid( $pid ),
+                'participants' => (int) ( $participants_map[ $pid ] ?? 0 ),
+                'prize'        => $prize_lbl,
             ];
         }
 
         // ── KPI tiles ───────────────────────────────────────────────
         $kpis = [];
         $kpis[] = [
+            'icon'  => 'fas fa-bullhorn',
             'label' => __( 'Campaigns', 'creativewings-core' ),
             'value' => number_format_i18n( $campaign_count ),
         ];
         $kpis[] = [
+            'icon'  => 'fas fa-users',
             'label' => __( 'Participants', 'creativewings-core' ),
             'value' => number_format_i18n( $total_participants ),
         ];
-        if ( $founded !== '' ) {
+        if ( $total_prize_display !== '' ) {
             $kpis[] = [
-                'label' => __( 'Founded', 'creativewings-core' ),
-                'value' => sprintf( __( 'Since %s', 'creativewings-core' ), esc_html( $founded ) ),
+                'icon'  => 'fas fa-trophy',
+                'label' => __( 'Total Prizes', 'creativewings-core' ),
+                'value' => $total_prize_display,
+            ];
+        }
+        if ( $years_active > 0 ) {
+            $kpis[] = [
+                'icon'  => 'fas fa-history',
+                'label' => __( 'Years Active', 'creativewings-core' ),
+                'value' => number_format_i18n( $years_active ),
             ];
         }
         if ( $team_size !== '' ) {
             $kpis[] = [
+                'icon'  => 'fas fa-user-tie',
                 'label' => __( 'Team Size', 'creativewings-core' ),
                 'value' => esc_html( $team_size ),
             ];
         }
         if ( $industry !== '' ) {
             $kpis[] = [
+                'icon'  => 'fas fa-briefcase',
                 'label' => __( 'Industry', 'creativewings-core' ),
                 'value' => esc_html( $industry ),
             ];
         }
         if ( $location !== '' ) {
             $kpis[] = [
+                'icon'  => 'fas fa-map-marker-alt',
                 'label' => __( 'Location', 'creativewings-core' ),
                 'value' => esc_html( $location ),
             ];
@@ -349,13 +443,30 @@ class CW_Organizer_Profile {
                 <section class="cw-org-identity">
                     <div class="cw-org-logo-card">
                         <?php if ( $logo_url ) : ?>
-                            <img class="cw-org-logo" src="<?php echo esc_url( $logo_url ); ?>" alt="<?php echo esc_attr( sprintf( __( '%s logo', 'creativewings-core' ), $display_name ) ); ?>">
+                            <?php
+                            $logo_alt = sprintf( __( '%s logo', 'creativewings-core' ), $display_name );
+                            if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                                echo CW_Image_Optimizer::picture_tag( $logo_url, $logo_alt, [ 'class' => 'cw-org-logo' ] );
+                            } else {
+                                echo '<img class="cw-org-logo" src="' . esc_url( $logo_url ) . '" alt="' . esc_attr( $logo_alt ) . '" loading="lazy" decoding="async">';
+                            }
+                            ?>
                         <?php else : ?>
                             <span class="cw-org-logo-fallback" aria-hidden="true"><?php echo esc_html( mb_strtoupper( mb_substr( $display_name, 0, 1 ) ) ); ?></span>
                         <?php endif; ?>
                     </div>
                     <div class="cw-org-identity-text">
-                        <h1 class="cw-org-name"><?php echo esc_html( $display_name ); ?></h1>
+                        <div class="cw-org-name-row">
+                            <h1 class="cw-org-name"><?php echo esc_html( $display_name ); ?></h1>
+                            <?php if ( $is_verified ) : ?>
+                                <span class="cw-org-verified" title="<?php esc_attr_e( 'Verified Organizer', 'creativewings-core' ); ?>" aria-label="<?php esc_attr_e( 'Verified Organizer', 'creativewings-core' ); ?>">
+                                    <i class="fas fa-check" aria-hidden="true"></i>
+                                </span>
+                            <?php endif; ?>
+                        </div>
+                        <?php if ( $tagline !== '' ) : ?>
+                            <p class="cw-org-tagline"><?php echo esc_html( $tagline ); ?></p>
+                        <?php endif; ?>
                         <div class="cw-org-meta-row">
                             <?php if ( $industry !== '' ) : ?>
                                 <span class="cw-org-pill cw-org-pill--industry"><i class="fas fa-briefcase" aria-hidden="true"></i> <?php echo esc_html( $industry ); ?></span>
@@ -367,9 +478,6 @@ class CW_Organizer_Profile {
                                 <span class="cw-org-pill"><i class="far fa-calendar-alt" aria-hidden="true"></i> <?php echo esc_html( sprintf( __( 'Since %s', 'creativewings-core' ), $founded ) ); ?></span>
                             <?php endif; ?>
                         </div>
-                        <?php if ( $tagline !== '' ) : ?>
-                            <p class="cw-org-tagline"><?php echo esc_html( $tagline ); ?></p>
-                        <?php endif; ?>
                         <div class="cw-org-cta-row">
                             <a href="#cw-org-campaigns" class="cw-org-btn cw-org-btn--primary">
                                 <i class="fas fa-bullhorn" aria-hidden="true"></i>
@@ -381,15 +489,73 @@ class CW_Organizer_Profile {
                                     <?php esc_html_e( 'Website', 'creativewings-core' ); ?>
                                 </a>
                             <?php endif; ?>
+                            <?php if ( $email !== '' ) : ?>
+                                <a href="mailto:<?php echo esc_attr( $email ); ?>" class="cw-org-btn cw-org-btn--ghost">
+                                    <i class="far fa-envelope" aria-hidden="true"></i>
+                                    <?php esc_html_e( 'Contact', 'creativewings-core' ); ?>
+                                </a>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </section>
+
+                <!-- Trust strip -->
+                <?php
+                $trust_items = [];
+                if ( $is_verified ) {
+                    $trust_items[] = [ 'icon' => 'fas fa-shield-alt',  'label' => __( 'Verified Organizer', 'creativewings-core' ) ];
+                }
+                if ( $years_active > 0 ) {
+                    $trust_items[] = [ 'icon' => 'fas fa-history', 'label' => sprintf( _n( '%s year active', '%s years active', $years_active, 'creativewings-core' ), number_format_i18n( $years_active ) ) ];
+                }
+                if ( $campaign_count > 0 ) {
+                    $trust_items[] = [ 'icon' => 'fas fa-bullhorn', 'label' => sprintf( _n( '%s campaign hosted', '%s campaigns hosted', $campaign_count, 'creativewings-core' ), number_format_i18n( $campaign_count ) ) ];
+                }
+                if ( $total_participants > 0 ) {
+                    $trust_items[] = [ 'icon' => 'fas fa-users', 'label' => sprintf( _n( '%s participant engaged', '%s participants engaged', $total_participants, 'creativewings-core' ), number_format_i18n( $total_participants ) ) ];
+                }
+                if ( $total_prize_display !== '' ) {
+                    $trust_items[] = [ 'icon' => 'fas fa-trophy', 'label' => sprintf( __( '%s in prizes awarded', 'creativewings-core' ), $total_prize_display ) ];
+                }
+                if ( $trust_items ) :
+                ?>
+                <section class="cw-org-trust-strip" aria-label="<?php esc_attr_e( 'Trust signals', 'creativewings-core' ); ?>">
+                    <?php foreach ( $trust_items as $i => $item ) : ?>
+                        <span class="cw-org-trust-item">
+                            <i class="<?php echo esc_attr( $item['icon'] ); ?>" aria-hidden="true"></i>
+                            <span><?php echo esc_html( $item['label'] ); ?></span>
+                        </span>
+                        <?php if ( $i < count( $trust_items ) - 1 ) : ?>
+                            <span class="cw-org-trust-sep" aria-hidden="true">·</span>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
+                </section>
+                <?php endif; ?>
+
+                <?php
+                if ( class_exists( 'CW_Badges_Engine' ) && class_exists( 'CW_Badges_Display' ) ) {
+                    $org_badges = CW_Badges_Engine::get_user_badges( (int) $user->ID );
+                    if ( ! empty( $org_badges ) ) :
+                ?>
+                <section class="cw-org-badges-row" aria-label="<?php esc_attr_e( 'Badges earned', 'creativewings-core' ); ?>">
+                    <h3 class="cw-org-sub-title" style="display:flex;align-items:center;gap:8px;margin:18px 0 10px;">
+                        <i class="fas fa-medal" style="color:#facc15;"></i> <?php esc_html_e( 'Badges earned', 'creativewings-core' ); ?>
+                        <span style="font-size:11px;color:#64748b;font-weight:600;background:#f1f5f9;padding:2px 8px;border-radius:999px;">
+                            <?php echo (int) count( $org_badges ); ?>
+                        </span>
+                    </h3>
+                    <?php echo CW_Badges_Display::render_strip( $org_badges, 8, [ 'size' => 'md', 'show_label' => true, 'show_tier' => true ] ); ?>
+                </section>
+                <?php endif; } ?>
 
                 <!-- 2. KPI tiles -->
                 <?php if ( $kpis ) : ?>
                 <section class="cw-org-kpi-row" aria-label="<?php esc_attr_e( 'At a glance', 'creativewings-core' ); ?>">
                     <?php foreach ( $kpis as $tile ) : ?>
                         <div class="cw-org-kpi">
+                            <?php if ( ! empty( $tile['icon'] ) ) : ?>
+                                <span class="cw-org-kpi-icon" aria-hidden="true"><i class="<?php echo esc_attr( $tile['icon'] ); ?>"></i></span>
+                            <?php endif; ?>
                             <span class="cw-org-kpi-label"><?php echo esc_html( $tile['label'] ); ?></span>
                             <span class="cw-org-kpi-value"><?php echo esc_html( wp_strip_all_tags( $tile['value'] ) ); ?></span>
                         </div>
@@ -524,7 +690,13 @@ class CW_Organizer_Profile {
                             <article class="cw-org-campaign-card" data-state="<?php echo esc_attr( $c['state'] ); ?>">
                                 <a class="cw-org-campaign-thumb" href="<?php echo esc_url( $c['permalink'] ); ?>" aria-label="<?php echo esc_attr( $c['title'] ); ?>">
                                     <?php if ( $c['thumb'] ) : ?>
-                                        <img src="<?php echo esc_url( $c['thumb'] ); ?>" alt="<?php echo esc_attr( $c['title'] ); ?>" loading="lazy">
+                                        <?php
+                                        if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                                            echo CW_Image_Optimizer::picture_tag( $c['thumb'], $c['title'] );
+                                        } else {
+                                            echo '<img src="' . esc_url( $c['thumb'] ) . '" alt="' . esc_attr( $c['title'] ) . '" loading="lazy" decoding="async">';
+                                        }
+                                        ?>
                                     <?php else : ?>
                                         <span class="cw-org-thumb-fallback"><i class="fas fa-image" aria-hidden="true"></i></span>
                                     <?php endif; ?>
@@ -532,8 +704,15 @@ class CW_Organizer_Profile {
                                         <span class="cw-org-campaign-cat cw-org-campaign-cat--<?php echo esc_attr( $c['cat_slug'] ); ?>"><?php echo esc_html( $c['cat_label'] ); ?></span>
                                     <?php endif; ?>
                                     <span class="cw-org-campaign-state cw-org-campaign-state--<?php echo esc_attr( $c['state'] ); ?>">
+                                        <i class="<?php echo esc_attr( $c['state'] === 'past' ? 'fas fa-circle' : 'fas fa-circle' ); ?>" aria-hidden="true"></i>
                                         <?php echo esc_html( $c['state'] === 'past' ? __( 'Past', 'creativewings-core' ) : __( 'Active', 'creativewings-core' ) ); ?>
                                     </span>
+                                    <?php if ( ! empty( $c['prize'] ) ) : ?>
+                                        <span class="cw-org-campaign-prize">
+                                            <i class="fas fa-trophy" aria-hidden="true"></i>
+                                            <?php echo esc_html( $c['prize'] ); ?>
+                                        </span>
+                                    <?php endif; ?>
                                 </a>
                                 <div class="cw-org-campaign-body">
                                     <h3 class="cw-org-campaign-title"><a href="<?php echo esc_url( $c['permalink'] ); ?>"><?php echo esc_html( $c['title'] ); ?></a></h3>
@@ -682,26 +861,74 @@ class CW_Organizer_Profile {
         if ( empty( $pids ) ) {
             return 0;
         }
-        global $wpdb;
-        $placeholders = implode( ',', array_fill( 0, count( $pids ), '%d' ) );
-        $sql = "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key = 'product_id' AND meta_value IN ($placeholders)";
-        return (int) $wpdb->get_var( $wpdb->prepare( $sql, ...$pids ) );
+        $map = $this->get_participants_map( $pids );
+        return (int) array_sum( $map );
+    }
+
+    /**
+     * Return [ pid => participant_count ] for the given product IDs.
+     *
+     * Single GROUP BY query replaces the previous N+1 pattern of calling
+     * get_participants_for_pid() inside the campaign render foreach.
+     * Results are also primed into the per-request memo cache so any leftover
+     * legacy callers of get_participants_for_pid() avoid further DB hits.
+     *
+     * @param int[] $pids
+     * @return array<int,int>
+     */
+    private function get_participants_map( array $pids ) {
+        $pids = array_values( array_unique( array_filter( array_map( 'intval', $pids ) ) ) );
+        if ( empty( $pids ) ) {
+            return [];
+        }
+
+        // Honor whatever's already memoized; only query the misses.
+        $hits   = [];
+        $misses = [];
+        foreach ( $pids as $pid ) {
+            if ( isset( self::$participants_cache[ $pid ] ) ) {
+                $hits[ $pid ] = (int) self::$participants_cache[ $pid ];
+            } else {
+                $misses[] = $pid;
+            }
+        }
+
+        if ( ! empty( $misses ) ) {
+            global $wpdb;
+            $placeholders = implode( ',', array_fill( 0, count( $misses ), '%d' ) );
+            $sql = "SELECT meta_value AS pid, COUNT(*) AS c
+                    FROM {$wpdb->postmeta}
+                    WHERE meta_key = 'product_id'
+                      AND meta_value IN ($placeholders)
+                    GROUP BY meta_value";
+            $rows = $wpdb->get_results( $wpdb->prepare( $sql, $misses ), ARRAY_A );
+
+            $found = [];
+            foreach ( (array) $rows as $r ) {
+                $found[ (int) $r['pid'] ] = (int) $r['c'];
+            }
+            foreach ( $misses as $pid ) {
+                $cnt = (int) ( $found[ $pid ] ?? 0 );
+                self::$participants_cache[ $pid ] = $cnt;
+                $hits[ $pid ] = $cnt;
+            }
+        }
+
+        return $hits;
     }
 
     /**
      * Participants count for a single product_id, memoised per request.
+     *
+     * Kept for backwards-compat; new code should prefer get_participants_map()
+     * to avoid N+1 queries.
      */
     private function get_participants_for_pid( $pid ) {
         $pid = (int) $pid;
         if ( isset( self::$participants_cache[ $pid ] ) ) {
             return self::$participants_cache[ $pid ];
         }
-        global $wpdb;
-        $n = (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key = 'product_id' AND meta_value = %d",
-            $pid
-        ) );
-        self::$participants_cache[ $pid ] = $n;
-        return $n;
+        $map = $this->get_participants_map( [ $pid ] );
+        return (int) ( $map[ $pid ] ?? 0 );
     }
 }

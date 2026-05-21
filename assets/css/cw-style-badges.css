@@ -1,0 +1,322 @@
+/* ─────────────────────────────────────────────────────────────────
+ *  CreativeWings — Badge styles
+ *  Scoped under .cw-badges to avoid touching other UI.
+ * ───────────────────────────────────────────────────────────────── */
+
+.cw-badges {
+    --cw-badge-color: #0ea5e9;
+    --cw-badge-tier-color: var(--cw-badge-color);
+}
+
+/* Strip layout (used in dashboards + directory cards) */
+.cw-badges-strip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+/* Grid layout (My Badges tab) */
+.cw-badges-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+}
+
+.cw-badges-progress {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+}
+
+.cw-badges-empty {
+    text-align: center;
+    padding: 28px 12px;
+    color: #64748b;
+    border: 1px dashed #d1d5db;
+    border-radius: 12px;
+    background: #f8fafc;
+}
+.cw-badges-empty i {
+    font-size: 28px;
+    color: #94a3b8;
+    margin-bottom: 8px;
+    display: inline-block;
+}
+.cw-badges-empty p { margin: 0; font-size: 14px; }
+
+/* Single badge medallion */
+.cw-badge {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    color: #111827;
+    text-align: center;
+}
+.cw-badge--icon-only .cw-badge-meta { display: none; }
+
+.cw-badge-medal {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--cw-badge-color), color-mix(in srgb, var(--cw-badge-color) 60%, #fff));
+    color: #fff;
+    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.18), inset 0 1px 0 rgba(255,255,255,0.4);
+    flex: 0 0 auto;
+}
+.cw-badge-medal i {
+    font-size: 22px;
+    line-height: 1;
+}
+.cw-badge-medal img {
+    width: 70%;
+    height: 70%;
+    object-fit: contain;
+}
+.cw-badge-tier-ring {
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid var(--cw-badge-tier-color);
+    pointer-events: none;
+}
+
+/* Sizes */
+.cw-badge--sm .cw-badge-medal { width: 36px; height: 36px; }
+.cw-badge--sm .cw-badge-medal i { font-size: 14px; }
+.cw-badge--md .cw-badge-medal { width: 56px; height: 56px; }
+.cw-badge--lg .cw-badge-medal { width: 72px; height: 72px; }
+.cw-badge--lg .cw-badge-medal i { font-size: 28px; }
+
+.cw-badge-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.cw-badge-name {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: #111827;
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.cw-badge-tier {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #475569;
+    align-self: center;
+}
+.cw-badge-tier--bronze   { background: #fde7d3; color: #8c4a1f; }
+.cw-badge-tier--silver   { background: #e5e7eb; color: #4b5563; }
+.cw-badge-tier--gold     { background: #fef3c7; color: #92580c; }
+.cw-badge-tier--platinum { background: #e0e7ff; color: #3730a3; }
+.cw-badge-tier--flat     { background: #ecfeff; color: #0e7490; }
+
+/* Progress grid card */
+.cw-badge-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 16px;
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 14px;
+    align-items: start;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.cw-badge-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+}
+.cw-badge-card--locked {
+    opacity: 0.7;
+}
+.cw-badge-card--locked .cw-badge-medal {
+    filter: grayscale(0.6);
+}
+.cw-badge-card-title {
+    margin: 0 0 4px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #111827;
+}
+.cw-badge-card-desc {
+    margin: 0 0 10px;
+    font-size: 12px;
+    color: #475569;
+    line-height: 1.4;
+}
+.cw-badge-card-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+.cw-badge-card-status .cw-badge-earned {
+    font-size: 11px;
+    color: #64748b;
+}
+.cw-badge-locked {
+    font-size: 11px;
+    color: #64748b;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+}
+
+.cw-badge-progress {
+    height: 6px;
+    background: #e5e7eb;
+    border-radius: 999px;
+    overflow: hidden;
+}
+.cw-badge-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #0ea5e9, #6366f1);
+    border-radius: 999px;
+    transition: width .35s ease;
+}
+.cw-badge-progress-label {
+    margin: 6px 0 0;
+    font-size: 11px;
+    color: #475569;
+    font-weight: 600;
+}
+
+/* Overview "latest achievement" strip */
+.cw-badges-latest {
+    margin: 10px 0 18px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #f8fafc, #ffffff);
+    border: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+.cw-badges-latest h4 {
+    margin: 0;
+    font-size: 13px;
+    color: #475569;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-weight: 700;
+    flex: 0 0 auto;
+}
+.cw-badges-latest .cw-badges-strip { margin: 0; }
+
+/* Toast notification */
+.cw-badge-toast-stack {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 360px;
+    pointer-events: none;
+}
+.cw-badge-toast {
+    pointer-events: auto;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-left: 4px solid var(--cw-badge-color, #0ea5e9);
+    border-radius: 12px;
+    padding: 12px 38px 12px 14px;
+    box-shadow: 0 14px 38px rgba(15, 23, 42, 0.16);
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    opacity: 0;
+    transform: translateX(20px);
+    transition: opacity .25s ease, transform .25s ease;
+    position: relative;
+}
+.cw-badge-toast--in {
+    opacity: 1;
+    transform: translateX(0);
+}
+.cw-badge-toast-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--cw-badge-color, #0ea5e9), color-mix(in srgb, var(--cw-badge-color, #0ea5e9) 60%, #fff));
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+.cw-badge-toast-icon i { font-size: 18px; }
+.cw-badge-toast-icon img { width: 70%; height: 70%; object-fit: contain; }
+.cw-badge-toast-body strong {
+    display: block;
+    font-size: 11px;
+    color: #64748b;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+.cw-badge-toast-title { font-size: 14px; color: #111827; font-weight: 700; }
+.cw-badge-toast-tier {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6366f1;
+    margin-left: 4px;
+}
+.cw-badge-toast-dismiss {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    background: transparent;
+    border: 0;
+    font-size: 18px;
+    line-height: 1;
+    color: #94a3b8;
+    cursor: pointer;
+}
+
+/* Directory card badges row */
+.cw-dir-badges {
+    margin: 6px 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 38px;
+}
+.cw-dir-badges .cw-badges-strip { margin-top: 0; }
+
+/* Organizer public-profile badge row */
+.cw-org-badges-row .cw-badges-strip { gap: 14px; flex-wrap: wrap; }
+
+/* Responsive */
+@media (max-width: 600px) {
+    .cw-badges-progress { grid-template-columns: 1fr; }
+    .cw-badge-card { grid-template-columns: 64px 1fr; padding: 12px; }
+    .cw-badge--lg .cw-badge-medal { width: 56px; height: 56px; }
+    .cw-badge--lg .cw-badge-medal i { font-size: 22px; }
+
+    .cw-badge-toast-stack { right: 12px; left: 12px; max-width: none; }
+}

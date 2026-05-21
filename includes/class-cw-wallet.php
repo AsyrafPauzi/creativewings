@@ -77,6 +77,18 @@ class CW_Wallet {
        3. WALLET LOGIC
        ========================================================================== */
     public static function get_wallet_stats( $user_id ) {
+        // Prefer the unified CW_Cache (object-cache aware) — falls back to transients.
+        if ( class_exists( 'CW_Cache' ) ) {
+            return CW_Cache::remember(
+                'wallet_stats:' . (int) $user_id,
+                'wallet',
+                5 * MINUTE_IN_SECONDS,
+                function () use ( $user_id ) {
+                    return self::compute_wallet_stats( $user_id );
+                }
+            );
+        }
+
         $cache_key = 'cw_wallet_stats_v3_' . $user_id;
         $stats = get_transient( $cache_key );
 
@@ -164,19 +176,143 @@ class CW_Wallet {
         return $stats;
     }
 
-    public static function get_product_earnings( $product_id ) {
+    /**
+     * Compute wallet stats from scratch. Used by the CW_Cache producer above.
+     */
+    private static function compute_wallet_stats( $user_id ) {
         global $wpdb;
-        $sql = "SELECT SUM(total_meta.meta_value)
-            FROM {$wpdb->prefix}woocommerce_order_itemmeta AS total_meta
-            JOIN {$wpdb->prefix}woocommerce_order_items AS woi ON total_meta.order_item_id = woi.order_item_id
-            JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS pid_meta ON woi.order_item_id = pid_meta.order_item_id AND pid_meta.meta_key = '_product_id'
-            JOIN {$wpdb->posts} AS p ON woi.order_id = p.ID
-            WHERE woi.order_item_type = 'line_item'
-              AND total_meta.meta_key = '_line_total'
-              AND p.post_status IN ('wc-completed', 'wc-processing')
-              AND pid_meta.meta_value = %d";
-        $total = $wpdb->get_var( $wpdb->prepare( $sql, $product_id ) );
-        return $total ? floatval( $total ) : 0.00;
+
+        $product_ids = get_posts([
+            'post_type'      => 'product',
+            'posts_per_page' => -1,
+            'author'         => (int) $user_id,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+        ]);
+
+        $total_sales = 0;
+        $pending     = 0;
+        $available   = 0;
+
+        if ( ! empty( $product_ids ) ) {
+            $earnings_map = self::get_product_earnings_map( $product_ids );
+
+            // Prime postmeta once so the per-pid get_post_meta calls below hit memory.
+            update_meta_cache( 'post', $product_ids );
+
+            $now = time();
+            foreach ( $product_ids as $pid ) {
+                $product_earnings = isset( $earnings_map[ $pid ] ) ? $earnings_map[ $pid ] : 0;
+                if ( $product_earnings <= 0 ) {
+                    continue;
+                }
+                $total_sales += $product_earnings;
+
+                $event_date = get_post_meta( $pid, 'cw_final_event_date', true );
+                $deadline   = get_post_meta( $pid, 'submission_deadline', true );
+                $check_date = ! empty( $event_date ) ? $event_date : $deadline;
+                $is_mature  = $check_date && $now > strtotime( $check_date );
+
+                if ( $is_mature ) {
+                    $available += $product_earnings;
+                } else {
+                    $pending += $product_earnings;
+                }
+            }
+        }
+
+        $total_withdrawn = (float) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COALESCE(SUM(pm.meta_value), 0)
+             FROM {$wpdb->postmeta} pm
+             JOIN {$wpdb->posts} p ON pm.post_id = p.ID
+             WHERE p.post_type = 'cw_withdrawal'
+               AND p.post_status IN ('publish', 'pending', 'draft')
+               AND pm.meta_key = 'cw_amount'
+               AND p.post_id IN (
+                   SELECT post_id FROM {$wpdb->postmeta}
+                   WHERE meta_key = 'cw_user_id' AND meta_value = %d
+               )",
+            (int) $user_id
+        ) );
+
+        return [
+            'total_earned' => $total_sales,
+            'pending'      => $pending,
+            'available'    => max( 0, $available - $total_withdrawn ),
+            'withdrawn'    => $total_withdrawn,
+        ];
+    }
+
+    public static function get_product_earnings( $product_id ) {
+        $map = self::get_product_earnings_map( [ (int) $product_id ] );
+        return (float) ( $map[ (int) $product_id ] ?? 0.0 );
+    }
+
+    /**
+     * Return [ product_id => total_earnings ] for the given product IDs in one
+     * SQL roundtrip — avoids N+1 when rendering dashboard card grids.
+     *
+     * @param int[] $product_ids
+     * @return array<int, float>
+     */
+    public static function get_product_earnings_map( array $product_ids ) {
+        $ids = array_values( array_unique( array_filter( array_map( 'intval', $product_ids ) ) ) );
+        if ( empty( $ids ) ) {
+            return [];
+        }
+
+        global $wpdb;
+        $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+        $sql = "SELECT pid_meta.meta_value AS pid, SUM(total_meta.meta_value) AS earnings
+                FROM {$wpdb->prefix}woocommerce_order_itemmeta AS total_meta
+                JOIN {$wpdb->prefix}woocommerce_order_items AS woi
+                  ON total_meta.order_item_id = woi.order_item_id
+                JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS pid_meta
+                  ON woi.order_item_id = pid_meta.order_item_id
+                 AND pid_meta.meta_key = '_product_id'
+                JOIN {$wpdb->posts} AS p ON woi.order_id = p.ID
+                WHERE woi.order_item_type = 'line_item'
+                  AND total_meta.meta_key = '_line_total'
+                  AND p.post_status IN ('wc-completed', 'wc-processing')
+                  AND pid_meta.meta_value IN ($placeholders)
+                GROUP BY pid_meta.meta_value";
+        $rows = $wpdb->get_results( $wpdb->prepare( $sql, $ids ), ARRAY_A );
+
+        $out = array_fill_keys( $ids, 0.0 );
+        foreach ( (array) $rows as $r ) {
+            $out[ (int) $r['pid'] ] = (float) $r['earnings'];
+        }
+        return $out;
+    }
+
+    /**
+     * Return [ product_id => participant_count ] for the given product IDs.
+     * Single GROUP BY query — drop-in replacement for repeated per-pid COUNT()s.
+     *
+     * @param int[] $product_ids
+     * @return array<int, int>
+     */
+    public static function get_product_entries_count_map( array $product_ids ) {
+        $ids = array_values( array_unique( array_filter( array_map( 'intval', $product_ids ) ) ) );
+        if ( empty( $ids ) ) {
+            return [];
+        }
+        global $wpdb;
+        $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT meta_value AS pid, COUNT(*) AS c
+             FROM {$wpdb->postmeta}
+             WHERE meta_key = 'product_id'
+               AND meta_value IN ($placeholders)
+             GROUP BY meta_value",
+            $ids
+        ), ARRAY_A );
+
+        $out = array_fill_keys( $ids, 0 );
+        foreach ( (array) $rows as $r ) {
+            $out[ (int) $r['pid'] ] = (int) $r['c'];
+        }
+        return $out;
     }
 
     /* ==========================================================================
@@ -236,6 +372,9 @@ class CW_Wallet {
         $amount = isset($_POST['withdraw_amount']) ? floatval( $_POST['withdraw_amount'] ) : 0;
         
         delete_transient( 'cw_wallet_stats_v3_' . $uid );
+        if ( class_exists( 'CW_Cache' ) ) {
+            CW_Cache::bust_group( 'wallet' );
+        }
         $stats = self::get_wallet_stats( $uid );
 
         if ( $amount <= 0 ) {
@@ -266,6 +405,9 @@ class CW_Wallet {
             update_post_meta( $post_id, 'cw_bank_snapshot', "$bank_name | $bank_acc | $bank_hold" );
 
             delete_transient( 'cw_wallet_stats_v3_' . $uid );
+            if ( class_exists( 'CW_Cache' ) ) {
+                CW_Cache::bust_group( 'wallet' );
+            }
 
             $admin_email = get_option( 'admin_email' );
             wp_mail( $admin_email, 'New Withdrawal: '.wc_price($amount), "User: {$user_data->display_name}\nAmount: ".wc_price($amount) );
