@@ -157,6 +157,41 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
         }
 
         /**
+         * Remove any *foreign* Chart.js script from the page (anything whose handle
+         * isn't `chart-js` but whose src points at a chart.js / chart.min.js file).
+         * Our dashboards build against Chart.js v4 — a stale v2.x library injected
+         * by another plugin/theme overrides `window.Chart` and breaks linkScales().
+         */
+        public function dequeue_foreign_chart_js() {
+            $wp_scripts = wp_scripts();
+            if ( ! $wp_scripts || empty( $wp_scripts->registered ) ) return;
+            foreach ( $wp_scripts->registered as $handle => $script ) {
+                if ( $handle === 'chart-js' ) continue;
+                $src = is_object( $script ) ? (string) $script->src : '';
+                if ( $src === '' ) continue;
+                // Match: chart.js, chart.min.js, chart.umd.js, chart.umd.min.js, Chart.js, etc.
+                if ( preg_match( '#/chart(?:\.umd)?(?:\.min)?\.js(?:$|\?)#i', $src ) ) {
+                    wp_dequeue_script( $handle );
+                }
+            }
+        }
+
+        /**
+         * Belt-and-braces: rewrite any leftover chart.js tag (some themes inject
+         * raw <script> via wp_footer instead of the enqueue API) so the browser
+         * never even fetches the wrong version.
+         */
+        public function strip_foreign_chart_tag( $tag, $handle, $src ) {
+            if ( is_admin() ) return $tag;
+            if ( $handle === 'chart-js' ) return $tag;
+            if ( ! is_string( $src ) || $src === '' ) return $tag;
+            if ( preg_match( '#/chart(?:\.umd)?(?:\.min)?\.js(?:$|\?)#i', $src ) ) {
+                return ''; // Drop the conflicting tag entirely.
+            }
+            return $tag;
+        }
+
+        /**
          * Instantiate Classes on plugins_loaded
          */
         public function init_plugin() {
@@ -337,6 +372,12 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
                     wp_enqueue_script( 'chart-js', 'https://cdn.jsdelivr.net/npm/chart.js', [], '4.4.0', true );
                 }
                 $js_deps[] = 'chart-js';
+
+                // Defensive: dequeue any other registered chart.js script on this page
+                // so our v4 always wins (some themes/plugins ship a stale v2 build that
+                // overrides window.Chart and breaks our v4-API dashboard charts).
+                add_action( 'wp_print_scripts', [ $this, 'dequeue_foreign_chart_js' ], 999 );
+                add_filter( 'script_loader_tag', [ $this, 'strip_foreign_chart_tag' ], 10, 3 );
             }
 
             // 4. Main Script (deferred for non-blocking parse).

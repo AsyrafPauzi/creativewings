@@ -400,10 +400,38 @@ class CW_Dashboard_Business {
 
         <!-- CHART JS CONFIG -->
         <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const ctx = document.getElementById('revenueChart');
-            if (!ctx || typeof Chart === 'undefined') return;
+        (function(){
+            var CHART_V4_URL = <?php echo wp_json_encode( CW_URL . 'assets/vendor/chart.js/chart.umd.min.js?v=' . CW_VERSION ); ?>;
 
+            // Detect a stale Chart.js v2 (its global has no `.version`); if found,
+            // wipe it and load our v4 build before booting the dashboard chart.
+            function ensureChartV4(callback) {
+                var hasChart = typeof window.Chart !== 'undefined';
+                var v = hasChart && window.Chart.version ? String(window.Chart.version) : '';
+                if (hasChart && v && v.charAt(0) >= '3') {
+                    callback();
+                    return;
+                }
+                if (hasChart) {
+                    try { delete window.Chart; } catch(e) { window.Chart = undefined; }
+                }
+                var s = document.createElement('script');
+                s.src = CHART_V4_URL;
+                s.async = false;
+                s.onload  = function(){ callback(); };
+                s.onerror = function(){ console.warn('[CW] Failed to load Chart.js v4 from', CHART_V4_URL); };
+                document.head.appendChild(s);
+            }
+
+            function bootChart(){
+                var ctx = document.getElementById('revenueChart');
+                if (!ctx || typeof Chart === 'undefined') return;
+                runChart(ctx);
+            }
+
+            document.addEventListener('DOMContentLoaded', function(){ ensureChartV4(bootChart); });
+
+            function runChart(ctx) {
             const currencySymbol = <?php echo wp_json_encode( $currency_symbol ); ?>;
             const ajaxUrl        = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
             const ajaxNonce      = <?php echo wp_json_encode( $chart_nonce ); ?>;
@@ -542,7 +570,8 @@ class CW_Dashboard_Business {
                     }
                 });
             }
-        });
+            } // close runChart
+        })();
         </script>
         <style>
             .cw-chart-legend-note {
@@ -1415,7 +1444,19 @@ class CW_Dashboard_Business {
                     ?>
                 </script>
                 <script>
-                document.addEventListener('DOMContentLoaded', function () {
+                (function(){
+                    var CHART_V4_URL = <?php echo wp_json_encode( CW_URL . 'assets/vendor/chart.js/chart.umd.min.js?v=' . CW_VERSION ); ?>;
+                    function ensureChartV4(cb){
+                        var has = typeof window.Chart !== 'undefined';
+                        var v = has && window.Chart.version ? String(window.Chart.version) : '';
+                        if (has && v && v.charAt(0) >= '3') { cb(); return; }
+                        if (has) { try { delete window.Chart; } catch(e) { window.Chart = undefined; } }
+                        var s = document.createElement('script');
+                        s.src = CHART_V4_URL; s.async = false;
+                        s.onload = cb; s.onerror = function(){ console.warn('[CW] Failed to load Chart.js v4'); };
+                        document.head.appendChild(s);
+                    }
+                    document.addEventListener('DOMContentLoaded', function () { ensureChartV4(function(){
                     if (typeof Chart === 'undefined') return;
                     var dataEl = document.getElementById('cw-report-data');
                     if (!dataEl) return;
@@ -1520,7 +1561,8 @@ class CW_Dashboard_Business {
                     buildDoughnut('cw-report-status-chart',   d.status,   ['#22c55e','#94a3b8','#f59e0b']);
                     buildBar('cw-report-school-chart', d.school, '#006599');
                     buildBar('cw-report-scores-chart', d.scores, '#7c3aed');
-                });
+                    }); });
+                })();
                 </script>
 
             <?php endif; ?>

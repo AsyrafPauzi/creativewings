@@ -400,36 +400,47 @@ class CW_Dashboard_Creator {
         </div>
 
         <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const ctx = document.getElementById('trafficChart');
-            if(ctx && typeof Chart !== 'undefined') {
-                // Pass the real PHP data array to Javascript
-                const chartData = <?php echo json_encode($chart_data); ?>;
-                
-                new Chart(ctx, { 
-                    type: 'bar', 
-                    data: { 
-                        labels: chartData.map(d => d.name), 
+        (function(){
+            var CHART_V4_URL = <?php echo wp_json_encode( CW_URL . 'assets/vendor/chart.js/chart.umd.min.js?v=' . CW_VERSION ); ?>;
+            function ensureChartV4(cb){
+                var hasChart = typeof window.Chart !== 'undefined';
+                var v = hasChart && window.Chart.version ? String(window.Chart.version) : '';
+                if (hasChart && v && v.charAt(0) >= '3') { cb(); return; }
+                if (hasChart) { try { delete window.Chart; } catch(e) { window.Chart = undefined; } }
+                var s = document.createElement('script');
+                s.src = CHART_V4_URL; s.async = false;
+                s.onload = function(){ cb(); };
+                s.onerror = function(){ console.warn('[CW] Failed to load Chart.js v4'); };
+                document.head.appendChild(s);
+            }
+            document.addEventListener('DOMContentLoaded', function(){ ensureChartV4(function(){
+                var ctx = document.getElementById('trafficChart');
+                if(!ctx || typeof Chart === 'undefined') return;
+                var chartData = <?php echo json_encode($chart_data); ?>;
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: chartData.map(function(d){ return d.name; }),
                         datasets: [{
                             label: 'Views',
-                            data: chartData.map(d => d.views),
+                            data: chartData.map(function(d){ return d.views; }),
                             backgroundColor: '#006599',
                             borderRadius: 6,
                             borderSkipped: false,
-                        }] 
-                    }, 
-                    options: { 
-                        responsive: true, 
-                        maintainAspectRatio: false, 
-                        plugins: { legend: { display: false } }, 
-                        scales: { 
-                            y: { beginAtZero: true, grid: { display: false } }, 
-                            x: { grid: { display: false } } 
-                        } 
-                    } 
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { display: false } },
+                            x: { grid: { display: false } }
+                        }
+                    }
                 });
-            }
-        });
+            }); });
+        })();
         </script>
         <?php
     }
