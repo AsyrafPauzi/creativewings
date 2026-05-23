@@ -411,9 +411,9 @@ class CW_Shop {
                     let hint = '';
                     if (rowNum === 1 && cwConfig.use_account_fullname && cwConfig.account_full_name) {
                         nameVal = cwConfig.account_full_name.replace(/"/g, '&quot;');
-                        hint = '<p style="font-size:12px;color:#64748b;margin:4px 0 8px;">Prefilled from your account — edit if needed.</p>';
+                        hint = '<p style="font-size:12px;color:#555555;margin:4px 0 8px;">Prefilled from your account — edit if needed.</p>';
                     } else if (rowNum > 1 && cwConfig.use_account_fullname) {
-                        hint = '<p style="font-size:12px;color:#64748b;margin:4px 0 8px;">Enter full name for this participant (certificate).</p>';
+                        hint = '<p style="font-size:12px;color:#555555;margin:4px 0 8px;">Enter full name for this participant (certificate).</p>';
                     }
                     nameField = `<div class="cw-field-row"><label>Full Name <span style="color:red">*</span></label>${hint}<input type="text" class="cw-frontend-input cw-input-name" value="${nameVal}" required style="width:100%"></div>`;
                 } else {

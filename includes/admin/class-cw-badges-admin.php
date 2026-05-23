@@ -72,19 +72,19 @@ class CW_Badges_Admin {
 
             <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:12px;margin:18px 0;">
                 <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;">
-                    <div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.06em;">
+                    <div style="font-size:11px;color:#555555;text-transform:uppercase;font-weight:700;letter-spacing:0.06em;">
                         <?php esc_html_e( 'Total badges in catalog', 'creativewings-core' ); ?>
                     </div>
                     <div style="font-size:26px;font-weight:800;color:#0f172a;"><?php echo (int) count( $catalog ); ?></div>
                 </div>
                 <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;">
-                    <div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.06em;">
+                    <div style="font-size:11px;color:#555555;text-transform:uppercase;font-weight:700;letter-spacing:0.06em;">
                         <?php esc_html_e( 'Total awarded (rows)', 'creativewings-core' ); ?>
                     </div>
                     <div style="font-size:26px;font-weight:800;color:#0f172a;"><?php echo (int) $total_rows; ?></div>
                 </div>
                 <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;">
-                    <div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.06em;">
+                    <div style="font-size:11px;color:#555555;text-transform:uppercase;font-weight:700;letter-spacing:0.06em;">
                         <?php esc_html_e( 'Recent awards', 'creativewings-core' ); ?>
                     </div>
                     <div style="font-size:26px;font-weight:800;color:#0f172a;"><?php echo (int) count( $recent ); ?></div>

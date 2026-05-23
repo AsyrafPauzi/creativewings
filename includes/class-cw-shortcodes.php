@@ -386,7 +386,7 @@ class CW_Shortcodes {
         .cws-cats { display: flex; flex-wrap: wrap; gap: 8px; }
         .cws-cat-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 50px; font-size: 13px; font-weight: 600; border: 1.5px solid rgba(255,255,255,0.4); background: rgba(255,255,255,0.15); color: #fff; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
         .cws-cat-btn:hover { background: rgba(255,255,255,0.3); }
-        .cws-cat-btn.active { background: #fff; color: #006599; border-color: #fff; box-shadow: 0 3px 10px rgba(0,0,0,0.15); }
+        .cws-cat-btn.active { background: #fff; color: #125B9A; border-color: #fff; box-shadow: 0 3px 10px rgba(0,0,0,0.15); }
         .cws-cat-btn i { font-size: 12px; }
 
         /* Input row */
@@ -396,8 +396,8 @@ class CW_Shortcodes {
         .cws-input { width: 100%; padding: 13px 16px 13px 44px; border-radius: 12px; border: 1.5px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.18); color: #fff; font-size: 15px; font-family: inherit; outline: none; transition: border-color 0.2s; box-sizing: border-box; }
         .cws-input::placeholder { color: rgba(255,255,255,0.6); }
         .cws-input:focus { border-color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.25); }
-        .cws-submit { display: inline-flex; align-items: center; gap: 8px; padding: 13px 24px; border-radius: 12px; background: #fff; color: #006599; font-size: 14px; font-weight: 700; border: none; cursor: pointer; white-space: nowrap; transition: all 0.2s; font-family: inherit; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
-        .cws-submit:hover { background: #f0f9ff; transform: translateY(-1px); }
+        .cws-submit { display: inline-flex; align-items: center; gap: 8px; padding: 13px 24px; border-radius: 12px; background: #fff; color: #125B9A; font-size: 14px; font-weight: 700; border: none; cursor: pointer; white-space: nowrap; transition: all 0.2s; font-family: inherit; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+        .cws-submit:hover { background: #EEF5FB; transform: translateY(-1px); }
 
         /* Mobile */
         @media (max-width: 600px) {
@@ -607,8 +607,8 @@ class CW_Shortcodes {
         }
 
         // ── Chip colour map ───────────────────────────────────────────────────
-        $chip_map = ['competition'=>'#7c3aed','seminar'=>'#0d9488','running'=>'#f59e0b','community'=>'#006599','workshop'=>'#d97706','volunteer'=>'#22c55e','activity'=>'#006599'];
-        $chip_color = $chip_map[$cat_type] ?? '#006599';
+        $chip_map = ['competition'=>'#7c3aed','seminar'=>'#0d9488','running'=>'#f59e0b','community'=>'#125B9A','workshop'=>'#d97706','volunteer'=>'#22c55e','activity'=>'#125B9A'];
+        $chip_color = $chip_map[$cat_type] ?? '#125B9A';
 
         $current_url = ( is_ssl() ? 'https' : 'http' ) . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
 
@@ -1155,8 +1155,18 @@ class CW_Shortcodes {
                             endif; ?>
 
                             <script>
+                            /*
+                             * Each entry: { full, alt, msg }.
+                             * `alt` stays as a generic "Anonymous submission" for the <img>
+                             * accessibility name; `msg` is the participant's checkout
+                             * message and is what the lightbox caption renders.
+                             */
                             window.cwdPublicSubmissions = <?php echo wp_json_encode( array_values( array_map( function ( $r ) {
-                                return [ 'full' => $r['full'], 'alt' => $r['msg'] ?: '' ];
+                                return [
+                                    'full' => $r['full'],
+                                    'alt'  => __( 'Anonymous submission', 'creativewings-core' ),
+                                    'msg'  => $r['msg'] ?: '',
+                                ];
                             }, $pub_rows ) ) ); ?>;
                             </script>
                         <?php endif; ?>
@@ -1306,6 +1316,10 @@ class CW_Shortcodes {
             <figure class="cwd-gallery-lb-figure">
                 <img id="cwd-gallery-lb-img" src="" alt="">
                 <figcaption class="cwd-gallery-lb-counter" id="cwd-gallery-lb-counter"></figcaption>
+                <blockquote class="cwd-gallery-lb-caption" id="cwd-gallery-lb-caption" hidden>
+                    <i class="fas fa-quote-left" aria-hidden="true"></i>
+                    <span id="cwd-gallery-lb-caption-text"></span>
+                </blockquote>
             </figure>
             <button type="button" class="cwd-gallery-lb-nav cwd-gallery-lb-next" aria-label="Next image" onclick="cwdGalleryStep(1)"><i class="fas fa-chevron-right"></i></button>
         </div>
@@ -1320,10 +1334,29 @@ class CW_Shortcodes {
                 var lb = document.getElementById('cwd-gallery-lightbox');
                 var img = document.getElementById('cwd-gallery-lb-img');
                 var counter = document.getElementById('cwd-gallery-lb-counter');
+                var caption = document.getElementById('cwd-gallery-lb-caption');
+                var captionText = document.getElementById('cwd-gallery-lb-caption-text');
                 if (!lb || !img) return;
-                img.src = images[current].full;
-                img.alt = images[current].alt || '';
+                var item = images[current] || {};
+                img.src = item.full;
+                img.alt = item.alt || '';
                 if (counter) counter.textContent = (current + 1) + ' / ' + images.length;
+                // Caption: prefer the explicit `msg` (Public Submissions), fall back
+                // to `alt` for the WooCommerce gallery where the alt text is the
+                // image description and is worth surfacing too. Skip empty strings.
+                if (caption && captionText) {
+                    var msg = (item.msg || '').toString().trim();
+                    if (!msg && item.alt && (item.alt + '').trim() !== 'Anonymous submission') {
+                        msg = (item.alt + '').trim();
+                    }
+                    if (msg) {
+                        captionText.textContent = msg;
+                        caption.hidden = false;
+                    } else {
+                        captionText.textContent = '';
+                        caption.hidden = true;
+                    }
+                }
                 lb.style.display = 'flex';
                 document.body.style.overflow = 'hidden';
                 var prev = lb.querySelector('.cwd-gallery-lb-prev');
@@ -1677,8 +1710,8 @@ class CW_Shortcodes {
                             <i class="fas fa-times"></i> Cancel
                         </button>
                         <button type="submit" class="cwd-cta-btn cwd-cta-join cwd-reg-submit-primary" id="cwd-reg-submit"
-                            style="background:#fff;background-image:none;color:#0f172a;-webkit-text-fill-color:#0f172a;border:2px solid #006599;box-shadow:0 2px 10px rgba(0,101,153,.12);">
-                            <i class="fas fa-paper-plane" style="color:#0f172a;-webkit-text-fill-color:#0f172a;"></i> Submit &amp; Proceed
+                            style="background:#fff;background-image:none;color:#1A1A1A;-webkit-text-fill-color:#1A1A1A;border:2px solid #125B9A;box-shadow:0 2px 10px rgba(18, 91, 154, .12);">
+                            <i class="fas fa-paper-plane" style="color:#1A1A1A;-webkit-text-fill-color:#1A1A1A;"></i> Submit &amp; Proceed
                         </button>
                     </div>
                 </form>

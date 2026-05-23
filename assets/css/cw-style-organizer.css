@@ -5,14 +5,14 @@
    ===================================================================== */
 
 .cw-org-page {
-    --cw-org-primary: var(--cw-primary, #006599);
-    --cw-org-primary-hover: var(--cw-primary-hover, #005480);
-    --cw-org-primary-soft: var(--cw-primary-light, #e0f2fe);
-    --cw-org-accent: #FE6261;
-    --cw-org-text: #0f172a;
-    --cw-org-text-soft: var(--cw-text-soft, #64748b);
-    --cw-org-border: #e5eaf2;
-    --cw-org-bg: #f4f6f9;
+    --cw-org-primary: var(--cw-primary, #125B9A);
+    --cw-org-primary-hover: var(--cw-primary-hover, #0E4A7E);
+    --cw-org-primary-soft: var(--cw-primary-light, #E3EEF7);
+    --cw-org-accent: var(--cw-accent, #F05A7E);
+    --cw-org-text: var(--cw-text, #1A1A1A);
+    --cw-org-text-soft: var(--cw-text-soft, #555555);
+    --cw-org-border: var(--cw-border, #E5E9EF);
+    --cw-org-bg: var(--cw-bg, #F8F9FB);
     --cw-org-card-bg: #ffffff;
     --cw-org-radius: 16px;
     --cw-org-radius-sm: 10px;
@@ -46,12 +46,12 @@
 .cw-org-page .cw-org-hero {
     position: relative;
     width: 100%;
-    height: 220px;
+    height: 200px;
     overflow: hidden;
-    background: linear-gradient(135deg, #00466b 0%, var(--cw-org-primary) 55%, #0089cc 100%);
+    background: var(--cw-gradient-brand);
 }
 .cw-org-page .cw-org-hero.no-cover {
-    background: linear-gradient(135deg, #00466b 0%, var(--cw-org-primary) 55%, #0089cc 100%);
+    background: var(--cw-gradient-brand);
 }
 .cw-org-page .cw-org-hero-bg {
     position: absolute; inset: 0;
@@ -64,29 +64,45 @@
     background: linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.45) 55%, rgba(0,0,0,0.78) 100%);
 }
 
-/* ── 2. Identity row ──────────────────────────────────────────────── */
-.cw-org-page .cw-org-identity {
+/* ── 2. Identity card ──────────────────────────────────────────────
+   One unified card holding the logo on the left and the name / tagline /
+   pills / CTAs on the right. Replaces the old two-card layout (logo card +
+   identity card) which was visually heavy and broke alignment on mobile.
+   ───────────────────────────────────────────────────────────────── */
+.cw-org-page .cw-org-identity-card {
     position: relative;
-    margin-top: -68px;
-    display: flex;
-    align-items: flex-end;
-    gap: 20px;
-    flex-wrap: wrap;
+    margin-top: -56px;
     z-index: 1;
-    padding-bottom: 4px;
+    display: flex;
+    align-items: stretch;
+    gap: 18px;
+    padding: 16px 20px 16px 18px;
+    background: #ffffff;
+    border: 1px solid var(--cw-org-border);
+    border-radius: 16px;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.10);
+    overflow: hidden;
+}
+.cw-org-page .cw-org-identity-card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--cw-org-accent) 0%, #2D7BC7 55%, var(--cw-org-primary) 100%);
 }
 
-.cw-org-page .cw-org-logo-card {
-    width: 104px;
-    height: 104px;
-    border-radius: 16px;
+.cw-org-page .cw-org-logo-slot {
+    flex: 0 0 96px;
+    width: 96px;
+    height: 96px;
+    border-radius: 12px;
     background: #fff;
-    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.12);
-    padding: 10px;
+    border: 1px solid var(--cw-org-border);
+    padding: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
+    align-self: center;
 }
 .cw-org-page .cw-org-logo {
     max-width: 100%;
@@ -103,26 +119,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 12px;
+    border-radius: 10px;
 }
 
-.cw-org-page .cw-org-identity-text {
+.cw-org-page .cw-org-identity-body {
     flex: 1 1 320px;
+    min-width: 0;
     color: var(--cw-org-text);
-    padding: 18px 22px 16px;
-    border-radius: 16px;
-    background: #ffffff;
-    border: 1px solid var(--cw-org-border);
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.10);
-    position: relative;
-    overflow: hidden;
-}
-.cw-org-page .cw-org-identity-text::before {
-    content: "";
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, var(--cw-org-primary) 0%, #0089cc 50%, var(--cw-org-accent) 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }
 .cw-org-page .cw-org-name-row {
     display: flex;
@@ -132,7 +138,7 @@
     margin: 0 0 4px;
 }
 .cw-org-page .cw-org-name {
-    font-size: 28px;
+    font-size: 24px;
     font-weight: 800;
     line-height: 1.15;
     color: var(--cw-org-text);
@@ -156,12 +162,12 @@
     flex-shrink: 0;
 }
 .cw-org-page .cw-org-tagline {
-    font-size: 14.5px;
+    font-size: 13.5px;
     color: var(--cw-org-text-soft);
-    margin: 0 0 12px;
+    margin: 0 0 8px;
     max-width: 720px;
     text-shadow: none;
-    line-height: 1.5;
+    line-height: 1.45;
 }
 .cw-org-page .cw-org-meta-row {
     display: flex;
@@ -218,7 +224,7 @@
 .cw-org-page .cw-org-btn--primary {
     background: var(--cw-org-primary);
     color: #fff;
-    box-shadow: 0 8px 20px rgba(0, 101, 153, 0.25);
+    box-shadow: 0 8px 20px rgba(18, 91, 154, 0.25);
 }
 .cw-org-page .cw-org-btn--primary:hover {
     background: var(--cw-org-primary-hover);
@@ -242,14 +248,14 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
-    padding: 10px 16px;
-    margin: 14px 0 0;
+    gap: 8px;
+    padding: 8px 14px;
+    margin: 10px 0 0;
     background: #ffffff;
     border: 1px solid var(--cw-org-border);
-    border-radius: 12px;
+    border-radius: 10px;
     box-shadow: var(--cw-org-shadow);
-    font-size: 12.5px;
+    font-size: 12px;
     color: var(--cw-org-text);
 }
 .cw-org-page .cw-org-trust-item {
@@ -270,99 +276,89 @@
     user-select: none;
 }
 
-/* ── 3. KPI tiles ─────────────────────────────────────────────────── */
-.cw-org-page .cw-org-kpi-row {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 10px;
-    margin: 16px 0 16px;
-}
-.cw-org-page .cw-org-kpi {
+/* ── 3. KPI strip ──────────────────────────────────────────────────
+   Inline strip: one row, divider between items, no per-tile cards.
+   Each item is just value-above-label centered inside its slot.
+   ───────────────────────────────────────────────────────────────── */
+.cw-org-page .cw-org-kpi-strip {
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
     background: var(--cw-org-card-bg);
     border: 1px solid var(--cw-org-border);
     border-radius: var(--cw-org-radius-sm);
     box-shadow: var(--cw-org-shadow);
-    padding: 14px 14px 12px;
-    display: grid;
-    grid-template-columns: 36px 1fr;
-    grid-template-rows: auto auto;
-    column-gap: 10px;
-    row-gap: 2px;
-    align-items: center;
-    min-height: 0;
-    position: relative;
-    transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
+    padding: 6px 4px;
+    margin: 12px 0 14px;
+    overflow: hidden;
 }
-.cw-org-page .cw-org-kpi:hover {
-    box-shadow: var(--cw-org-shadow-hover);
-    transform: translateY(-1px);
-    border-color: rgba(0, 101, 153, 0.18);
-}
-.cw-org-page .cw-org-kpi-icon {
-    grid-row: 1 / span 2;
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    display: inline-flex;
+.cw-org-page .cw-org-kpi-item {
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: center;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: var(--cw-org-primary-soft);
-    color: var(--cw-org-primary);
-    font-size: 15px;
+    gap: 4px;
+    border-right: 1px solid var(--cw-org-border);
+}
+.cw-org-page .cw-org-kpi-item:last-child {
+    border-right: 0;
+}
+.cw-org-page .cw-org-kpi-value {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--cw-org-text);
+    line-height: 1.1;
+    word-break: break-word;
+    letter-spacing: -0.01em;
 }
 .cw-org-page .cw-org-kpi-label {
-    grid-column: 2;
-    font-size: 10.5px;
-    font-weight: 800;
+    font-size: 11px;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--cw-org-text-soft);
     line-height: 1.2;
-}
-.cw-org-page .cw-org-kpi-value {
-    grid-column: 2;
-    font-size: 17px;
-    font-weight: 800;
-    color: var(--cw-org-text);
-    line-height: 1.2;
-    word-break: break-word;
 }
 
 /* ── 4. About + quick facts ──────────────────────────────────────── */
 .cw-org-page .cw-org-about-section {
     display: grid;
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-    gap: 14px;
-    margin: 0 0 16px;
+    gap: 12px;
+    margin: 0 0 12px;
 }
 .cw-org-page .cw-org-card {
     background: var(--cw-org-card-bg);
     border: 1px solid var(--cw-org-border);
     border-radius: var(--cw-org-radius);
     box-shadow: var(--cw-org-shadow);
-    padding: 16px 18px;
+    padding: 14px 16px;
 }
 .cw-org-page .cw-org-section-title {
-    font-size: 17px;
+    font-size: 15px;
     font-weight: 800;
     color: var(--cw-org-text);
-    margin: 0 0 10px;
+    margin: 0 0 8px;
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
 }
 .cw-org-page .cw-org-sub-title {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.6px;
     color: var(--cw-org-text-soft);
-    margin: 0 0 10px;
+    margin: 0 0 8px;
 }
 .cw-org-page .cw-org-about-body {
-    font-size: 14px;
-    line-height: 1.6;
+    font-size: 13.5px;
+    line-height: 1.55;
     color: #334155;
 }
 .cw-org-page .cw-org-about-body p { margin: 0 0 10px; }
@@ -402,60 +398,86 @@
     word-break: break-word;
 }
 
-/* ── 5. Contact card ─────────────────────────────────────────────── */
-.cw-org-page .cw-org-contact-card { margin: 0 0 16px; }
-.cw-org-page .cw-org-contact-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-    gap: 18px;
-}
-.cw-org-page .cw-org-contact-rows { display: flex; flex-direction: column; gap: 8px; }
-.cw-org-page .cw-org-contact-row {
+/* ── 5. Contact card ──────────────────────────────────────────────
+   Two-column inline grid of icon + value pairs (Phone, Email, Website,
+   Address). Address spans both columns since it's typically long.
+   Share row sits below as a slim icon-only ribbon.
+   ───────────────────────────────────────────────────────────────── */
+.cw-org-page .cw-org-contact-card { margin: 0 0 12px; padding: 14px 16px; }
+.cw-org-page .cw-org-contact-title {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 9px 12px;
+    gap: 8px;
+    margin: 0 0 10px;
+}
+.cw-org-page .cw-org-contact-title i { color: var(--cw-org-primary); }
+.cw-org-page .cw-org-contact-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 14px;
+    row-gap: 8px;
+}
+.cw-org-page .cw-org-contact-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 12px;
     background: #f8fafc;
     border-radius: var(--cw-org-radius-sm);
     border: 1px solid var(--cw-org-border);
-    font-size: 13.5px;
+    font-size: 13px;
+    color: var(--cw-org-text);
+    line-height: 1.4;
+    min-width: 0;
 }
-.cw-org-page .cw-org-contact-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--cw-org-text-soft);
-    font-weight: 700;
-    font-size: 12.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-}
-.cw-org-page .cw-org-contact-label i {
+.cw-org-page .cw-org-contact-item--wide { grid-column: 1 / -1; }
+.cw-org-page .cw-org-contact-item > i {
     color: var(--cw-org-primary);
     font-size: 13px;
+    margin-top: 2px;
+    flex-shrink: 0;
 }
-.cw-org-page .cw-org-contact-value {
-    color: var(--cw-org-text);
-    font-weight: 700;
-    text-align: right;
+.cw-org-page .cw-org-contact-item a,
+.cw-org-page .cw-org-contact-item span {
+    color: inherit;
+    font-weight: 600;
     word-break: break-word;
+    min-width: 0;
+    flex: 1 1 auto;
 }
-a.cw-org-contact-value { color: var(--cw-org-primary); }
-a.cw-org-contact-value:hover { text-decoration: underline; }
+.cw-org-page .cw-org-contact-item a { color: var(--cw-org-primary); text-decoration: none; }
+.cw-org-page .cw-org-contact-item a:hover { text-decoration: underline; }
 
-/* Share */
+/* Share row */
 .cw-org-page .cw-org-share { position: relative; }
-.cw-org-page .cw-org-share-row {
+.cw-org-page .cw-org-share--compact {
     display: flex;
+    align-items: center;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--cw-org-border);
+}
+.cw-org-page .cw-org-share-label {
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--cw-org-text-soft);
+    margin-right: 4px;
 }
 .cw-org-page .cw-org-share-btn {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
-    padding: 8px 14px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
     border-radius: 999px;
     background: #f1f5f9;
     color: #334155;
@@ -496,7 +518,7 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin: 0 0 16px;
+    margin: 0 0 12px;
 }
 .cw-org-page .cw-org-social {
     display: inline-flex;
@@ -525,14 +547,14 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
 .cw-org-page .cw-org-social[data-net="tiktok"]:hover    { background: #000;    border-color: #000;    }
 
 /* ── 7. Campaigns section ────────────────────────────────────────── */
-.cw-org-page .cw-org-campaigns { margin: 4px 0 20px; }
+.cw-org-page .cw-org-campaigns { margin: 4px 0 16px; }
 .cw-org-page .cw-org-campaigns-head {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    margin: 0 0 14px;
+    gap: 10px;
+    margin: 0 0 10px;
 }
 .cw-org-page .cw-org-count {
     font-size: 14px;
@@ -582,7 +604,7 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
 .cw-org-page .cw-org-campaign-card:hover {
     transform: translateY(-4px);
     box-shadow: var(--cw-org-shadow-hover);
-    border-color: rgba(0, 101, 153, 0.18);
+    border-color: rgba(18, 91, 154, 0.18);
 }
 .cw-org-page .cw-org-campaign-thumb {
     position: relative;
@@ -747,7 +769,7 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
 /* ── 8. Footer CTA strip ─────────────────────────────────────────── */
 .cw-org-page .cw-org-footer-cta {
     margin-top: 8px;
-    background: linear-gradient(135deg, #00466b 0%, var(--cw-org-primary) 50%, #0089cc 100%);
+    background: var(--cw-gradient-brand);
     border-radius: var(--cw-org-radius);
     color: #fff;
     padding: 22px 24px;
@@ -761,7 +783,7 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
     inset: 0;
     background:
         radial-gradient(circle at 12% 18%, rgba(255,255,255,0.10) 0%, transparent 30%),
-        radial-gradient(circle at 90% 80%, rgba(254, 98, 97, 0.15) 0%, transparent 40%);
+        radial-gradient(circle at 90% 80%, rgba(240, 90, 126, 0.15) 0%, transparent 40%);
     pointer-events: none;
 }
 .cw-org-page .cw-org-footer-cta-inner { position: relative; z-index: 1; }
@@ -795,31 +817,28 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
 
 /* ── Responsive ──────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
-    .cw-org-page .cw-org-kpi-row { grid-template-columns: repeat(3, 1fr); }
     .cw-org-page .cw-org-campaign-grid { grid-template-columns: repeat(2, 1fr); }
     .cw-org-page .cw-org-about-section { grid-template-columns: 1fr; }
-    .cw-org-page .cw-org-contact-grid { grid-template-columns: 1fr; }
+    .cw-org-page .cw-org-contact-list { grid-template-columns: 1fr; }
     .cw-org-page .cw-org-share-toast { bottom: -26px; }
     .cw-org-page .cw-org-name { font-size: 25px; }
 }
 
 @media (max-width: 768px) {
     .cw-org-page .cw-org-hero { height: 180px; }
-    .cw-org-page .cw-org-identity {
+    .cw-org-page .cw-org-identity-card {
         flex-direction: column;
         align-items: flex-start;
         margin-top: -54px;
         gap: 12px;
+        padding: 14px 14px;
     }
-    .cw-org-page .cw-org-identity-text {
+    .cw-org-page .cw-org-logo-slot {
+        align-self: flex-start;
+    }
+    .cw-org-page .cw-org-identity-body {
         flex-basis: auto;
         width: 100%;
-        color: var(--cw-org-text);
-        padding: 0;
-        background: transparent;
-        box-shadow: none;
-        border-radius: 0;
-        border: 0;
     }
     .cw-org-page .cw-org-name { color: var(--cw-org-text); text-shadow: none; font-size: 22px; }
     .cw-org-page .cw-org-tagline { color: var(--cw-org-text-soft); text-shadow: none; }
@@ -830,7 +849,19 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
         color: var(--cw-org-text);
         border-color: var(--cw-org-border);
     }
-    .cw-org-page .cw-org-kpi-row { grid-template-columns: repeat(2, 1fr); }
+    .cw-org-page .cw-org-kpi-strip {
+        flex-wrap: wrap;
+    }
+    .cw-org-page .cw-org-kpi-item {
+        flex: 1 1 calc(50% - 4px);
+        border-right: 0;
+        border-bottom: 1px solid var(--cw-org-border);
+        padding: 10px 8px;
+    }
+    .cw-org-page .cw-org-kpi-item:nth-last-child(-n+2) {
+        border-bottom: 0;
+    }
+    .cw-org-page .cw-org-kpi-value { font-size: 18px; }
     .cw-org-page .cw-org-campaign-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .cw-org-page .cw-org-footer-cta-inner { flex-direction: column; align-items: flex-start; }
     .cw-org-page .cw-org-trust-strip {
@@ -850,25 +881,24 @@ a.cw-org-contact-value:hover { text-decoration: underline; }
 @media (max-width: 480px) {
     .cw-org-page .cw-org-shell { padding: 0 14px; }
     .cw-org-page .cw-org-hero { height: 160px; }
-    .cw-org-page .cw-org-identity { margin-top: -46px; }
-    .cw-org-page .cw-org-logo-card { width: 84px; height: 84px; border-radius: 12px; padding: 8px; }
+    .cw-org-page .cw-org-identity-card { margin-top: -46px; }
+    .cw-org-page .cw-org-logo-slot { width: 84px; height: 84px; flex-basis: 84px; border-radius: 10px; padding: 6px; }
     .cw-org-page .cw-org-name { font-size: 20px; }
     .cw-org-page .cw-org-verified { width: 18px; height: 18px; font-size: 9px; }
     .cw-org-page .cw-org-tagline { font-size: 13px; margin-bottom: 8px; }
-    .cw-org-page .cw-org-kpi-row { grid-template-columns: 1fr; }
-    .cw-org-page .cw-org-kpi { grid-template-columns: 32px 1fr; column-gap: 10px; padding: 12px; }
-    .cw-org-page .cw-org-kpi-icon { width: 32px; height: 32px; font-size: 13px; }
-    .cw-org-page .cw-org-kpi-value { font-size: 16px; }
+    .cw-org-page .cw-org-kpi-item { flex: 1 1 100%; padding: 8px 6px; }
+    .cw-org-page .cw-org-kpi-item:not(:last-child) {
+        border-right: 0;
+        border-bottom: 1px solid var(--cw-org-border);
+    }
+    .cw-org-page .cw-org-kpi-value { font-size: 17px; }
     .cw-org-page .cw-org-card { padding: 14px 14px; }
     .cw-org-page .cw-org-section-title { font-size: 16px; margin-bottom: 8px; }
     .cw-org-page .cw-org-campaign-grid { grid-template-columns: 1fr; gap: 12px; }
     .cw-org-page .cw-org-footer-cta { padding: 16px 16px; }
     .cw-org-page .cw-org-footer-cta h3 { font-size: 16px; }
-    .cw-org-page .cw-org-contact-row {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 4px;
+    .cw-org-page .cw-org-contact-item {
+        padding: 8px 10px;
     }
-    .cw-org-page .cw-org-contact-value { text-align: left; }
     .cw-org-page .cw-org-footer-cta { padding: 22px 18px; }
 }

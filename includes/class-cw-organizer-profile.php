@@ -251,14 +251,21 @@ class CW_Organizer_Profile {
         $participants_map   = $this->get_participants_map( $campaign_pids );
         $total_participants = (int) array_sum( $participants_map );
 
-        // Sum of declared prize pools across all campaigns (in store currency).
-        $total_prize_value = 0.0;
-        foreach ( $campaigns as $c ) {
-            $raw = (string) get_post_meta( (int) $c->ID, 'cw_total_prize_value', true );
-            if ( $raw !== '' ) {
-                $total_prize_value += (float) preg_replace( '/[^0-9.]/', '', $raw );
-            }
-        }
+        // Total prizes actually awarded to winners.
+        //
+        // We intentionally do NOT use the campaign's `cw_total_prize_value`
+        // meta (free-text "prize pool"): that field accepts any number an
+        // organizer types in, so a test/typo value like "100,000,000" would
+        // inflate this KPI for everyone visiting the public profile (see the
+        // RM100,002,026.00 bug). The declared pool stays available in the
+        // editor for organizer reference but is no longer surfaced publicly.
+        //
+        // Logic: for each campaign, build a rank-token lookup over the prizes
+        // repeater (`prize_title` → first matched description), then query
+        // winners (winner_status='yes') and accumulate the currency amount
+        // parsed from each matched prize description.
+        $total_prize_value  = $this->compute_awarded_prize_total( $campaign_pids );
+        $awarded_winners    = $this->count_awarded_winners( $campaign_pids );
         $total_prize_display = '';
         if ( $total_prize_value > 0 ) {
             if ( function_exists( 'wc_price' ) ) {
@@ -350,51 +357,31 @@ class CW_Organizer_Profile {
             ];
         }
 
-        // ── KPI tiles ───────────────────────────────────────────────
+        // ── KPI strip ───────────────────────────────────────────────
+        // Inline strip with up to four data points: Campaigns, Participants,
+        // Total Prizes (awarded), Years Active. Team Size / Industry / Location
+        // are intentionally omitted — they already appear in the identity pills
+        // and Quick Facts sidebar, so repeating them as full KPI tiles was visually
+        // noisy and duplicative.
         $kpis = [];
         $kpis[] = [
-            'icon'  => 'fas fa-bullhorn',
             'label' => __( 'Campaigns', 'creativewings-core' ),
             'value' => number_format_i18n( $campaign_count ),
         ];
         $kpis[] = [
-            'icon'  => 'fas fa-users',
             'label' => __( 'Participants', 'creativewings-core' ),
             'value' => number_format_i18n( $total_participants ),
         ];
         if ( $total_prize_display !== '' ) {
             $kpis[] = [
-                'icon'  => 'fas fa-trophy',
                 'label' => __( 'Total Prizes', 'creativewings-core' ),
                 'value' => $total_prize_display,
             ];
         }
         if ( $years_active > 0 ) {
             $kpis[] = [
-                'icon'  => 'fas fa-history',
                 'label' => __( 'Years Active', 'creativewings-core' ),
                 'value' => number_format_i18n( $years_active ),
-            ];
-        }
-        if ( $team_size !== '' ) {
-            $kpis[] = [
-                'icon'  => 'fas fa-user-tie',
-                'label' => __( 'Team Size', 'creativewings-core' ),
-                'value' => esc_html( $team_size ),
-            ];
-        }
-        if ( $industry !== '' ) {
-            $kpis[] = [
-                'icon'  => 'fas fa-briefcase',
-                'label' => __( 'Industry', 'creativewings-core' ),
-                'value' => esc_html( $industry ),
-            ];
-        }
-        if ( $location !== '' ) {
-            $kpis[] = [
-                'icon'  => 'fas fa-map-marker-alt',
-                'label' => __( 'Location', 'creativewings-core' ),
-                'value' => esc_html( $location ),
             ];
         }
 
@@ -439,9 +426,9 @@ class CW_Organizer_Profile {
 
             <div class="cw-org-shell">
 
-                <!-- Identity row overlapping hero -->
-                <section class="cw-org-identity">
-                    <div class="cw-org-logo-card">
+                <!-- Identity card overlapping hero — logo + identity merged into one card -->
+                <section class="cw-org-identity-card">
+                    <div class="cw-org-logo-slot">
                         <?php if ( $logo_url ) : ?>
                             <?php
                             $logo_alt = sprintf( __( '%s logo', 'creativewings-core' ), $display_name );
@@ -455,7 +442,7 @@ class CW_Organizer_Profile {
                             <span class="cw-org-logo-fallback" aria-hidden="true"><?php echo esc_html( mb_strtoupper( mb_substr( $display_name, 0, 1 ) ) ); ?></span>
                         <?php endif; ?>
                     </div>
-                    <div class="cw-org-identity-text">
+                    <div class="cw-org-identity-body">
                         <div class="cw-org-name-row">
                             <h1 class="cw-org-name"><?php echo esc_html( $display_name ); ?></h1>
                             <?php if ( $is_verified ) : ?>
@@ -514,8 +501,14 @@ class CW_Organizer_Profile {
                 if ( $total_participants > 0 ) {
                     $trust_items[] = [ 'icon' => 'fas fa-users', 'label' => sprintf( _n( '%s participant engaged', '%s participants engaged', $total_participants, 'creativewings-core' ), number_format_i18n( $total_participants ) ) ];
                 }
-                if ( $total_prize_display !== '' ) {
-                    $trust_items[] = [ 'icon' => 'fas fa-trophy', 'label' => sprintf( __( '%s in prizes awarded', 'creativewings-core' ), $total_prize_display ) ];
+                if ( $awarded_winners > 0 ) {
+                    $trust_items[] = [
+                        'icon'  => 'fas fa-trophy',
+                        'label' => sprintf(
+                            _n( '%s prize awarded', '%s prizes awarded', $awarded_winners, 'creativewings-core' ),
+                            number_format_i18n( $awarded_winners )
+                        ),
+                    ];
                 }
                 if ( $trust_items ) :
                 ?>
@@ -538,26 +531,23 @@ class CW_Organizer_Profile {
                     if ( ! empty( $org_badges ) ) :
                 ?>
                 <section class="cw-org-badges-row" aria-label="<?php esc_attr_e( 'Badges earned', 'creativewings-core' ); ?>">
-                    <h3 class="cw-org-sub-title" style="display:flex;align-items:center;gap:8px;margin:18px 0 10px;">
+                    <h3 class="cw-org-sub-title" style="display:flex;align-items:center;gap:6px;margin:10px 0 6px;">
                         <i class="fas fa-medal" style="color:#facc15;"></i> <?php esc_html_e( 'Badges earned', 'creativewings-core' ); ?>
-                        <span style="font-size:11px;color:#64748b;font-weight:600;background:#f1f5f9;padding:2px 8px;border-radius:999px;">
+                        <span style="font-size:11px;color:#555555;font-weight:600;background:#f1f5f9;padding:2px 8px;border-radius:999px;">
                             <?php echo (int) count( $org_badges ); ?>
                         </span>
                     </h3>
-                    <?php echo CW_Badges_Display::render_strip( $org_badges, 8, [ 'size' => 'md', 'show_label' => true, 'show_tier' => true ] ); ?>
+                    <?php echo CW_Badges_Display::render_strip( $org_badges, 8, [ 'size' => 'sm', 'show_label' => false, 'show_tier' => false ] ); ?>
                 </section>
                 <?php endif; } ?>
 
-                <!-- 2. KPI tiles -->
+                <!-- 2. KPI strip — inline metrics with dividers, no per-tile chrome -->
                 <?php if ( $kpis ) : ?>
-                <section class="cw-org-kpi-row" aria-label="<?php esc_attr_e( 'At a glance', 'creativewings-core' ); ?>">
+                <section class="cw-org-kpi-strip" aria-label="<?php esc_attr_e( 'At a glance', 'creativewings-core' ); ?>">
                     <?php foreach ( $kpis as $tile ) : ?>
-                        <div class="cw-org-kpi">
-                            <?php if ( ! empty( $tile['icon'] ) ) : ?>
-                                <span class="cw-org-kpi-icon" aria-hidden="true"><i class="<?php echo esc_attr( $tile['icon'] ); ?>"></i></span>
-                            <?php endif; ?>
-                            <span class="cw-org-kpi-label"><?php echo esc_html( $tile['label'] ); ?></span>
+                        <div class="cw-org-kpi-item">
                             <span class="cw-org-kpi-value"><?php echo esc_html( wp_strip_all_tags( $tile['value'] ) ); ?></span>
+                            <span class="cw-org-kpi-label"><?php echo esc_html( $tile['label'] ); ?></span>
                         </div>
                     <?php endforeach; ?>
                 </section>
@@ -593,53 +583,49 @@ class CW_Organizer_Profile {
                 if ( $has_contact ) :
                 ?>
                 <section class="cw-org-card cw-org-contact-card" aria-label="<?php esc_attr_e( 'Contact', 'creativewings-core' ); ?>">
-                    <div class="cw-org-contact-grid">
-                        <div class="cw-org-contact-rows">
-                            <h3 class="cw-org-sub-title"><?php esc_html_e( 'Get in touch', 'creativewings-core' ); ?></h3>
-                            <?php if ( $phone_display !== '' ) : ?>
-                                <div class="cw-org-contact-row">
-                                    <span class="cw-org-contact-label"><i class="fas fa-phone" aria-hidden="true"></i> <?php esc_html_e( 'Phone', 'creativewings-core' ); ?></span>
-                                    <a class="cw-org-contact-value" href="tel:<?php echo esc_attr( preg_replace( '/[^\d+]/', '', $phone_display ) ); ?>"><?php echo esc_html( $phone_display ); ?></a>
-                                </div>
-                            <?php endif; ?>
-                            <?php if ( $email !== '' ) : ?>
-                                <div class="cw-org-contact-row">
-                                    <span class="cw-org-contact-label"><i class="fas fa-envelope" aria-hidden="true"></i> <?php esc_html_e( 'Email', 'creativewings-core' ); ?></span>
-                                    <a class="cw-org-contact-value" href="mailto:<?php echo esc_attr( $email ); ?>"><?php echo esc_html( $email ); ?></a>
-                                </div>
-                            <?php endif; ?>
-                            <?php if ( $website !== '' ) : ?>
-                                <div class="cw-org-contact-row">
-                                    <span class="cw-org-contact-label"><i class="fas fa-globe" aria-hidden="true"></i> <?php esc_html_e( 'Website', 'creativewings-core' ); ?></span>
-                                    <a class="cw-org-contact-value" href="<?php echo esc_url( $website ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( wp_parse_url( $website, PHP_URL_HOST ) ?: $website ); ?></a>
-                                </div>
-                            <?php endif; ?>
-                            <?php if ( $address !== '' ) : ?>
-                                <div class="cw-org-contact-row">
-                                    <span class="cw-org-contact-label"><i class="fas fa-map-marker-alt" aria-hidden="true"></i> <?php esc_html_e( 'Address', 'creativewings-core' ); ?></span>
-                                    <span class="cw-org-contact-value"><?php echo esc_html( $address ); ?></span>
-                                </div>
-                            <?php endif; ?>
-                        </div>
+                    <h3 class="cw-org-sub-title cw-org-contact-title"><i class="fas fa-headset" aria-hidden="true"></i> <?php esc_html_e( 'Get in touch', 'creativewings-core' ); ?></h3>
+                    <ul class="cw-org-contact-list">
+                        <?php if ( $phone_display !== '' ) : ?>
+                            <li class="cw-org-contact-item">
+                                <i class="fas fa-phone" aria-hidden="true"></i>
+                                <a href="tel:<?php echo esc_attr( preg_replace( '/[^\d+]/', '', $phone_display ) ); ?>"><?php echo esc_html( $phone_display ); ?></a>
+                            </li>
+                        <?php endif; ?>
+                        <?php if ( $email !== '' ) : ?>
+                            <li class="cw-org-contact-item">
+                                <i class="fas fa-envelope" aria-hidden="true"></i>
+                                <a href="mailto:<?php echo esc_attr( $email ); ?>"><?php echo esc_html( $email ); ?></a>
+                            </li>
+                        <?php endif; ?>
+                        <?php if ( $website !== '' ) : ?>
+                            <li class="cw-org-contact-item">
+                                <i class="fas fa-globe" aria-hidden="true"></i>
+                                <a href="<?php echo esc_url( $website ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( wp_parse_url( $website, PHP_URL_HOST ) ?: $website ); ?></a>
+                            </li>
+                        <?php endif; ?>
+                        <?php if ( $address !== '' ) : ?>
+                            <li class="cw-org-contact-item cw-org-contact-item--wide">
+                                <i class="fas fa-map-marker-alt" aria-hidden="true"></i>
+                                <span><?php echo esc_html( $address ); ?></span>
+                            </li>
+                        <?php endif; ?>
+                    </ul>
 
-                        <div class="cw-org-share">
-                            <h3 class="cw-org-sub-title"><?php esc_html_e( 'Share this profile', 'creativewings-core' ); ?></h3>
-                            <div class="cw-org-share-row">
-                                <button type="button" class="cw-org-share-btn cw-org-share-copy" data-url="<?php echo esc_attr( $profile_url ); ?>" aria-label="<?php esc_attr_e( 'Copy profile link', 'creativewings-core' ); ?>">
-                                    <i class="fas fa-link" aria-hidden="true"></i> <?php esc_html_e( 'Copy link', 'creativewings-core' ); ?>
-                                </button>
-                                <a class="cw-org-share-btn cw-org-share-wa" href="<?php echo esc_url( $share_wa ); ?>" target="_blank" rel="noopener">
-                                    <i class="fab fa-whatsapp" aria-hidden="true"></i> <?php esc_html_e( 'WhatsApp', 'creativewings-core' ); ?>
-                                </a>
-                                <a class="cw-org-share-btn cw-org-share-fb" href="<?php echo esc_url( $share_fb ); ?>" target="_blank" rel="noopener">
-                                    <i class="fab fa-facebook-f" aria-hidden="true"></i> <?php esc_html_e( 'Facebook', 'creativewings-core' ); ?>
-                                </a>
-                                <a class="cw-org-share-btn cw-org-share-x" href="<?php echo esc_url( $share_tw ); ?>" target="_blank" rel="noopener">
-                                    <i class="fab fa-twitter" aria-hidden="true"></i> <?php esc_html_e( 'X', 'creativewings-core' ); ?>
-                                </a>
-                            </div>
-                            <div class="cw-org-share-toast" role="status" aria-live="polite"><?php esc_html_e( 'Copied!', 'creativewings-core' ); ?></div>
-                        </div>
+                    <div class="cw-org-share cw-org-share--compact">
+                        <span class="cw-org-share-label"><?php esc_html_e( 'Share:', 'creativewings-core' ); ?></span>
+                        <button type="button" class="cw-org-share-btn cw-org-share-copy" data-url="<?php echo esc_attr( $profile_url ); ?>" aria-label="<?php esc_attr_e( 'Copy profile link', 'creativewings-core' ); ?>" title="<?php esc_attr_e( 'Copy link', 'creativewings-core' ); ?>">
+                            <i class="fas fa-link" aria-hidden="true"></i>
+                        </button>
+                        <a class="cw-org-share-btn cw-org-share-wa" href="<?php echo esc_url( $share_wa ); ?>" target="_blank" rel="noopener" title="<?php esc_attr_e( 'WhatsApp', 'creativewings-core' ); ?>" aria-label="<?php esc_attr_e( 'Share on WhatsApp', 'creativewings-core' ); ?>">
+                            <i class="fab fa-whatsapp" aria-hidden="true"></i>
+                        </a>
+                        <a class="cw-org-share-btn cw-org-share-fb" href="<?php echo esc_url( $share_fb ); ?>" target="_blank" rel="noopener" title="<?php esc_attr_e( 'Facebook', 'creativewings-core' ); ?>" aria-label="<?php esc_attr_e( 'Share on Facebook', 'creativewings-core' ); ?>">
+                            <i class="fab fa-facebook-f" aria-hidden="true"></i>
+                        </a>
+                        <a class="cw-org-share-btn cw-org-share-x" href="<?php echo esc_url( $share_tw ); ?>" target="_blank" rel="noopener" title="<?php esc_attr_e( 'X', 'creativewings-core' ); ?>" aria-label="<?php esc_attr_e( 'Share on X', 'creativewings-core' ); ?>">
+                            <i class="fab fa-twitter" aria-hidden="true"></i>
+                        </a>
+                        <div class="cw-org-share-toast" role="status" aria-live="polite"><?php esc_html_e( 'Copied!', 'creativewings-core' ); ?></div>
                     </div>
                 </section>
                 <?php endif; ?>
@@ -930,5 +916,129 @@ class CW_Organizer_Profile {
         }
         $map = $this->get_participants_map( [ $pid ] );
         return (int) ( $map[ $pid ] ?? 0 );
+    }
+
+    /**
+     * Sum the monetary value of all prizes actually awarded across the
+     * organizer's campaigns. Sourced from each campaign's `prizes` repeater
+     * (`prize_title`, `prize_description`) matched against winning entries.
+     *
+     * @param int[] $campaign_pids
+     * @return float
+     */
+    private function compute_awarded_prize_total( array $campaign_pids ) {
+        $total = 0.0;
+        foreach ( $campaign_pids as $pid ) {
+            $pid     = (int) $pid;
+            $prizes  = $this->build_prize_rank_lookup( $pid );
+            if ( empty( $prizes ) ) {
+                continue;
+            }
+            $winners = $this->get_campaign_winners( $pid );
+            foreach ( $winners as $w ) {
+                $rank = self::normalize_rank_token( (string) $w['winner_rank'] );
+                if ( $rank === '' || ! isset( $prizes[ $rank ] ) ) {
+                    continue;
+                }
+                $amount = self::extract_currency_amount( $prizes[ $rank ] );
+                if ( $amount > 0 ) {
+                    $total += $amount;
+                }
+            }
+        }
+        return $total;
+    }
+
+    /**
+     * Count how many entries across all campaigns have winner_status = 'yes'.
+     * Used for the trust strip "N prizes awarded" line.
+     *
+     * @param int[] $campaign_pids
+     * @return int
+     */
+    private function count_awarded_winners( array $campaign_pids ) {
+        $count = 0;
+        foreach ( $campaign_pids as $pid ) {
+            $count += count( $this->get_campaign_winners( (int) $pid ) );
+        }
+        return $count;
+    }
+
+    /**
+     * Build a `rank_token => prize_description` lookup for a campaign's
+     * prizes repeater. Tokens: 1st, 2nd, 3rd, mention.
+     *
+     * @return array<string, string>
+     */
+    private function build_prize_rank_lookup( $campaign_id ) {
+        $prizes = get_post_meta( (int) $campaign_id, 'prizes', true );
+        if ( ! is_array( $prizes ) || empty( $prizes ) ) {
+            return [];
+        }
+        $map = [];
+        foreach ( $prizes as $p ) {
+            if ( ! is_array( $p ) ) {
+                continue;
+            }
+            $title = (string) ( $p['prize_title'] ?? '' );
+            $desc  = (string) ( $p['prize_description'] ?? '' );
+            $rank  = self::normalize_rank_token( $title );
+            if ( $rank !== '' && ! isset( $map[ $rank ] ) ) {
+                $map[ $rank ] = $desc;
+            }
+        }
+        return $map;
+    }
+
+    /**
+     * Returns [{ winner_rank, product_id }, …] for entries flagged as winners
+     * on the given campaign.
+     */
+    private function get_campaign_winners( $campaign_id ) {
+        global $wpdb;
+        $campaign_id = (int) $campaign_id;
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT p.ID, pm_rank.meta_value AS winner_rank
+               FROM {$wpdb->posts} p
+               INNER JOIN {$wpdb->postmeta} pm_pid  ON pm_pid.post_id  = p.ID AND pm_pid.meta_key  = 'product_id'
+               INNER JOIN {$wpdb->postmeta} pm_win  ON pm_win.post_id  = p.ID AND pm_win.meta_key  = 'winner_status'
+               LEFT JOIN  {$wpdb->postmeta} pm_rank ON pm_rank.post_id = p.ID AND pm_rank.meta_key = 'winner_rank'
+              WHERE p.post_type IN ('cw_competition_entry', 'cw_activity_entry')
+                AND p.post_status = 'publish'
+                AND pm_pid.meta_value = %d
+                AND pm_win.meta_value = 'yes'",
+            $campaign_id
+        ), ARRAY_A );
+        return is_array( $rows ) ? $rows : [];
+    }
+
+    /**
+     * Normalize a prize title or winner_rank value into a canonical token.
+     *   "1st Place" / "first prize" / "1"  -> "1st"
+     *   "2nd Place" / "second"             -> "2nd"
+     *   "3rd Place" / "third"              -> "3rd"
+     *   "Honorable Mention" / "mention"    -> "mention"
+     */
+    private static function normalize_rank_token( $raw ) {
+        $s = strtolower( trim( (string) $raw ) );
+        if ( $s === '' ) {
+            return '';
+        }
+        if ( preg_match( '/\b1\b|\b1st\b|\bfirst\b/u', $s ) )      { return '1st'; }
+        if ( preg_match( '/\b2\b|\b2nd\b|\bsecond\b/u', $s ) )     { return '2nd'; }
+        if ( preg_match( '/\b3\b|\b3rd\b|\bthird\b/u', $s ) )      { return '3rd'; }
+        if ( preg_match( '/honou?r|mention/u', $s ) )              { return 'mention'; }
+        return '';
+    }
+
+    /**
+     * Extract the first plausible currency amount from a free-text prize
+     * description. Matches RM 1,000.00 / MYR 500 / $50 / 1500 etc.
+     */
+    private static function extract_currency_amount( $text ) {
+        if ( ! preg_match( '/(?:RM|MYR|\$|USD)?\s*([\d][\d,]*(?:\.\d+)?)/u', (string) $text, $m ) ) {
+            return 0.0;
+        }
+        return (float) str_replace( ',', '', $m[1] );
     }
 }

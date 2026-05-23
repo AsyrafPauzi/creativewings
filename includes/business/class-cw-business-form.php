@@ -266,6 +266,43 @@ class CW_Business_Form {
                                     <img id="cwBannerPreview" class="cwb-banner-preview" src="<?php echo esc_url($existing_thumb); ?>" style="display:<?php echo $existing_thumb?'block':'none'; ?>;">
                                 </div>
 
+                                <?php
+                                /* ───────── Gallery uploader ─────────
+                                   Multiple images stored as the WooCommerce
+                                   product gallery (_product_image_gallery, CSV
+                                   of attachment IDs). The public product page
+                                   automatically picks them up. */
+                                $existing_gallery_ids = [];
+                                if ( $mode === 'edit' ) {
+                                    $gv = get_post_meta( $edit_id, '_product_image_gallery', true );
+                                    if ( ! empty( $gv ) ) {
+                                        $existing_gallery_ids = array_filter( array_map( 'intval', explode( ',', $gv ) ) );
+                                    }
+                                }
+                                ?>
+                                <div class="cw-field full cw-gallery-field">
+                                    <label>Gallery Images <small style="font-weight:400;color:var(--cw-text-soft);">(optional · multiple)</small></label>
+                                    <div class="cw-upload-box cw-gallery-upload" onclick="document.getElementById('cwGalleryFiles').click()">
+                                        <i class="fas fa-images"></i> Click to add gallery images
+                                        <small style="display:block;margin-top:4px;font-size:11px;color:var(--cw-text-soft);">PNG / JPG / WEBP · uploaded in addition to existing gallery</small>
+                                    </div>
+                                    <input type="file" id="cwGalleryFiles" name="cw_gallery_files[]" accept="image/*" multiple style="display:none;" onchange="cwPreviewGallery(this)">
+                                    <input type="hidden" name="cw_gallery_keep" id="cwGalleryKeep" value="<?php echo esc_attr( implode( ',', $existing_gallery_ids ) ); ?>">
+                                    <div id="cwGalleryGrid" class="cw-gallery-grid">
+                                        <?php foreach ( $existing_gallery_ids as $aid ):
+                                            $src = wp_get_attachment_image_url( $aid, 'thumbnail' );
+                                            if ( ! $src ) continue;
+                                        ?>
+                                        <div class="cw-gallery-tile" data-attachment-id="<?php echo (int) $aid; ?>">
+                                            <img src="<?php echo esc_url( $src ); ?>" alt="" loading="lazy">
+                                            <button type="button" class="cw-gallery-remove" onclick="cwGalleryRemoveExisting(this, <?php echo (int) $aid; ?>)" aria-label="Remove">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+
                                 <div class="cw-field full cw-field-rich-text">
                                     <label>Description *</label>
                                     <?php wp_editor($mode==='edit' ? $campaign->post_content : '', 'post_content', ['textarea_name'=>'post_content','media_buttons'=>false,'textarea_rows'=>4,'teeny'=>true,'quicktags'=>false,'editor_class'=>'cw-slim-editor-dark']); ?>
@@ -281,7 +318,7 @@ class CW_Business_Form {
                                     <input type="text" name="cw_location_details" id="cw_location_details" value="<?php echo $val('cw_location_details'); ?>" placeholder="Full Venue Address" style="display:<?php echo $val('cw_event_mode')==='online'?'none':'block'; ?>">
                                     <input type="url" name="cw_online_link" id="cw_online_link" value="<?php echo $val('cw_online_link'); ?>" placeholder="Secure Online Link" style="display:<?php echo $val('cw_event_mode')==='online'?'block':'none'; ?>">
                                 </div>
-                                <small id="cw_online_link_hint" style="display:<?php echo $val('cw_event_mode')==='online' ? 'block' : 'none'; ?>;color:var(--cw-text-soft, #64748b);margin-top:6px;font-size:12px;line-height:1.5;">
+                                <small id="cw_online_link_hint" style="display:<?php echo $val('cw_event_mode')==='online' ? 'block' : 'none'; ?>;color:var(--cw-text-soft, #555555);margin-top:6px;font-size:12px;line-height:1.5;">
                                     <i class="fas fa-info-circle" style="margin-right:4px;"></i>
                                     This link will be emailed to participants automatically after they complete checkout. Do not share publicly.
                                 </small>
@@ -385,13 +422,13 @@ class CW_Business_Form {
                                     <input type="checkbox" name="cw_school_coupons_optional" value="yes" <?php checked( $val('cw_school_coupons_optional') ?: 'yes', 'yes' ); ?>>
                                 </div>
                                 <p class="cw-mini-head" style="margin-top:16px;">School sponsors (WooCommerce coupons)</p>
-                                <div id="cw-school-container">
+                                <div id="cw-school-container" class="cww-rep-school-rows">
                                     <?php $sidx = 0; foreach ( (array) $existing_schools as $s ) { if ( ! is_array( $s ) ) continue; ?>
-                                    <div class="cww-rep-row">
-                                        <input type="text" name="cw_school_sponsors[<?php echo $sidx; ?>][school_code]" value="<?php echo esc_attr( $s['school_code'] ?? '' ); ?>" placeholder="School code 001" maxlength="3">
-                                        <input type="text" name="cw_school_sponsors[<?php echo $sidx; ?>][school_name]" value="<?php echo esc_attr( $s['school_name'] ?? '' ); ?>" placeholder="School name">
-                                        <input type="text" name="cw_school_sponsors[<?php echo $sidx; ?>][coupon_code]" value="<?php echo esc_attr( $s['coupon_code'] ?? '' ); ?>" placeholder="WC coupon code">
-                                        <button type="button" class="cww-rep-del" onclick="this.closest('.cww-rep-row').remove()"><i class="fas fa-times"></i></button>
+                                    <div class="cww-rep-row cww-rep-row-school">
+                                        <input type="text" class="cww-input-code" name="cw_school_sponsors[<?php echo $sidx; ?>][school_code]" value="<?php echo esc_attr( $s['school_code'] ?? '' ); ?>" placeholder="001" maxlength="3" title="School code (3 digits)">
+                                        <input type="text" class="cww-input-name" name="cw_school_sponsors[<?php echo $sidx; ?>][school_name]" value="<?php echo esc_attr( $s['school_name'] ?? '' ); ?>" placeholder="School name">
+                                        <input type="text" class="cww-input-coupon" name="cw_school_sponsors[<?php echo $sidx; ?>][coupon_code]" value="<?php echo esc_attr( $s['coupon_code'] ?? '' ); ?>" placeholder="Coupon code">
+                                        <button type="button" class="cww-rep-del" onclick="this.closest('.cww-rep-row').remove()" aria-label="Remove school"><i class="fas fa-times"></i></button>
                                     </div>
                                     <?php $sidx++; } ?>
                                 </div>
@@ -881,6 +918,33 @@ class CW_Business_Form {
                 }
             };
 
+            // ── Gallery uploader ──
+            window.cwPreviewGallery = function(input) {
+                const grid = document.getElementById('cwGalleryGrid');
+                if (!grid || !input.files || !input.files.length) return;
+                Array.from(input.files).forEach(function(file) {
+                    if (!file.type || file.type.indexOf('image/') !== 0) return;
+                    const url = URL.createObjectURL(file);
+                    const tile = document.createElement('div');
+                    tile.className = 'cw-gallery-tile is-new';
+                    tile.innerHTML =
+                        '<img src="' + url + '" alt="" />' +
+                        '<span class="cw-gallery-new-flag" aria-hidden="true">NEW</span>';
+                    grid.appendChild(tile);
+                });
+            };
+            window.cwGalleryRemoveExisting = function(btn, attachmentId) {
+                const tile  = btn.closest('.cw-gallery-tile');
+                const keep  = document.getElementById('cwGalleryKeep');
+                if (tile) tile.remove();
+                if (keep) {
+                    const list = keep.value.split(',').filter(function(v) {
+                        return v && parseInt(v, 10) !== parseInt(attachmentId, 10);
+                    });
+                    keep.value = list.join(',');
+                }
+            };
+
             // ── Repeaters ──
             window.addPrizeRow = function() {
                 const id = Date.now();
@@ -936,11 +1000,11 @@ class CW_Business_Form {
             window.addSchoolRow = function() {
                 const id = Date.now();
                 document.getElementById('cw-school-container').insertAdjacentHTML('beforeend',
-                    `<div class="cww-rep-row">
-                        <input type="text" name="cw_school_sponsors[${id}][school_code]" placeholder="001" maxlength="3">
-                        <input type="text" name="cw_school_sponsors[${id}][school_name]" placeholder="School name">
-                        <input type="text" name="cw_school_sponsors[${id}][coupon_code]" placeholder="WC coupon code">
-                        <button type="button" class="cww-rep-del" onclick="this.closest('.cww-rep-row').remove()"><i class="fas fa-times"></i></button>
+                    `<div class="cww-rep-row cww-rep-row-school">
+                        <input type="text" class="cww-input-code" name="cw_school_sponsors[${id}][school_code]" placeholder="001" maxlength="3" title="School code (3 digits)">
+                        <input type="text" class="cww-input-name" name="cw_school_sponsors[${id}][school_name]" placeholder="School name">
+                        <input type="text" class="cww-input-coupon" name="cw_school_sponsors[${id}][coupon_code]" placeholder="Coupon code">
+                        <button type="button" class="cww-rep-del" onclick="this.closest('.cww-rep-row').remove()" aria-label="Remove school"><i class="fas fa-times"></i></button>
                     </div>`
                 );
             };

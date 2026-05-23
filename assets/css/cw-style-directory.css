@@ -5,15 +5,15 @@
    ===================================================================== */
 
 .cw-dir {
-    --cw-dir-primary: var(--cw-primary, #006599);
-    --cw-dir-primary-hover: var(--cw-primary-hover, #005480);
-    --cw-dir-primary-soft: var(--cw-primary-light, #e0f2fe);
-    --cw-dir-accent: #FE6261;
-    --cw-dir-text: #0f172a;
-    --cw-dir-text-soft: #64748b;
-    --cw-dir-border: #e5eaf2;
-    --cw-dir-card-bg: #ffffff;
-    --cw-dir-bg: #f4f6f9;
+    --cw-dir-primary: var(--cw-primary, #125B9A);
+    --cw-dir-primary-hover: var(--cw-primary-hover, #0E4A7E);
+    --cw-dir-primary-soft: var(--cw-primary-light, #E3EEF7);
+    --cw-dir-accent: var(--cw-accent, #F05A7E);
+    --cw-dir-text: var(--cw-text, #1A1A1A);
+    --cw-dir-text-soft: var(--cw-text-soft, #555555);
+    --cw-dir-border: var(--cw-border, #E5E9EF);
+    --cw-dir-card-bg: #FFFFFF;
+    --cw-dir-bg: var(--cw-bg, #F8F9FB);
     --cw-dir-radius: 14px;
     --cw-dir-radius-sm: 10px;
     --cw-dir-shadow: 0 2px 12px rgba(15, 23, 42, 0.05);
@@ -70,7 +70,7 @@
 .cw-dir .cw-dir-search:focus-within {
     border-color: var(--cw-dir-primary);
     background: #fff;
-    box-shadow: 0 0 0 4px rgba(0, 101, 153, 0.10);
+    box-shadow: 0 0 0 4px rgba(18, 91, 154, 0.10);
 }
 .cw-dir .cw-dir-search i {
     color: var(--cw-dir-text-soft);
@@ -138,7 +138,7 @@
 .cw-dir .cw-dir-btn--primary {
     background: var(--cw-dir-primary);
     color: #fff;
-    box-shadow: 0 6px 16px rgba(0, 101, 153, 0.22);
+    box-shadow: 0 6px 16px rgba(18, 91, 154, 0.22);
 }
 .cw-dir .cw-dir-btn--primary:hover {
     background: var(--cw-dir-primary-hover);
@@ -212,7 +212,7 @@
     position: relative;
     height: 110px;
     background-color: #1e293b;
-    background-image: linear-gradient(135deg, #00466b 0%, var(--cw-dir-primary) 55%, #0089cc 100%);
+    background-image: var(--cw-gradient-brand);
     background-size: cover;
     background-position: center;
 }
@@ -317,7 +317,7 @@
 .cw-dir .cw-dir-meta-pill--industry,
 .cw-dir .cw-dir-meta-pill--skill {
     background: var(--cw-dir-primary-soft);
-    border-color: rgba(0, 101, 153, 0.18);
+    border-color: rgba(18, 91, 154, 0.18);
     color: var(--cw-dir-primary);
 }
 .cw-dir .cw-dir-meta-pill--industry i,
@@ -424,7 +424,7 @@
 .cw-dir .cw-dir-pagination a:hover {
     background: var(--cw-dir-primary-soft);
     color: var(--cw-dir-primary);
-    border-color: rgba(0, 101, 153, 0.25);
+    border-color: rgba(18, 91, 154, 0.25);
     transform: translateY(-1px);
 }
 .cw-dir .cw-dir-pagination .current {

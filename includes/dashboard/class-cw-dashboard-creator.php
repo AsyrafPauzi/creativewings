@@ -424,7 +424,7 @@ class CW_Dashboard_Creator {
                         datasets: [{
                             label: 'Views',
                             data: chartData.map(function(d){ return d.views; }),
-                            backgroundColor: '#006599',
+                            backgroundColor: '#125B9A',
                             borderRadius: 6,
                             borderSkipped: false,
                         }]
@@ -1601,7 +1601,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                 const voteCount = data.vote_count !== undefined ? data.vote_count : 0;
                 voteBar.html(`<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fff5f5;border:1px solid #fca5a5;border-radius:10px;">
                     <i class="fas fa-heart" style="color:#f43f5e;"></i>
-                    <span style="font-size:14px;font-weight:600;color:#64748b;">Your entry has received <strong style="color:#f43f5e;">${voteCount}</strong> public vote${voteCount !== 1 ? 's' : ''}.</span>
+                    <span style="font-size:14px;font-weight:600;color:#555555;">Your entry has received <strong style="color:#f43f5e;">${voteCount}</strong> public vote${voteCount !== 1 ? 's' : ''}.</span>
                 </div>`).show();
             } else {
                 voteBar.empty().hide();

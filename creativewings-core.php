@@ -2,7 +2,7 @@
 /**
  * Plugin Name: CreativeWings Core Platform
  * Description: Complete ecosystem: Auth, Onboarding, Campaigns, Tournaments, and Business Logic.
- * Version: 11.0.70
+ * Version: 11.0.74
  * Author: CreativeWings Dev
  * Text Domain: creativewings-core
  * Domain Path: /languages
@@ -69,7 +69,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
         private function define_constants() {
             define( 'CW_PATH', plugin_dir_path( __FILE__ ) );
             define( 'CW_URL', plugin_dir_url( __FILE__ ) );
-            define( 'CW_VERSION', '11.0.70' );
+            define( 'CW_VERSION', '11.0.74' );
         }
 
         /**
@@ -192,6 +192,16 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
         }
 
         /**
+         * Preload the latin subset of Montserrat early so the browser fetches the
+         * font as soon as the document head is parsed. Eliminates FOUT/FOIT on the
+         * first paint without paying the cost of preloading every subset.
+         */
+        public function preload_brand_font() {
+            $url = CW_URL . 'assets/vendor/montserrat/montserrat-latin.woff2';
+            echo '<link rel="preload" as="font" type="font/woff2" href="' . esc_url( $url ) . '" crossorigin>' . "\n";
+        }
+
+        /**
          * Instantiate Classes on plugins_loaded
          */
         public function init_plugin() {
@@ -267,7 +277,17 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             $is_product = is_singular('product');
             $is_logged_in = is_user_logged_in();
 
-            // 1. FontAwesome (self-hosted subset preferred; falls back to CDN).
+            // 1a. Brand typography — Montserrat (self-hosted variable font per CW Brand Guide v2.0).
+            // Variable font, so weights 100..900 are covered by one .woff2 per Unicode subset.
+            $mont_local = CW_PATH . 'assets/vendor/montserrat/montserrat.css';
+            if ( file_exists( $mont_local ) ) {
+                wp_enqueue_style( 'cw-montserrat', CW_URL . 'assets/vendor/montserrat/montserrat.css', [], CW_VERSION );
+                // Preload the latin subset on every page (covers EN + BM) so the font is requested
+                // alongside the CSS rather than discovered after CSS parses → cuts FOIT/CLS.
+                add_action( 'wp_head', [ $this, 'preload_brand_font' ], 1 );
+            }
+
+            // 1b. FontAwesome (self-hosted subset preferred; falls back to CDN).
             $fa_local = CW_PATH . 'assets/vendor/fontawesome/css/all.min.css';
             if ( file_exists( $fa_local ) ) {
                 wp_enqueue_style( 'cw-fontawesome', CW_URL . 'assets/vendor/fontawesome/css/all.min.css', [], CW_VERSION );
@@ -281,7 +301,11 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
 
             // 2. CSS Files - General (core chunk) always loads; role-specific chunks only on the dashboard.
             $core_css = self::asset( 'assets/css/cw-style-general.css' );
-            wp_enqueue_style( 'cw-style-general', $core_css['url'], ['cw-fontawesome'], $core_css['version'] );
+            $core_deps = ['cw-fontawesome'];
+            if ( wp_style_is( 'cw-montserrat', 'registered' ) || wp_style_is( 'cw-montserrat', 'enqueued' ) ) {
+                $core_deps[] = 'cw-montserrat';
+            }
+            wp_enqueue_style( 'cw-style-general', $core_css['url'], $core_deps, $core_css['version'] );
 
             // Organizer profile: registered always, enqueued only on its own page (shortcode or /organizer/{slug}/).
             $org_css = self::asset( 'assets/css/cw-style-organizer.css' );
@@ -357,8 +381,16 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
 
             if ( $is_logged_in ) {
                 // Self-hosted SweetAlert2 if present (Phase 4), CDN fallback otherwise.
-                $sa_local = CW_PATH . 'assets/vendor/sweetalert2/sweetalert2.min.js';
-                if ( file_exists( $sa_local ) ) {
+                // The local .min.js does NOT inject styles (unlike the CDN's @all
+                // bundle), so the matching .min.css must be enqueued explicitly —
+                // otherwise the modal renders as unstyled inline content at the
+                // bottom of the page.
+                $sa_local_js  = CW_PATH . 'assets/vendor/sweetalert2/sweetalert2.min.js';
+                $sa_local_css = CW_PATH . 'assets/vendor/sweetalert2/sweetalert2.min.css';
+                if ( file_exists( $sa_local_js ) ) {
+                    if ( file_exists( $sa_local_css ) ) {
+                        wp_enqueue_style( 'sweetalert2', CW_URL . 'assets/vendor/sweetalert2/sweetalert2.min.css', [], CW_VERSION );
+                    }
                     wp_enqueue_script( 'sweetalert2', CW_URL . 'assets/vendor/sweetalert2/sweetalert2.min.js', [], CW_VERSION, true );
                 } else {
                     wp_enqueue_script( 'sweetalert2', 'https://cdn.jsdelivr.net/npm/sweetalert2@11', [], '11.0', true );

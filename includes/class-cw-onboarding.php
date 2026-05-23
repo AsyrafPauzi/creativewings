@@ -120,7 +120,7 @@ class CW_Onboarding {
             <form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="POST" style="width:100%; margin-top:30px;">
                 <?php wp_nonce_field('cw_skip_onboarding_action', 'cw_nonce_skip'); ?>
                 <input type="hidden" name="action" value="cw_skip_onboarding">
-                <button type="submit" class="cw-btn-link" style="background:none; border:none; color:#64748b; font-size:16px;">Skip for now, continue as Contestant</button>
+                <button type="submit" class="cw-btn-link" style="background:none; border:none; color:#555555; font-size:16px;">Skip for now, continue as Contestant</button>
             </form>
         </div>
         <?php

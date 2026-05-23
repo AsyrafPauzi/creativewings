@@ -291,11 +291,11 @@ class CW_Users {
         get_header();
         ?>
         <style>
-            :root { --pub-primary: var(--cw-primary, #006599); --pub-accent: #FE6261; --pub-soft: var(--cw-text-soft, #64748b); }
+            :root { --pub-primary: var(--cw-primary, #125B9A); --pub-accent: #F05A7E; --pub-soft: var(--cw-text-soft, #555555); }
             *, *::before, *::after { box-sizing: border-box; }
             /* isolation: isolate confines inner z-indexes so the theme's mobile
                menu / drawers / overlays always render above the profile UI. */
-            .cw-pub-wrap { background: #f4f6f9; font-family: 'Inter', sans-serif; min-height: 100vh; padding-bottom: 80px; isolation: isolate; position: relative; z-index: 0; }
+            .cw-pub-wrap { background: #F8F9FB; font-family: 'Montserrat', 'Microsoft YaHei UI', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; padding-bottom: 80px; isolation: isolate; position: relative; z-index: 0; }
 
             /* Suppress duplicate theme-rendered page title above our profile */
             body.cw-pub-profile-page .page-header,
@@ -328,8 +328,8 @@ class CW_Users {
             .cw-pub-avatar-wrap { flex-shrink: 0; }
             .cw-pub-avatar { width: 130px; height: 130px; border-radius: 50%; object-fit: cover; border: 5px solid #fff; box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
             .cw-pub-id-info { flex: 1; min-width: 220px; }
-            .cw-pub-id-info h1 { font-size: 30px; font-weight: 800; color: #0f172a; margin: 0 0 4px; line-height: 1.2; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-            .cw-pub-id-info .tagline { font-size: 16px; color: #64748b; margin: 0 0 6px; }
+            .cw-pub-id-info h1 { font-size: 30px; font-weight: 800; color: #1A1A1A; margin: 0 0 4px; line-height: 1.2; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+            .cw-pub-id-info .tagline { font-size: 16px; color: #555555; margin: 0 0 6px; }
             .cw-pub-member-since { font-size: 13px; color: var(--pub-soft); margin: 0 0 14px; display: inline-flex; align-items: center; gap: 6px; }
             .cw-pub-member-since i { font-size: 12px; opacity: 0.75; }
             .cw-views-badge {
@@ -341,14 +341,14 @@ class CW_Users {
                 border: 1px solid #e2e8f0;
             }
             .cw-views-badge i { font-size: 11px; color: #94a3b8; }
-            .cw-pub-id-meta { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: #64748b; }
+            .cw-pub-id-meta { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: #555555; }
             .cw-pub-id-meta span { display: flex; align-items: center; gap: 6px; }
             .cw-pub-id-meta i { color: var(--pub-primary); font-size: 13px; }
             .cw-pub-id-meta a { color: inherit; text-decoration: none; }
             .cw-pub-id-meta a:hover { color: var(--pub-primary); }
             .cw-pub-stats { display: flex; gap: 24px; margin-left: auto; flex-shrink: 0; }
             .cw-pub-stat { text-align: center; }
-            .cw-pub-stat strong { display: block; font-size: 26px; font-weight: 800; color: #0f172a; }
+            .cw-pub-stat strong { display: block; font-size: 26px; font-weight: 800; color: #1A1A1A; }
             .cw-pub-stat span { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
 
             /* ── Main Two-Column Layout ── */
@@ -360,7 +360,7 @@ class CW_Users {
             .cw-pub-sidebar-block h4 { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin: 0 0 14px; }
             .cw-pub-bio-text { font-size: 14px; line-height: 1.75; color: #475569; }
             .cw-pub-skills { display: flex; flex-wrap: wrap; gap: 8px; }
-            .cw-pub-skill-chip { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; padding: 5px 12px; border-radius: 50px; font-size: 12px; font-weight: 600; }
+            .cw-pub-skill-chip { background: #EEF5FB; color: #0369a1; border: 1px solid #bae6fd; padding: 5px 12px; border-radius: 50px; font-size: 12px; font-weight: 600; }
 
             /* ── Share Profile widget ── */
             .cw-share-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -382,7 +382,7 @@ class CW_Users {
             .cw-share-btn.cw-share-x:hover    { background: #000;    color: #fff; border-color: #000;    }
             .cw-share-toast {
                 position: absolute; bottom: 14px; right: 18px;
-                background: #0f172a; color: #fff; font-size: 12px; font-weight: 600;
+                background: #1A1A1A; color: #fff; font-size: 12px; font-weight: 600;
                 padding: 6px 12px; border-radius: 50px;
                 opacity: 0; transform: translateY(6px); pointer-events: none;
                 transition: opacity 0.18s ease, transform 0.18s ease;
@@ -391,7 +391,7 @@ class CW_Users {
 
             /* ── Contact / Message CTA ── */
             .cw-pub-cta { text-align: center; }
-            .cw-pub-cta-headline { font-size: 14px; font-weight: 700; color: #0f172a; margin: 0 0 4px; }
+            .cw-pub-cta-headline { font-size: 14px; font-weight: 700; color: #1A1A1A; margin: 0 0 4px; }
             .cw-pub-cta-sub { font-size: 12.5px; color: var(--pub-soft); margin: 0 0 14px; line-height: 1.5; }
             .cw-pub-cta-btn {
                 display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -402,7 +402,7 @@ class CW_Users {
                 transition: filter 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
                 font-family: inherit; line-height: 1;
             }
-            .cw-pub-cta-btn:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0, 101, 153, 0.25); color: #fff; }
+            .cw-pub-cta-btn:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 8px 20px rgba(18, 91, 154, 0.25); color: #fff; }
             .cw-pub-cta-btn.cw-pub-cta-secondary { background: #fff; color: var(--pub-primary); border: 1.5px solid var(--pub-primary); }
             .cw-pub-cta-btn.cw-pub-cta-secondary:hover { background: var(--pub-primary); color: #fff; }
 
@@ -432,12 +432,12 @@ class CW_Users {
             .cw-pub-org-info { display: flex; flex-direction: column; gap: 10px; }
             .cw-pub-org-info-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 1.4; }
             .cw-pub-org-info-row .cw-pub-org-label { color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; font-size: 11px; font-weight: 700; }
-            .cw-pub-org-info-row .cw-pub-org-value { color: #0f172a; font-weight: 600; text-align: right; }
+            .cw-pub-org-info-row .cw-pub-org-value { color: #1A1A1A; font-weight: 600; text-align: right; }
 
             /* ── Portfolio Section ── */
-            .cw-pub-portfolio h2 { font-size: 24px; font-weight: 800; color: #0f172a; margin: 0 0 20px; }
+            .cw-pub-portfolio h2 { font-size: 24px; font-weight: 800; color: #1A1A1A; margin: 0 0 20px; }
             .cw-pub-cat-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid #e9ecef; }
-            .cw-pub-cat-tab { padding: 7px 18px; border-radius: 50px; font-size: 13px; font-weight: 600; color: #64748b; cursor: pointer; transition: all 0.2s; border: 1.5px solid transparent; background: #f1f5f9; }
+            .cw-pub-cat-tab { padding: 7px 18px; border-radius: 50px; font-size: 13px; font-weight: 600; color: #555555; cursor: pointer; transition: all 0.2s; border: 1.5px solid transparent; background: #f1f5f9; }
             .cw-pub-cat-tab:hover { background: #e2e8f0; }
             .cw-pub-cat-tab.active { background: var(--pub-primary); color: #fff; border-color: var(--pub-primary); }
             .cw-pub-cat-count { opacity: 0.7; margin-left: 4px; font-weight: 500; }
@@ -453,24 +453,24 @@ class CW_Users {
             .cw-pub-pf-thumb { height: 200px; position: relative; overflow: hidden; background: #f1f5f9; }
             .cw-pub-pf-thumb img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease; }
             .cw-pub-pf-card:hover .cw-pub-pf-thumb img { transform: scale(1.05); }
-            .cw-pub-pf-overlay { position: absolute; inset: 0; background: rgba(0, 101, 153, 0.75); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s; }
+            .cw-pub-pf-overlay { position: absolute; inset: 0; background: rgba(18, 91, 154, 0.75); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s; }
             .cw-pub-pf-card:hover .cw-pub-pf-overlay { opacity: 1; }
             .cw-pub-pf-overlay span { color: #fff; font-size: 14px; font-weight: 700; letter-spacing: 0.5px; }
             .cw-pub-pf-info { padding: 16px 18px; }
             .cw-pub-pf-cat { font-size: 11px; font-weight: 800; color: var(--pub-primary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; display: block; }
-            .cw-pub-pf-title { font-size: 15px; font-weight: 700; color: #1e293b; margin: 0; line-height: 1.4; }
+            .cw-pub-pf-title { font-size: 15px; font-weight: 700; color: #1A1A1A; margin: 0; line-height: 1.4; }
 
             /* ── Empty state ── */
-            .cw-pub-pf-empty { grid-column: 1 / -1; text-align: center; padding: 64px 20px; color: #64748b; }
+            .cw-pub-pf-empty { grid-column: 1 / -1; text-align: center; padding: 64px 20px; color: #555555; }
             .cw-pub-empty-icon {
                 width: 80px; height: 80px; border-radius: 50%;
-                background: rgba(0, 101, 153, 0.08);
+                background: rgba(18, 91, 154, 0.08);
                 color: var(--pub-primary);
                 display: inline-flex; align-items: center; justify-content: center;
                 margin: 0 auto 18px;
             }
             .cw-pub-empty-icon i { font-size: 32px; line-height: 1; }
-            .cw-pub-pf-empty h3 { font-size: 18px; font-weight: 800; color: #0f172a; margin: 0 0 6px; }
+            .cw-pub-pf-empty h3 { font-size: 18px; font-weight: 800; color: #1A1A1A; margin: 0 0 6px; }
             .cw-pub-pf-empty p { font-size: 14px; color: var(--pub-soft); margin: 0 0 18px; }
             .cw-pub-empty-btn {
                 display: inline-flex; align-items: center; gap: 8px;
@@ -480,7 +480,7 @@ class CW_Users {
                 text-decoration: none;
                 transition: filter 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
             }
-            .cw-pub-empty-btn:hover { filter: brightness(1.08); transform: translateY(-1px); color: #fff; box-shadow: 0 8px 20px rgba(0, 101, 153, 0.25); }
+            .cw-pub-empty-btn:hover { filter: brightness(1.08); transform: translateY(-1px); color: #fff; box-shadow: 0 8px 20px rgba(18, 91, 154, 0.25); }
 
             /* ── Message-coming-soon modal ── */
             #cw-pub-msg-modal {
@@ -500,12 +500,12 @@ class CW_Users {
             }
             .cw-pub-msg-inner .cw-pub-msg-icon {
                 width: 60px; height: 60px; border-radius: 50%;
-                background: rgba(0, 101, 153, 0.1); color: var(--pub-primary);
+                background: rgba(18, 91, 154, 0.1); color: var(--pub-primary);
                 display: inline-flex; align-items: center; justify-content: center;
                 margin: 0 auto 14px;
             }
             .cw-pub-msg-inner .cw-pub-msg-icon i { font-size: 24px; }
-            .cw-pub-msg-inner h3 { font-size: 18px; font-weight: 800; color: #0f172a; margin: 0 0 8px; }
+            .cw-pub-msg-inner h3 { font-size: 18px; font-weight: 800; color: #1A1A1A; margin: 0 0 8px; }
             .cw-pub-msg-inner p { font-size: 14px; color: #475569; line-height: 1.6; margin: 0 0 18px; }
             .cw-pub-msg-inner .cw-pub-msg-close { background: var(--pub-primary); color: #fff; border: none; padding: 10px 22px; border-radius: 50px; font-weight: 700; font-size: 13px; cursor: pointer; font-family: inherit; }
             .cw-pub-msg-inner .cw-pub-msg-close:hover { filter: brightness(1.08); }
@@ -537,8 +537,8 @@ class CW_Users {
             .cw-pub-modal-close:hover { background: rgba(0,0,0,0.75); }
             .cw-pub-modal-body { padding: 32px 36px 40px; }
             .cw-pub-modal-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-            .cw-pub-modal-cat-badge { background: #e0f2fe; color: #0369a1; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; padding: 4px 12px; border-radius: 50px; }
-            .cw-pub-modal-title { font-size: 26px; font-weight: 800; color: #0f172a; margin: 0 0 16px; line-height: 1.3; }
+            .cw-pub-modal-cat-badge { background: #E3EEF7; color: #0369a1; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; padding: 4px 12px; border-radius: 50px; }
+            .cw-pub-modal-title { font-size: 26px; font-weight: 800; color: #1A1A1A; margin: 0 0 16px; line-height: 1.3; }
             .cw-pub-modal-desc { font-size: 15px; line-height: 1.75; color: #475569; margin-bottom: 30px; white-space: pre-line; }
             .cw-pub-gallery-head { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; margin-bottom: 14px; }
             .cw-pub-gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
@@ -635,8 +635,8 @@ class CW_Users {
                         if ( ! empty( $cr_badges ) ) :
                     ?>
                     <div class="cw-pub-sidebar-block">
-                        <h4><i class="fas fa-medal" style="color:#facc15;margin-right:6px;"></i><?php esc_html_e( 'Badges', 'creativewings-core' ); ?> <span style="background:#f1f5f9;color:#64748b;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:6px;"><?php echo (int) count( $cr_badges ); ?></span></h4>
-                        <?php echo CW_Badges_Display::render_strip( $cr_badges, 8, [ 'size' => 'sm', 'show_label' => true, 'show_tier' => true ] ); ?>
+                        <h4><i class="fas fa-medal" style="color:#facc15;margin-right:6px;"></i><?php esc_html_e( 'Badges', 'creativewings-core' ); ?> <span style="background:#f1f5f9;color:#555555;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:6px;"><?php echo (int) count( $cr_badges ); ?></span></h4>
+                        <?php echo CW_Badges_Display::render_strip( $cr_badges, 8, [ 'size' => 'sm', 'show_label' => false, 'show_tier' => false ] ); ?>
                     </div>
                     <?php endif; } ?>
 

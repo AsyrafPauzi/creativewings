@@ -14,7 +14,57 @@ class CW_Dashboard_Business {
         // Overview chart range AJAX refresh.
         add_action( 'wp_ajax_cw_biz_chart_series', [ $this, 'ajax_chart_series' ] );
 
+        // Organizer-initiated submission delete (Reports tab + Manage Entries cards).
+        add_action( 'admin_post_cw_delete_staged_submission', [ $this, 'handle_delete_staged_submission' ] );
+
         // Note: The save handler 'admin_post_cw_save_biz_info' is located in CW_Business class.
+    }
+
+    /**
+     * admin-post handler: organizer deletes a staged submission.
+     *
+     * Verifies nonce + campaign ownership, hands off to
+     * CW_Staged_Submissions::delete() for the cascade, then redirects back to
+     * the originating page with a flag so the dashboard can surface a
+     * SweetAlert2 confirmation toast.
+     *
+     * Per product decision: no automatic refund and no Woo line-item removal —
+     * the order is preserved with a note and the organizer issues refunds
+     * manually if needed.
+     */
+    public function handle_delete_staged_submission() {
+        if ( ! is_user_logged_in() ) {
+            wp_safe_redirect( wp_login_url() );
+            exit;
+        }
+        check_admin_referer( 'cw_delete_staged_submission' );
+
+        $uid = get_current_user_id();
+        $is_business = class_exists( 'CW_Roles' ) ? CW_Roles::is_business_user( $uid ) : current_user_can( 'edit_posts' );
+        if ( ! $is_business && ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'You do not have permission to delete submissions.', 'creativewings-core' ), 403 );
+        }
+
+        $staged_id   = isset( $_POST['staged_id'] ) ? (int) $_POST['staged_id'] : 0;
+        $redirect_to = isset( $_POST['redirect_to'] ) ? esc_url_raw( wp_unslash( $_POST['redirect_to'] ) ) : '';
+        if ( ! $redirect_to ) {
+            $my_account_url = function_exists( 'wc_get_page_id' ) ? get_permalink( wc_get_page_id( 'myaccount' ) ) : home_url( '/' );
+            $redirect_to    = add_query_arg( 'tab', 'reports', $my_account_url );
+        }
+
+        $result = CW_Staged_Submissions::delete( $staged_id, $uid );
+
+        if ( is_wp_error( $result ) ) {
+            $redirect_to = add_query_arg( [
+                'cw_deleted'    => 0,
+                'cw_delete_err' => rawurlencode( $result->get_error_code() ),
+            ], $redirect_to );
+        } else {
+            $redirect_to = add_query_arg( 'cw_deleted', 1, $redirect_to );
+        }
+
+        wp_safe_redirect( $redirect_to );
+        exit;
     }
 
     /**
@@ -877,8 +927,8 @@ class CW_Dashboard_Business {
                             type: 'bar',
                             label: 'Participants',
                             data: initialSeries.participants || [],
-                            backgroundColor: 'rgba(254, 98, 97, 0.55)',
-                            borderColor: '#FE6261',
+                            backgroundColor: 'rgba(240, 90, 126, 0.55)',
+                            borderColor: '#F05A7E',
                             borderWidth: 1,
                             borderRadius: 4,
                             maxBarThickness: 22,
@@ -895,7 +945,7 @@ class CW_Dashboard_Business {
                         legend: { display: false },
                         tooltip: {
                             backgroundColor: '#fff',
-                            titleColor: '#0f172a',
+                            titleColor: '#1A1A1A',
                             bodyColor: '#0F6796',
                             borderColor: '#e2e8f0',
                             borderWidth: 1,
@@ -929,12 +979,12 @@ class CW_Dashboard_Business {
                             position: 'right',
                             beginAtZero: true,
                             grid: { display: false },
-                            ticks: { color: '#FE6261', precision: 0 },
-                            title: { display: true, text: 'Participants', color: '#FE6261', font: { size: 11, weight: '700' } }
+                            ticks: { color: '#F05A7E', precision: 0 },
+                            title: { display: true, text: 'Participants', color: '#F05A7E', font: { size: 11, weight: '700' } }
                         },
                         x: {
                             grid: { display: false },
-                            ticks: { color: '#64748b', maxRotation: 0, autoSkip: true, autoSkipPadding: 12 }
+                            ticks: { color: '#555555', maxRotation: 0, autoSkip: true, autoSkipPadding: 12 }
                         }
                     }
                 }
@@ -973,7 +1023,7 @@ class CW_Dashboard_Business {
             .cw-chart-legend-note {
                 margin-top: 6px;
                 font-size: 12px;
-                color: #64748b;
+                color: #555555;
                 display: flex;
                 align-items: center;
                 gap: 6px;
@@ -985,7 +1035,7 @@ class CW_Dashboard_Business {
                 margin-right: 4px;
             }
             .cw-chart-legend-note .cw-chart-legend-dot--rev  { background: #0F6796; }
-            .cw-chart-legend-note .cw-chart-legend-dot--part { background: #FE6261; }
+            .cw-chart-legend-note .cw-chart-legend-dot--part { background: #F05A7E; }
             .cw-chart-legend-note .cw-chart-legend-dot:not(:first-child) { margin-left: 14px; }
         </style>
         <?php
@@ -1167,26 +1217,31 @@ class CW_Dashboard_Business {
                 </a>
             </div>
 
-            <!-- Filter / search bar -->
+            <!-- Filter / search bar (compact single-line). -->
             <form method="GET" class="cw-camp-filterbar" role="search" aria-label="Filter campaigns">
                 <input type="hidden" name="tab" value="campaigns">
-                <input type="text"
-                       name="cw_q"
-                       value="<?php echo esc_attr($cw_q); ?>"
-                       placeholder="Search campaign name…"
-                       aria-label="Search campaign name">
-                <select name="cw_status" aria-label="Filter by status">
+                <label class="cw-camp-filter-search">
+                    <i class="fas fa-search" aria-hidden="true"></i>
+                    <input type="text"
+                           name="cw_q"
+                           value="<?php echo esc_attr($cw_q); ?>"
+                           placeholder="Search campaigns…"
+                           aria-label="Search campaign name">
+                </label>
+                <select name="cw_status" aria-label="Filter by status" class="cw-camp-filter-status">
                     <option value="any"     <?php selected($cw_status, 'any'); ?>>All statuses</option>
                     <option value="publish" <?php selected($cw_status, 'publish'); ?>>Published</option>
                     <option value="pending" <?php selected($cw_status, 'pending'); ?>>Pending</option>
                     <option value="draft"   <?php selected($cw_status, 'draft'); ?>>Draft</option>
                 </select>
-                <button type="submit" class="cw-btn-primary small">
-                    <i class="fas fa-filter"></i> Filter
+                <button type="submit" class="cw-btn-primary cw-camp-filter-btn" aria-label="Apply filters">
+                    <i class="fas fa-filter"></i><span>Filter</span>
                 </button>
-                <a href="<?php echo esc_url($reset_url); ?>" class="cw-btn-outline-blue small">
-                    <i class="fas fa-times"></i> Reset
+                <?php if ( $is_filtered ): ?>
+                <a href="<?php echo esc_url($reset_url); ?>" class="cw-camp-filter-reset" aria-label="Reset filters" title="Reset filters">
+                    <i class="fas fa-times"></i>
                 </a>
+                <?php endif; ?>
             </form>
 
             <?php if ( $found_posts > 0 ):
@@ -1517,12 +1572,17 @@ class CW_Dashboard_Business {
         $requested_campaign = isset( $_GET['campaign_id'] ) ? (int) $_GET['campaign_id'] : 0;
         $range              = isset( $_GET['range'] ) ? CW_Business_Reports::sanitize_range( $_GET['range'] ) : CW_Business_Reports::DEFAULT_RANGE;
         $roster_page        = isset( $_GET['roster_page'] ) ? max( 1, (int) $_GET['roster_page'] ) : 1;
+        $staged_page        = isset( $_GET['staged_page'] ) ? max( 1, (int) $_GET['staged_page'] ) : 1;
+        $cmp_page           = isset( $_GET['cmp_page'] )    ? max( 1, (int) $_GET['cmp_page'] )    : 1;
 
         if ( $requested_campaign && ! CW_Business_Reports::user_can_view_campaign( $requested_campaign, $uid ) ) {
             $requested_campaign = 0;
         }
 
-        $context = CW_Business_Reports::get_context( $uid, $requested_campaign, $range );
+        // Use the slim dashboard variant — KPIs / charts / breakdowns only.
+        // Each table below fetches its own page slice so we never load thousands
+        // of rows into memory just to render 25 of them.
+        $context = CW_Business_Reports::get_dashboard_context( $uid, $requested_campaign, $range );
 
         $owned_ids = CW_Business_Reports::owned_campaign_ids( $uid );
 
@@ -1537,14 +1597,28 @@ class CW_Dashboard_Business {
         ];
         $export_base = wp_nonce_url( add_query_arg( $export_args, admin_url( 'admin-post.php' ) ), 'cw_export_report' );
 
-        $per_page    = 25;
-        $roster      = $context['roster'];
-        $total_rows  = count( $roster );
-        $total_pages = max( 1, (int) ceil( $total_rows / $per_page ) );
-        $roster_page = min( $roster_page, $total_pages );
-        $roster_slice = array_slice( $roster, ( $roster_page - 1 ) * $per_page, $per_page );
+        $per_page = 25;
 
-        $custom_labels = CW_Business_Reports::collect_custom_field_labels( $roster );
+        // Paginated table loads — each returns ['rows' => …, 'total' => N].
+        $roster_data   = CW_Business_Reports::get_roster_page( $uid, $requested_campaign, $range, $roster_page, $per_page );
+        $roster_slice  = $roster_data['rows'];
+        $total_rows    = (int) $roster_data['total'];
+        $total_pages   = max( 1, (int) ceil( $total_rows / $per_page ) );
+        $roster_page   = min( $roster_page, $total_pages );
+
+        $staged_data        = CW_Business_Reports::get_staged_page( $uid, $requested_campaign, $range, $staged_page, $per_page );
+        $staged_slice       = $staged_data['rows'];
+        $total_staged       = (int) $staged_data['total'];
+        $staged_total_pages = max( 1, (int) ceil( $total_staged / $per_page ) );
+        $staged_page        = min( $staged_page, $staged_total_pages );
+
+        $cmp_data           = CW_Business_Reports::get_campaigns_page( $uid, $cmp_page, $per_page );
+        $cmp_slice          = $cmp_data['rows'];
+        $total_cmp          = (int) $cmp_data['total'];
+        $cmp_total_pages    = max( 1, (int) ceil( $total_cmp / $per_page ) );
+        $cmp_page           = min( $cmp_page, $cmp_total_pages );
+
+        $custom_labels = CW_Business_Reports::collect_custom_field_labels( $roster_slice );
 
         $is_empty = empty( $owned_ids );
         ?>
@@ -1716,10 +1790,13 @@ class CW_Dashboard_Business {
                     <?php endif; ?>
                 </div>
 
-                <?php if ( $context['is_all'] && ! empty( $context['campaigns'] ) ) : ?>
+                <?php if ( $context['is_all'] && ! empty( $cmp_slice ) ) : ?>
                     <!-- Campaign comparison -->
                     <div class="cw-reports-section">
-                        <h3 class="cw-reports-section-title"><?php esc_html_e( 'Campaign comparison', 'creativewings-core' ); ?></h3>
+                        <h3 class="cw-reports-section-title">
+                            <?php esc_html_e( 'Campaign comparison', 'creativewings-core' ); ?>
+                            <small><?php echo (int) $total_cmp; ?> <?php esc_html_e( 'campaigns', 'creativewings-core' ); ?></small>
+                        </h3>
                         <div class="cw-table-wrap">
                             <table class="cw-report-table">
                                 <thead>
@@ -1736,7 +1813,7 @@ class CW_Dashboard_Business {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                <?php foreach ( $context['campaigns'] as $c ) : ?>
+                                <?php foreach ( $cmp_slice as $c ) : ?>
                                     <?php
                                     $filter_url = add_query_arg(
                                         [
@@ -1766,6 +1843,35 @@ class CW_Dashboard_Business {
                                 </tbody>
                             </table>
                         </div>
+
+                        <?php if ( $cmp_total_pages > 1 ) :
+                            $cmp_page_url = function ( $n ) use ( $base_url, $requested_campaign, $range, $roster_page, $staged_page ) {
+                                return add_query_arg(
+                                    [
+                                        'campaign_id' => (int) $requested_campaign,
+                                        'range'       => $range,
+                                        'roster_page' => (int) $roster_page,
+                                        'staged_page' => (int) $staged_page,
+                                        'cmp_page'    => (int) $n,
+                                    ],
+                                    $base_url
+                                );
+                            };
+                        ?>
+                            <nav class="cw-pagination" role="navigation" aria-label="<?php esc_attr_e( 'Campaign comparison pagination', 'creativewings-core' ); ?>">
+                                <?php if ( $cmp_page > 1 ) : ?>
+                                    <a class="cw-page-btn prev" href="<?php echo esc_url( $cmp_page_url( $cmp_page - 1 ) ); ?>">‹ <?php esc_html_e( 'Prev', 'creativewings-core' ); ?></a>
+                                <?php else : ?>
+                                    <span class="cw-page-btn prev disabled">‹ <?php esc_html_e( 'Prev', 'creativewings-core' ); ?></span>
+                                <?php endif; ?>
+                                <span class="cw-page-info"><?php printf( esc_html__( 'Page %1$d of %2$d', 'creativewings-core' ), (int) $cmp_page, (int) $cmp_total_pages ); ?></span>
+                                <?php if ( $cmp_page < $cmp_total_pages ) : ?>
+                                    <a class="cw-page-btn next" href="<?php echo esc_url( $cmp_page_url( $cmp_page + 1 ) ); ?>"><?php esc_html_e( 'Next', 'creativewings-core' ); ?> ›</a>
+                                <?php else : ?>
+                                    <span class="cw-page-btn next disabled"><?php esc_html_e( 'Next', 'creativewings-core' ); ?> ›</span>
+                                <?php endif; ?>
+                            </nav>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
 
@@ -1778,6 +1884,7 @@ class CW_Dashboard_Business {
                     <?php if ( empty( $roster_slice ) ) : ?>
                         <div class="cw-reports-empty"><?php esc_html_e( 'No registrations in this period.', 'creativewings-core' ); ?></div>
                     <?php else : ?>
+                        <?php $roster_delete_nonce = wp_create_nonce( 'cw_delete_staged_submission' ); ?>
                         <div class="cw-table-wrap">
                             <table class="cw-report-table">
                                 <thead>
@@ -1795,6 +1902,7 @@ class CW_Dashboard_Business {
                                             <th class="num"><?php esc_html_e( 'Score', 'creativewings-core' ); ?></th>
                                             <th><?php esc_html_e( 'Winner', 'creativewings-core' ); ?></th>
                                         <?php endif; ?>
+                                        <th></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1813,6 +1921,23 @@ class CW_Dashboard_Business {
                                             <td class="num"><?php echo $row['score'] !== '' ? esc_html( $row['score'] ) : '—'; ?></td>
                                             <td><?php echo $row['winner'] ? '<i class="fas fa-trophy" style="color:#d97706;"></i>' : '—'; ?></td>
                                         <?php endif; ?>
+                                        <td class="num">
+                                            <?php if ( (int) ( $row['staged_id'] ?? 0 ) > 0 ) : ?>
+                                                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cw-staged-delete-form" data-code="<?php echo esc_attr( $row['submission_code'] ?: ( $row['participant'] ?? '' ) ); ?>">
+                                                    <input type="hidden" name="action" value="cw_delete_staged_submission">
+                                                    <input type="hidden" name="_wpnonce" value="<?php echo esc_attr( $roster_delete_nonce ); ?>">
+                                                    <input type="hidden" name="staged_id" value="<?php echo (int) $row['staged_id']; ?>">
+                                                    <input type="hidden" name="redirect_to" value="<?php echo esc_attr( add_query_arg( [ 'tab' => 'reports', 'campaign_id' => (int) $requested_campaign, 'range' => $range, 'roster_page' => (int) $roster_page ], $my_account_url ) ); ?>">
+                                                    <button type="submit" class="cw-staged-delete-btn" title="<?php esc_attr_e( 'Delete submission', 'creativewings-core' ); ?>" aria-label="<?php esc_attr_e( 'Delete submission', 'creativewings-core' ); ?>">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </form>
+                                            <?php else : ?>
+                                                <span class="cw-staged-delete-btn disabled" title="<?php esc_attr_e( 'Only school-flow submissions can be deleted from here.', 'creativewings-core' ); ?>" aria-disabled="true" style="opacity:0.35;cursor:not-allowed;">
+                                                    <i class="fas fa-trash"></i>
+                                                </span>
+                                            <?php endif; ?>
+                                        </td>
                                     </tr>
                                 <?php endforeach; ?>
                                 </tbody>
@@ -1820,18 +1945,20 @@ class CW_Dashboard_Business {
                         </div>
 
                         <?php if ( $total_pages > 1 ) :
-                            $page_url = function ( $n ) use ( $base_url, $requested_campaign, $range ) {
+                            $page_url = function ( $n ) use ( $base_url, $requested_campaign, $range, $staged_page, $cmp_page ) {
                                 return add_query_arg(
                                     [
                                         'campaign_id' => (int) $requested_campaign,
                                         'range'       => $range,
                                         'roster_page' => (int) $n,
+                                        'staged_page' => (int) $staged_page,
+                                        'cmp_page'    => (int) $cmp_page,
                                     ],
                                     $base_url
                                 );
                             };
                         ?>
-                            <nav class="cw-pagination" role="navigation">
+                            <nav class="cw-pagination" role="navigation" aria-label="<?php esc_attr_e( 'Roster pagination', 'creativewings-core' ); ?>">
                                 <?php if ( $roster_page > 1 ) : ?>
                                     <a class="cw-page-btn prev" href="<?php echo esc_url( $page_url( $roster_page - 1 ) ); ?>">‹ <?php esc_html_e( 'Prev', 'creativewings-core' ); ?></a>
                                 <?php else : ?>
@@ -1848,12 +1975,16 @@ class CW_Dashboard_Business {
                     <?php endif; ?>
                 </div>
 
-                <?php if ( $context['has_staged'] ) : ?>
+                <?php if ( $context['has_staged'] && ! empty( $staged_slice ) ) : ?>
                     <!-- Staged submissions -->
+                    <?php
+                    $staged_delete_nonce = wp_create_nonce( 'cw_delete_staged_submission' );
+                    $staged_delete_url   = admin_url( 'admin-post.php' );
+                    ?>
                     <div class="cw-reports-section">
                         <h3 class="cw-reports-section-title">
                             <?php esc_html_e( 'Staged submissions (school flow)', 'creativewings-core' ); ?>
-                            <small><?php echo count( $context['staged'] ); ?></small>
+                            <small><?php echo (int) $total_staged; ?></small>
                         </h3>
                         <div class="cw-table-wrap">
                             <table class="cw-report-table">
@@ -1866,10 +1997,11 @@ class CW_Dashboard_Business {
                                         <th><?php esc_html_e( 'Moderation', 'creativewings-core' ); ?></th>
                                         <th><?php esc_html_e( 'Order', 'creativewings-core' ); ?></th>
                                         <th><?php esc_html_e( 'Created', 'creativewings-core' ); ?></th>
+                                        <th></th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                <?php foreach ( array_slice( $context['staged'], 0, 100 ) as $s ) : ?>
+                                <?php foreach ( $staged_slice as $s ) : ?>
                                     <tr>
                                         <td><code><?php echo esc_html( $s['submission_code'] ); ?></code></td>
                                         <td><?php echo esc_html( $s['student_name'] ); ?></td>
@@ -1878,18 +2010,50 @@ class CW_Dashboard_Business {
                                         <td><?php echo esc_html( $s['moderation_status'] ); ?></td>
                                         <td><?php echo $s['order_id'] ? '#' . (int) $s['order_id'] : '—'; ?></td>
                                         <td><?php echo esc_html( date_i18n( 'd M Y H:i', strtotime( $s['created_at'] ) ) ); ?></td>
+                                        <td class="num">
+                                            <form method="post" action="<?php echo esc_url( $staged_delete_url ); ?>" class="cw-staged-delete-form" data-code="<?php echo esc_attr( $s['submission_code'] ); ?>">
+                                                <input type="hidden" name="action" value="cw_delete_staged_submission">
+                                                <input type="hidden" name="_wpnonce" value="<?php echo esc_attr( $staged_delete_nonce ); ?>">
+                                                <input type="hidden" name="staged_id" value="<?php echo (int) $s['id']; ?>">
+                                                <input type="hidden" name="redirect_to" value="<?php echo esc_attr( add_query_arg( [ 'tab' => 'reports', 'campaign_id' => (int) $requested_campaign, 'range' => $range, 'staged_page' => (int) $staged_page ], $my_account_url ) ); ?>">
+                                                <button type="submit" class="cw-staged-delete-btn" title="<?php esc_attr_e( 'Delete submission', 'creativewings-core' ); ?>" aria-label="<?php esc_attr_e( 'Delete submission', 'creativewings-core' ); ?>">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </form>
+                                        </td>
                                     </tr>
                                 <?php endforeach; ?>
                                 </tbody>
                             </table>
                         </div>
-                        <?php if ( count( $context['staged'] ) > 100 ) : ?>
-                            <p class="cw-reports-empty">
-                                <?php
-                                /* translators: %d total staged rows */
-                                printf( esc_html__( 'Showing first 100 rows. Use export to view all %d staged submissions.', 'creativewings-core' ), count( $context['staged'] ) );
-                                ?>
-                            </p>
+
+                        <?php if ( $staged_total_pages > 1 ) :
+                            $staged_page_url = function ( $n ) use ( $base_url, $requested_campaign, $range, $roster_page, $cmp_page ) {
+                                return add_query_arg(
+                                    [
+                                        'campaign_id' => (int) $requested_campaign,
+                                        'range'       => $range,
+                                        'roster_page' => (int) $roster_page,
+                                        'cmp_page'    => (int) $cmp_page,
+                                        'staged_page' => (int) $n,
+                                    ],
+                                    $base_url
+                                );
+                            };
+                        ?>
+                            <nav class="cw-pagination" role="navigation" aria-label="<?php esc_attr_e( 'Staged submissions pagination', 'creativewings-core' ); ?>">
+                                <?php if ( $staged_page > 1 ) : ?>
+                                    <a class="cw-page-btn prev" href="<?php echo esc_url( $staged_page_url( $staged_page - 1 ) ); ?>">‹ <?php esc_html_e( 'Prev', 'creativewings-core' ); ?></a>
+                                <?php else : ?>
+                                    <span class="cw-page-btn prev disabled">‹ <?php esc_html_e( 'Prev', 'creativewings-core' ); ?></span>
+                                <?php endif; ?>
+                                <span class="cw-page-info"><?php printf( esc_html__( 'Page %1$d of %2$d', 'creativewings-core' ), (int) $staged_page, (int) $staged_total_pages ); ?></span>
+                                <?php if ( $staged_page < $staged_total_pages ) : ?>
+                                    <a class="cw-page-btn next" href="<?php echo esc_url( $staged_page_url( $staged_page + 1 ) ); ?>"><?php esc_html_e( 'Next', 'creativewings-core' ); ?> ›</a>
+                                <?php else : ?>
+                                    <span class="cw-page-btn next disabled"><?php esc_html_e( 'Next', 'creativewings-core' ); ?> ›</span>
+                                <?php endif; ?>
+                            </nav>
                         <?php endif; ?>
                     </div>
                 <?php endif; ?>
@@ -1933,8 +2097,8 @@ class CW_Dashboard_Business {
                         maintainAspectRatio: false,
                         plugins: { legend: { display: false } },
                         scales: {
-                            x: { grid: { display: false }, ticks: { color: '#64748b', autoSkip: true, maxRotation: 0 } },
-                            y: { beginAtZero: true, grid: { color: '#e2e8f0' }, ticks: { color: '#64748b' } }
+                            x: { grid: { display: false }, ticks: { color: '#555555', autoSkip: true, maxRotation: 0 } },
+                            y: { beginAtZero: true, grid: { color: '#e2e8f0' }, ticks: { color: '#555555' } }
                         }
                     };
 
@@ -1953,8 +2117,8 @@ class CW_Dashboard_Business {
                                 datasets: [{
                                     label: 'Registrations',
                                     data: d.entries.data,
-                                    borderColor: '#006599',
-                                    backgroundColor: 'rgba(0,101,153,0.12)',
+                                    borderColor: '#125B9A',
+                                    backgroundColor: 'rgba(18, 91, 154, 0.12)',
                                     fill: true,
                                     tension: 0.35,
                                     pointRadius: 2
@@ -1973,8 +2137,8 @@ class CW_Dashboard_Business {
                                 datasets: [{
                                     label: 'Revenue',
                                     data: d.revenue.data,
-                                    borderColor: '#FE6261',
-                                    backgroundColor: 'rgba(254,98,97,0.12)',
+                                    borderColor: '#F05A7E',
+                                    backgroundColor: 'rgba(240, 90, 126, 0.12)',
                                     fill: true,
                                     tension: 0.35,
                                     pointRadius: 2
@@ -2022,11 +2186,69 @@ class CW_Dashboard_Business {
                         });
                     }
 
-                    buildDoughnut('cw-report-category-chart', d.category, ['#006599','#FE6261','#22c55e','#f59e0b','#7c3aed']);
+                    buildDoughnut('cw-report-category-chart', d.category, ['#125B9A','#F05A7E','#22c55e','#f59e0b','#7c3aed']);
                     buildDoughnut('cw-report-status-chart',   d.status,   ['#22c55e','#94a3b8','#f59e0b']);
-                    buildBar('cw-report-school-chart', d.school, '#006599');
+                    buildBar('cw-report-school-chart', d.school, '#125B9A');
                     buildBar('cw-report-scores-chart', d.scores, '#7c3aed');
                     }); });
+                })();
+                </script>
+
+                <!-- Delete-submission confirm + toast (SweetAlert2 via the plugin's CW_Sweetalert helper). -->
+                <script>
+                (function(){
+                    function waitSwal(cb, tries){
+                        tries = tries || 0;
+                        if (typeof window.Swal !== 'undefined') { cb(); return; }
+                        if (tries > 40) return;
+                        setTimeout(function(){ waitSwal(cb, tries + 1); }, 100);
+                    }
+
+                    document.addEventListener('submit', function(e){
+                        var form = e.target;
+                        if (!form || !form.classList || !form.classList.contains('cw-staged-delete-form')) return;
+                        e.preventDefault();
+                        var code = form.getAttribute('data-code') || '';
+                        waitSwal(function(){
+                            Swal.fire({
+                                title: <?php echo wp_json_encode( __( 'Delete this submission?', 'creativewings-core' ) ); ?>,
+                                html:  <?php echo wp_json_encode( __( 'This permanently removes the submission, its entry post, and the uploaded artwork from storage. The WooCommerce order is kept with a note — refund manually if needed.', 'creativewings-core' ) ); ?> + (code ? ('<br><br><code>' + code + '</code>') : ''),
+                                icon: 'warning',
+                                showCancelButton: true,
+                                confirmButtonText: <?php echo wp_json_encode( __( 'Delete permanently', 'creativewings-core' ) ); ?>,
+                                cancelButtonText:  <?php echo wp_json_encode( __( 'Cancel', 'creativewings-core' ) ); ?>,
+                                confirmButtonColor: '#dc2626',
+                                reverseButtons: true,
+                                focusCancel: true
+                            }).then(function(res){ if (res.isConfirmed) { form.submit(); } });
+                        });
+                    });
+
+                    // Result toast after the page reloads from the admin-post handler.
+                    var params = new URLSearchParams(window.location.search);
+                    if (params.has('cw_deleted')) {
+                        var ok = params.get('cw_deleted') === '1';
+                        waitSwal(function(){
+                            Swal.fire({
+                                toast: true,
+                                position: 'top-end',
+                                icon: ok ? 'success' : 'error',
+                                title: ok
+                                    ? <?php echo wp_json_encode( __( 'Submission deleted.', 'creativewings-core' ) ); ?>
+                                    : <?php echo wp_json_encode( __( 'Could not delete submission.', 'creativewings-core' ) ); ?>,
+                                showConfirmButton: false,
+                                timer: 3500,
+                                timerProgressBar: true
+                            });
+                        });
+                        params.delete('cw_deleted');
+                        params.delete('cw_delete_err');
+                        var qs = params.toString();
+                        var clean = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+                        if (window.history && window.history.replaceState) {
+                            window.history.replaceState({}, document.title, clean);
+                        }
+                    }
                 })();
                 </script>
 
@@ -2440,7 +2662,7 @@ class CW_Dashboard_Business {
                     <strong><?php echo $total_entries; ?></strong> entries found
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;">
-                    <label style="font-size:13px;color:#64748b;font-weight:600;white-space:nowrap;">Sort:</label>
+                    <label style="font-size:13px;color:#555555;font-weight:600;white-space:nowrap;">Sort:</label>
                     <select class="cwb-search-input" onchange="window.location.href=this.value">
                         <option value="<?php echo esc_url($sort_date_desc_link); ?>"  <?php selected($sort_by==='date'&&$sort_order==='DESC', true); ?>>Latest First</option>
                         <option value="<?php echo esc_url($sort_date_asc_link); ?>"   <?php selected($sort_by==='date'&&$sort_order==='ASC',  true); ?>>Oldest First</option>
@@ -2482,6 +2704,7 @@ class CW_Dashboard_Business {
                     
                     $vote_count_val = (int) get_post_meta($entry->ID, 'vote_count', true);
                     $winner_rank_val = get_post_meta($entry->ID, 'winner_rank', true) ?: '';
+                    $entry_staged_id = (int) get_post_meta($entry->ID, 'cw_staged_id', true);
                     // Create JSON object for modal
                     $entry_json = json_encode([
                         'id'           => $entry->ID,
@@ -2536,6 +2759,17 @@ class CW_Dashboard_Business {
                                 <span class="cw-status-badge cw-status-completed" style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:#dcfce7;color:#166534;border:1px solid #bbf7d0;">
                                     <i class="fas fa-check-circle"></i> Completed
                                 </span>
+                            <?php endif; ?>
+                            <?php if ( $entry_staged_id > 0 ) : ?>
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cw-staged-delete-form" data-code="<?php echo esc_attr( $entry->post_title ); ?>" style="margin:0;">
+                                    <input type="hidden" name="action" value="cw_delete_staged_submission">
+                                    <input type="hidden" name="_wpnonce" value="<?php echo esc_attr( wp_create_nonce( 'cw_delete_staged_submission' ) ); ?>">
+                                    <input type="hidden" name="staged_id" value="<?php echo (int) $entry_staged_id; ?>">
+                                    <input type="hidden" name="redirect_to" value="<?php echo esc_attr( add_query_arg( [ 'tab' => 'manage_entries', 'campaign_id' => (int) $campaign_id ], $my_account_page_url ) ); ?>">
+                                    <button type="submit" class="cw-staged-delete-btn" title="<?php esc_attr_e( 'Delete submission permanently', 'creativewings-core' ); ?>" aria-label="<?php esc_attr_e( 'Delete submission permanently', 'creativewings-core' ); ?>">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -2812,6 +3046,59 @@ class CW_Dashboard_Business {
                 });
             });
         });
+
+        // Manage Entries: confirm-then-submit for the staged-submission delete buttons.
+        (function(){
+            function waitSwal(cb, tries){
+                tries = tries || 0;
+                if (typeof window.Swal !== 'undefined') { cb(); return; }
+                if (tries > 40) return;
+                setTimeout(function(){ waitSwal(cb, tries + 1); }, 100);
+            }
+            document.addEventListener('submit', function(e){
+                var form = e.target;
+                if (!form || !form.classList || !form.classList.contains('cw-staged-delete-form')) return;
+                e.preventDefault();
+                var code = form.getAttribute('data-code') || '';
+                waitSwal(function(){
+                    Swal.fire({
+                        title: <?php echo wp_json_encode( __( 'Delete this submission?', 'creativewings-core' ) ); ?>,
+                        html:  <?php echo wp_json_encode( __( 'This permanently removes the submission, its entry post, and the uploaded artwork from storage. The WooCommerce order is kept with a note — refund manually if needed.', 'creativewings-core' ) ); ?> + (code ? ('<br><br><code>' + code + '</code>') : ''),
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: <?php echo wp_json_encode( __( 'Delete permanently', 'creativewings-core' ) ); ?>,
+                        cancelButtonText:  <?php echo wp_json_encode( __( 'Cancel', 'creativewings-core' ) ); ?>,
+                        confirmButtonColor: '#dc2626',
+                        reverseButtons: true,
+                        focusCancel: true
+                    }).then(function(res){ if (res.isConfirmed) { form.submit(); } });
+                });
+            });
+            var params = new URLSearchParams(window.location.search);
+            if (params.has('cw_deleted')) {
+                var ok = params.get('cw_deleted') === '1';
+                waitSwal(function(){
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: ok ? 'success' : 'error',
+                        title: ok
+                            ? <?php echo wp_json_encode( __( 'Submission deleted.', 'creativewings-core' ) ); ?>
+                            : <?php echo wp_json_encode( __( 'Could not delete submission.', 'creativewings-core' ) ); ?>,
+                        showConfirmButton: false,
+                        timer: 3500,
+                        timerProgressBar: true
+                    });
+                });
+                params.delete('cw_deleted');
+                params.delete('cw_delete_err');
+                var qs = params.toString();
+                var clean = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+                if (window.history && window.history.replaceState) {
+                    window.history.replaceState({}, document.title, clean);
+                }
+            }
+        })();
         </script>
         <?php
     }

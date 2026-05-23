@@ -112,7 +112,7 @@ class CW_Auth {
                             <i class="fas fa-calendar"></i>
                             <input type="text" id="birthdate" name="birthdate" required readonly placeholder="dd/mm/yyyy" class="cw-input-text-v2">
                         </div>
-                        <small style="color:#64748b;font-size:12px;">Used for age category when joining campaigns.</small>
+                        <small style="color:#555555;font-size:12px;">Used for age category when joining campaigns.</small>
                     </div>
 
                     <?php
@@ -542,7 +542,7 @@ class CW_Auth {
                     '<code>' . esc_html( $info['shortcode'] ) . '</code>'
                 );
             }
-            echo '<li>' . $line . '<br><em style="color:#64748b;">' . esc_html( $info['why'] ) . '</em></li>';
+            echo '<li>' . $line . '<br><em style="color:#555555;">' . esc_html( $info['why'] ) . '</em></li>';
         }
         echo '</ul></div>';
     }
@@ -597,7 +597,7 @@ class CW_Auth {
                                 <i class="fas fa-calendar"></i>
                                 <input type="text" id="birthdate" name="birthdate" required readonly placeholder="dd/mm/yyyy" class="cw-input-text-v2" autocomplete="bday">
                             </div>
-                            <small style="color:#64748b;font-size:12px;"><?php esc_html_e( 'Used for age category when joining campaigns.', 'creativewings-core' ); ?></small>
+                            <small style="color:#555555;font-size:12px;"><?php esc_html_e( 'Used for age category when joining campaigns.', 'creativewings-core' ); ?></small>
                         </div>
                     <?php endif; ?>
 
@@ -888,7 +888,7 @@ class CW_Auth {
                             <i class="fas fa-lock"></i>
                             <input type="password" id="cw_pass1" name="pass1" required minlength="8" placeholder="<?php esc_attr_e( 'Enter new password', 'creativewings-core' ); ?>" class="cw-input-text-v2" autocomplete="new-password">
                         </div>
-                        <small style="color:#64748b;font-size:12px;"><?php esc_html_e( 'Use 8+ chars, numbers & symbols.', 'creativewings-core' ); ?></small>
+                        <small style="color:#555555;font-size:12px;"><?php esc_html_e( 'Use 8+ chars, numbers & symbols.', 'creativewings-core' ); ?></small>
                     </div>
 
                     <div class="cw-input-group-v2">
@@ -1057,10 +1057,10 @@ class CW_Auth {
 
         $body  = '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;">' . $hi_line . '</p>';
         $body .= '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;">' . $intro . '</p>';
-        $body .= '<p style="text-align:center;margin:28px 0;"><a href="' . $url_esc . '" style="display:inline-block;background:#006599;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;line-height:1;">' . $cta_label . '</a></p>';
-        $body .= '<p style="margin:0 0 10px;font-size:13px;line-height:1.65;color:#64748b;">' . $fallback . '</p>';
-        $body .= '<p style="margin:0 0 22px;font-size:13px;line-height:1.65;color:#006599;word-break:break-all;"><a href="' . $url_esc . '" style="color:#006599;">' . esc_html( $reset_url ) . '</a></p>';
-        $body .= '<p style="margin:24px 0 0;padding:14px 16px;background:#f1f5f9;border-radius:10px;font-size:13px;line-height:1.6;color:#64748b;">' . $disclaimer . '</p>';
+        $body .= '<p style="text-align:center;margin:28px 0;"><a href="' . $url_esc . '" style="display:inline-block;background:#125B9A;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;line-height:1;">' . $cta_label . '</a></p>';
+        $body .= '<p style="margin:0 0 10px;font-size:13px;line-height:1.65;color:#555555;">' . $fallback . '</p>';
+        $body .= '<p style="margin:0 0 22px;font-size:13px;line-height:1.65;color:#125B9A;word-break:break-all;"><a href="' . $url_esc . '" style="color:#125B9A;">' . esc_html( $reset_url ) . '</a></p>';
+        $body .= '<p style="margin:24px 0 0;padding:14px 16px;background:#f1f5f9;border-radius:10px;font-size:13px;line-height:1.6;color:#555555;">' . $disclaimer . '</p>';
 
         return $this->email_template_wrap( [
             'heading' => __( 'Reset your password', 'creativewings-core' ),
@@ -1097,19 +1097,19 @@ class CW_Auth {
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>{$heading_esc}</title>
 </head>
-<body style="margin:0;padding:0;background:#f4f6f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f6f9;padding:32px 16px;">
+<body style="margin:0;padding:0;background:#F8F9FB;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1A1A1A;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F8F9FB;padding:32px 16px;">
         <tr>
             <td align="center">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e8edf2;">
                     <tr>
-                        <td style="background:#006599;padding:28px 32px;text-align:center;">
+                        <td style="background:#125B9A;padding:28px 32px;text-align:center;">
                             <a href="{$site_url}" style="color:#ffffff;text-decoration:none;font-size:22px;font-weight:800;letter-spacing:-0.3px;">{$brand}</a>
                         </td>
                     </tr>
                     <tr>
                         <td style="padding:36px 32px 28px;">
-                            <h2 style="margin:0 0 18px;font-size:22px;font-weight:800;color:#1e293b;letter-spacing:-0.2px;">{$heading_esc}</h2>
+                            <h2 style="margin:0 0 18px;font-size:22px;font-weight:800;color:#1A1A1A;letter-spacing:-0.2px;">{$heading_esc}</h2>
                             {$body}
                         </td>
                     </tr>

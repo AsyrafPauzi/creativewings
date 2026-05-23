@@ -173,6 +173,79 @@ class CW_Business_Reports {
         return $context;
     }
 
+    /**
+     * Slim "context" tailored to the dashboard view — same aggregates as
+     * get_context(), but skips the eager loads of full roster + staged tables.
+     * The view fetches paged slices via get_roster_page() / get_staged_page() /
+     * get_campaigns_page() so we never materialise more than ~25 rows at a time
+     * regardless of total volume.
+     *
+     * Exports continue to use the eager-loading get_context() so the CSV/XLSX/PDF
+     * pipeline still receives the complete data set.
+     */
+    public static function get_dashboard_context( $user_id, $campaign_id = 0, $range = self::DEFAULT_RANGE ) {
+        $user_id     = (int) $user_id;
+        $campaign_id = (int) $campaign_id;
+        $range       = self::sanitize_range( $range );
+        $ids         = self::resolve_target_ids( $user_id, $campaign_id );
+
+        $context = [
+            'user_id'        => $user_id,
+            'campaign_id'    => $campaign_id,
+            'range'          => $range,
+            'range_label'    => self::range_label( $range ),
+            'range_start'    => self::range_start_date( $range ),
+            'generated_at'   => current_time( 'mysql' ),
+            'campaign_ids'   => $ids,
+            'is_all'         => ( $campaign_id === 0 ),
+            'campaign_title' => $campaign_id > 0 ? get_the_title( $campaign_id ) : __( 'All campaigns', 'creativewings-core' ),
+            'business_name'  => get_user_meta( $user_id, 'business_name', true ) ?: wp_get_current_user()->display_name,
+            'kpis'           => self::empty_kpis(),
+            'timeseries'     => [
+                'entries' => [ 'labels' => [], 'data' => [] ],
+                'revenue' => [ 'labels' => [], 'data' => [] ],
+            ],
+            'breakdowns'     => [
+                'category' => [],
+                'status'   => [],
+                'school'   => [],
+                'scores'   => [],
+            ],
+            'has_competitions' => false,
+            'has_staged'       => false,
+            'campaigns_count'  => 0,
+        ];
+
+        if ( empty( $ids ) ) {
+            return $context;
+        }
+
+        $context['kpis']       = self::compute_kpis( $ids, $range );
+        $context['timeseries'] = self::compute_timeseries( $ids, $range );
+        $context['breakdowns'] = self::compute_breakdowns( $ids );
+
+        // Lightweight presence flags — used only for show/hide gating in the view.
+        $context['campaigns_count']  = count( $ids );
+        $context['has_competitions'] = self::any_competition_in( $ids );
+        $context['has_staged']       = ( (int) $context['kpis']['staged'] + (int) $context['kpis']['claimed'] ) > 0;
+
+        return $context;
+    }
+
+    /**
+     * Returns true if at least one campaign in $ids is a competition.
+     * Cheap O(N) loop over already-resolved IDs (no extra DB calls beyond
+     * the term cache primed by get_the_terms).
+     */
+    private static function any_competition_in( array $ids ) {
+        foreach ( $ids as $pid ) {
+            if ( ( self::campaign_type( (int) $pid )['key'] ?? '' ) === 'competition' ) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static function empty_kpis() {
         return [
             'campaigns_total'    => 0,
@@ -354,37 +427,122 @@ class CW_Business_Reports {
     }
 
     /**
+     * Public paginated wrapper around compute_roster() — returns a page slice plus
+     * total row count for the same filter set, so the view can render proper
+     * cw-pagination controls without loading every row into memory.
+     *
+     * @param int    $user_id
+     * @param int    $campaign_id  0 = "all owned"
+     * @param string $range
+     * @param int    $page         1-indexed
+     * @param int    $per_page
+     * @return array{ rows: array<int, array<string, mixed>>, total: int }
+     */
+    public static function get_roster_page( $user_id, $campaign_id, $range, $page = 1, $per_page = 25 ) {
+        $ids   = self::resolve_target_ids( (int) $user_id, (int) $campaign_id );
+        $range = self::sanitize_range( $range );
+        $page  = max( 1, (int) $page );
+        $per   = max( 1, min( 200, (int) $per_page ) );
+        if ( empty( $ids ) ) {
+            return [ 'rows' => [], 'total' => 0 ];
+        }
+        return self::compute_roster( $ids, $range, $page, $per );
+    }
+
+    /**
+     * Paginated wrapper around the staged-submissions table.
+     *
+     * @return array{ rows: array<int, array<string, mixed>>, total: int }
+     */
+    public static function get_staged_page( $user_id, $campaign_id, $range, $page = 1, $per_page = 25 ) {
+        $ids   = self::resolve_target_ids( (int) $user_id, (int) $campaign_id );
+        $range = self::sanitize_range( $range );
+        $page  = max( 1, (int) $page );
+        $per   = max( 1, min( 200, (int) $per_page ) );
+        if ( empty( $ids ) ) {
+            return [ 'rows' => [], 'total' => 0 ];
+        }
+        return self::compute_staged( $ids, $range, $page, $per );
+    }
+
+    /**
+     * Paginated wrapper around the campaign-comparison rows.
+     *
+     * @return array{ rows: array<int, array<string, mixed>>, total: int }
+     */
+    public static function get_campaigns_page( $user_id, $page = 1, $per_page = 25 ) {
+        $ids  = self::owned_campaign_ids( (int) $user_id );
+        $page = max( 1, (int) $page );
+        $per  = max( 1, min( 200, (int) $per_page ) );
+        if ( empty( $ids ) ) {
+            return [ 'rows' => [], 'total' => 0 ];
+        }
+        $all = self::compute_campaigns( $ids );
+        return [
+            'rows'  => array_slice( $all, ( $page - 1 ) * $per, $per ),
+            'total' => count( $all ),
+        ];
+    }
+
+    /**
      * Participant roster — one row per entry post.
      *
-     * @param int[]  $ids
-     * @param string $range
+     * Now supports DB-level pagination so we never have to materialise more than
+     * one page worth of rows in PHP memory. When $page is null, returns the full
+     * legacy (capped) result for the export pipeline.
+     *
+     * @param int[]    $ids
+     * @param string   $range
+     * @param int|null $page      1-indexed, or null for legacy full-load
+     * @param int      $per_page
+     * @return array<int, array<string, mixed>>|array{ rows: array<int, array<string, mixed>>, total: int }
      */
-    private static function compute_roster( array $ids, $range ) {
+    private static function compute_roster( array $ids, $range, $page = null, $per_page = 25 ) {
         global $wpdb;
         if ( empty( $ids ) ) {
-            return [];
+            return $page === null ? [] : [ 'rows' => [], 'total' => 0 ];
         }
 
         $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
         $entry_types  = self::entry_post_types_sql_list();
         $range_start  = self::range_start_date( $range );
 
+        $base_where  = "p.post_type IN ({$entry_types})
+                          AND p.post_status = 'publish'
+                          AND pm.meta_value IN ({$placeholders})";
+        $where_args  = $ids;
+        if ( $range_start ) {
+            $base_where .= ' AND p.post_date >= %s';
+            $where_args[] = $range_start;
+        }
+
+        $total = 0;
+        if ( $page !== null ) {
+            $count_sql  = "SELECT COUNT(p.ID)
+                             FROM {$wpdb->posts} p
+                             INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = 'product_id'
+                            WHERE {$base_where}";
+            $total      = (int) $wpdb->get_var( $wpdb->prepare( $count_sql, $where_args ) );
+        }
+
         $sql  = "SELECT p.ID, p.post_type, p.post_date, p.post_author, pm.meta_value AS product_id
                 FROM {$wpdb->posts} p
                 INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = 'product_id'
-                WHERE p.post_type IN ({$entry_types})
-                  AND p.post_status = 'publish'
-                  AND pm.meta_value IN ({$placeholders})";
-        $args = $ids;
-        if ( $range_start ) {
-            $sql   .= ' AND p.post_date >= %s';
-            $args[] = $range_start;
+                WHERE {$base_where}
+                ORDER BY p.post_date DESC";
+
+        $args = $where_args;
+        if ( $page !== null ) {
+            $sql  .= ' LIMIT %d OFFSET %d';
+            $args[] = (int) $per_page;
+            $args[] = (int) ( ( $page - 1 ) * $per_page );
+        } else {
+            $sql .= ' LIMIT 5000';
         }
-        $sql .= ' ORDER BY p.post_date DESC LIMIT 5000';
 
         $rows = $wpdb->get_results( $wpdb->prepare( $sql, $args ), ARRAY_A );
         if ( ! $rows ) {
-            return [];
+            return $page === null ? [] : [ 'rows' => [], 'total' => $total ];
         }
 
         $entry_ids = array_map( static function ( $r ) {
@@ -456,6 +614,7 @@ class CW_Business_Reports {
 
             $out[] = [
                 'entry_id'      => $eid,
+                'staged_id'     => isset( $meta['cw_staged_id'] ) ? (int) $meta['cw_staged_id'] : 0,
                 'campaign_id'   => (int) $r['product_id'],
                 'campaign'      => $campaign_titles[ (int) $r['product_id'] ] ?? '',
                 'date'          => $r['post_date'],
@@ -476,37 +635,59 @@ class CW_Business_Reports {
             ];
         }
 
-        return $out;
+        return $page === null ? $out : [ 'rows' => $out, 'total' => $total ];
     }
 
     /**
      * Staged submissions (school/PIC flow).
      *
-     * @param int[]  $ids
-     * @param string $range
+     * @param int[]    $ids
+     * @param string   $range
+     * @param int|null $page      1-indexed, or null for legacy full-load
+     * @param int      $per_page
+     * @return array<int, array<string, mixed>>|array{ rows: array<int, array<string, mixed>>, total: int }
      */
-    private static function compute_staged( array $ids, $range ) {
+    private static function compute_staged( array $ids, $range, $page = null, $per_page = 25 ) {
         global $wpdb;
         if ( empty( $ids ) ) {
-            return [];
+            return $page === null ? [] : [ 'rows' => [], 'total' => 0 ];
         }
 
         $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
         $range_start  = self::range_start_date( $range );
         $table        = CW_Staged_Submissions::table();
 
+        $where = "campaign_id IN ({$placeholders})";
+        $where_args = $ids;
+        if ( $range_start ) {
+            $where       .= ' AND created_at >= %s';
+            $where_args[] = $range_start;
+        }
+
+        $total = 0;
+        if ( $page !== null ) {
+            $count_sql = "SELECT COUNT(*) FROM {$table} WHERE {$where}";
+            $total     = (int) $wpdb->get_var( $wpdb->prepare( $count_sql, $where_args ) );
+        }
+
         $sql  = "SELECT id, campaign_id, submission_code, student_name, school_code, status, moderation_status, claimed_by_user_id, order_id, created_at
                 FROM {$table}
-                WHERE campaign_id IN ({$placeholders})";
-        $args = $ids;
-        if ( $range_start ) {
-            $sql   .= ' AND created_at >= %s';
-            $args[] = $range_start;
+                WHERE {$where}
+                ORDER BY created_at DESC";
+
+        $args = $where_args;
+        if ( $page !== null ) {
+            $sql   .= ' LIMIT %d OFFSET %d';
+            $args[] = (int) $per_page;
+            $args[] = (int) ( ( $page - 1 ) * $per_page );
+        } else {
+            $sql .= ' LIMIT 5000';
         }
-        $sql .= ' ORDER BY created_at DESC LIMIT 5000';
 
         $rows = $wpdb->get_results( $wpdb->prepare( $sql, $args ), ARRAY_A );
-        return is_array( $rows ) ? $rows : [];
+        $rows = is_array( $rows ) ? $rows : [];
+
+        return $page === null ? $rows : [ 'rows' => $rows, 'total' => $total ];
     }
 
     /**

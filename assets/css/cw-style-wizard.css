@@ -1,7 +1,7 @@
 /* ==========================================================================
    CREATIVE WINGS — CAMPAIGN WIZARD STYLES
    Split-panel layout: sidebar stepper + scrollable content area
-   Palette: Primary #006599 | Accent #FE6261
+   Palette: Primary #125B9A | Accent #F05A7E (per CW Brand Style Guide v2.0)
    ========================================================================== */
 
 /* ==========================================================================
@@ -111,7 +111,7 @@
 .cww-step-item.active .cww-step-num {
     background: var(--cw-primary);
     color: #fff;
-    box-shadow: 0 3px 8px rgba(0,101,153,.3);
+    box-shadow: 0 3px 8px rgba(18, 91, 154, .3);
 }
 .cww-step-item.done .cww-step-num {
     background: #16a34a;
@@ -238,13 +238,13 @@
 .cw-btn-nav.next {
     background: var(--cw-primary);
     color: #fff;
-    box-shadow: 0 3px 8px rgba(0,101,153,.22);
+    box-shadow: 0 3px 8px rgba(18, 91, 154, .22);
 }
 .cw-btn-nav.next:hover { background: var(--cw-primary-hover); }
 .cw-btn-nav.submit {
     background: var(--cw-accent);
     color: #fff;
-    box-shadow: 0 3px 8px rgba(254,98,97,.25);
+    box-shadow: 0 3px 8px rgba(240, 90, 126, .25);
 }
 .cw-btn-nav.submit:hover { opacity: .9; }
 .cw-btn-nav:disabled { opacity: .55; cursor: not-allowed; }
@@ -278,7 +278,7 @@ select.cw-input-dark {
     transition: all .2s;
 }
 .cw-input-dark:focus,
-.cw-input-dark-lg:focus { border-color: var(--cw-primary); box-shadow: 0 0 0 3px rgba(0,101,153,.1); outline: none; }
+.cw-input-dark-lg:focus { border-color: var(--cw-primary); box-shadow: 0 0 0 3px rgba(18, 91, 154, .1); outline: none; }
 
 .cw-form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 
@@ -322,6 +322,60 @@ select.cw-input-dark {
 }
 .cw-upload-box:hover { border-color: var(--cw-primary); color: var(--cw-primary); background: var(--cw-primary-light); }
 .cwb-banner-preview { width: 100%; max-height: 180px; object-fit: cover; border-radius: 10px; margin-top: 10px; border: 1.5px solid var(--cw-border); }
+
+/* Gallery uploader */
+.cw-gallery-upload { padding: 18px; min-height: 80px; }
+.cw-gallery-upload small { font-weight: 400; }
+.cw-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+.cw-gallery-tile {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--cw-bg);
+    border: 1.5px solid var(--cw-border);
+    transition: border-color .15s ease, transform .15s ease;
+}
+.cw-gallery-tile:hover { border-color: var(--cw-primary); transform: translateY(-1px); }
+.cw-gallery-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cw-gallery-tile.is-new { border-color: #10b981; }
+.cw-gallery-new-flag {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    background: #10b981;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: .04em;
+}
+.cw-gallery-remove {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(15, 23, 42, .72);
+    color: #fff;
+    font-size: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .15s ease, background .15s ease;
+}
+.cw-gallery-tile:hover .cw-gallery-remove { opacity: 1; }
+.cw-gallery-remove:hover { background: #dc2626; }
 
 /* Rich text area */
 .cw-field-rich-text .wp-editor-container { border: 1.5px solid var(--cw-border) !important; border-radius: var(--cw-radius-sm) !important; overflow: hidden; }
@@ -471,13 +525,13 @@ select.cw-input-dark {
 .cww-rep-row {
     display: grid;
     grid-template-columns: 1fr 1fr auto;
-    gap: 10px;
+    gap: 8px;
     align-items: center;
     background: var(--cw-surface);
-    border: 1.5px solid var(--cw-border);
-    border-radius: 12px;
-    padding: 12px 14px;
-    margin-bottom: 8px;
+    border: 1px solid var(--cw-border);
+    border-radius: 10px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
     transition: border-color .15s;
 }
 .cww-rep-row:hover { border-color: var(--cw-primary); }
@@ -488,32 +542,70 @@ select.cw-input-dark {
 .cww-rep-row input[type=tel],
 .cww-rep-row textarea {
     width: 100%;
-    padding: 9px 12px;
-    border: 1.5px solid var(--cw-border);
-    border-radius: 8px;
+    padding: 7px 10px;
+    border: 1px solid var(--cw-border);
+    border-radius: 6px;
     font-size: 13px;
     font-family: inherit;
     color: var(--cw-text);
     background: var(--cw-bg);
     box-sizing: border-box;
     transition: border-color .15s;
+    height: 34px;
+    line-height: 1.4;
 }
 .cww-rep-row input:focus,
-.cww-rep-row textarea:focus { border-color: var(--cw-primary); outline: none; }
+.cww-rep-row textarea:focus { border-color: var(--cw-primary); outline: none; background: #fff; }
 
 .cww-rep-del {
-    width: 32px; height: 32px;
-    background: #fee2e2;
-    border: 1px solid #fca5a5;
-    border-radius: 8px;
-    color: #dc2626;
-    font-size: 13px;
+    width: 30px; height: 30px;
+    background: #fff;
+    border: 1px solid var(--cw-border);
+    border-radius: 6px;
+    color: #94a3b8;
+    font-size: 11px;
     cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
     transition: all .15s;
+    padding: 0;
 }
-.cww-rep-del:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
+.cww-rep-del:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+
+/* School-sponsor row: compact 4-column layout (code · name · coupon · delete)
+   The school code is much shorter than name/coupon so it gets a fixed width. */
+.cww-rep-row.cww-rep-row-school {
+    grid-template-columns: 70px 1fr 1fr 30px;
+    gap: 6px;
+}
+.cww-rep-row-school .cww-input-code {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .04em;
+    font-weight: 600;
+}
+
+/* Tablet breakpoint: keep 4-col but tighten the gaps. */
+@media (max-width: 700px) {
+    .cww-rep-row.cww-rep-row-school {
+        grid-template-columns: 60px 1fr 1fr 28px;
+    }
+}
+
+/* Mobile: stack the name+coupon onto a second row but keep code+delete
+   on the top so the row stays compact (no wrapping into 4 separate lines). */
+@media (max-width: 480px) {
+    .cww-rep-row.cww-rep-row-school {
+        grid-template-columns: 60px 1fr 30px;
+        grid-template-areas:
+            "code name    del"
+            "coup coup    coup";
+    }
+    .cww-rep-row-school .cww-input-code   { grid-area: code; }
+    .cww-rep-row-school .cww-input-name   { grid-area: name; }
+    .cww-rep-row-school .cww-input-coupon { grid-area: coup; }
+    .cww-rep-row-school .cww-rep-del      { grid-area: del; }
+}
 
 /* Add row button */
 .cww-rep-add {

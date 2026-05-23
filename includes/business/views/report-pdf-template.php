@@ -39,7 +39,7 @@ $campaign_view = array_slice( $campaigns, 0, $max_campaigns );
 <style>
     @page { margin: 28px 32px; }
     body { font-family: DejaVu Sans, sans-serif; color: #0f172a; font-size: 11px; }
-    h1 { font-size: 20px; margin: 0 0 4px; color: #006599; }
+    h1 { font-size: 20px; margin: 0 0 4px; color: #125B9A; }
     h2 { font-size: 14px; margin: 18px 0 8px; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
     .meta { color: #475569; font-size: 11px; margin-bottom: 16px; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
@@ -47,10 +47,10 @@ $campaign_view = array_slice( $campaigns, 0, $max_campaigns );
     th { background: #f1f5f9; color: #334155; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
     .kpi-grid { display: table; width: 100%; border-spacing: 0; }
     .kpi { display: table-cell; width: 25%; padding: 8px; background: #f8fafc; border: 1px solid #e2e8f0; }
-    .kpi-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.4px; }
-    .kpi-value { font-size: 16px; font-weight: 700; color: #006599; }
+    .kpi-label { font-size: 10px; color: #555555; text-transform: uppercase; letter-spacing: 0.4px; }
+    .kpi-value { font-size: 16px; font-weight: 700; color: #125B9A; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
-    .muted { color: #64748b; font-size: 10px; font-style: italic; margin-bottom: 12px; }
+    .muted { color: #555555; font-size: 10px; font-style: italic; margin-bottom: 12px; }
 </style>
 </head>
 <body>

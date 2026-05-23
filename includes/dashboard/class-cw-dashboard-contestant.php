@@ -353,15 +353,15 @@ class CW_Dashboard_Contestant {
             .cw-detail-box { background: #fff; width: 100%; max-width: 620px; max-height: calc(100vh - 32px); overflow-y: auto; border-radius: 12px; position: relative; padding: 20px 22px; }
             .cw-detail-header { padding-right: 32px; }
             .cw-detail-header h3 { margin-top: 0; margin-bottom: 4px; font-size: 18px; font-weight: 700; line-height: 1.3; }
-            .cw-detail-header p { font-size: 12px; color: #64748b; margin: 0 0 16px; }
+            .cw-detail-header p { font-size: 12px; color: #555555; margin: 0 0 16px; }
             .cw-detail-close { position: absolute; top: 12px; right: 14px; font-size: 18px; cursor: pointer; color: #94a3b8; line-height: 1; }
 
             /* Status/Score Cards — compact */
             .cw-status-score-grid { display: flex; gap: 10px; margin-bottom: 16px; }
             .cw-status-card { flex: 1; padding: 10px 12px; border-radius: 8px; min-width: 0; }
-            .cw-status-card.status { background: #e0f2fe; border: 1px solid #a7b7ff; }
+            .cw-status-card.status { background: #E3EEF7; border: 1px solid #a7b7ff; }
             .cw-status-card.score  { background: #fffbe6; border: 1px solid #fce88e; }
-            .cw-status-card strong { display: block; font-size: 10px; color: #64748b; margin-bottom: 2px; letter-spacing: 0.4px; text-transform: uppercase; font-weight: 700; }
+            .cw-status-card strong { display: block; font-size: 10px; color: #555555; margin-bottom: 2px; letter-spacing: 0.4px; text-transform: uppercase; font-weight: 700; }
             .cw-status-card .value { font-size: 15px; font-weight: 700; line-height: 1.2; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
             .cw-status-card .value i { font-size: 14px; }
 
@@ -548,7 +548,7 @@ class CW_Dashboard_Contestant {
                 <div class="cw-onboard-card" style="text-align:center;padding:60px 20px;max-width:600px;margin:40px auto;background:#fff;border-radius:12px;box-shadow:0 5px 20px rgba(0,0,0,0.05);">
                     <i class="fa-solid fa-circle-check" style="font-size:60px;color:#22c55e;margin-bottom:25px;"></i>
                     <h2 style="margin:0 0 10px;"><?php esc_html_e( 'You are already a Creator', 'creativewings-core' ); ?></h2>
-                    <p style="color:#64748b;margin:0 0 25px;"><?php esc_html_e( 'Your account already has Creator privileges.', 'creativewings-core' ); ?></p>
+                    <p style="color:#555555;margin:0 0 25px;"><?php esc_html_e( 'Your account already has Creator privileges.', 'creativewings-core' ); ?></p>
                     <a href="<?php echo esc_url( $overview_url ); ?>" class="cw-btn-primary" style="padding:12px 28px;font-size:15px;"><?php esc_html_e( 'Go to Dashboard', 'creativewings-core' ); ?></a>
                 </div>
             </div>
@@ -564,7 +564,7 @@ class CW_Dashboard_Contestant {
                 <div class="cw-onboard-card" style="text-align:center;padding:60px 20px;max-width:600px;margin:40px auto;background:#fff;border-radius:12px;box-shadow:0 5px 20px rgba(0,0,0,0.05);">
                     <i class="fa-solid fa-clock" style="font-size:60px;color:#f39c12;margin-bottom:25px;"></i>
                     <h2 style="margin:0 0 10px;"><?php esc_html_e( 'Application Pending', 'creativewings-core' ); ?></h2>
-                    <p style="color:#64748b;margin:0;"><?php esc_html_e( 'Your request to become a Business Partner is under review. Please wait for approval.', 'creativewings-core' ); ?></p>
+                    <p style="color:#555555;margin:0;"><?php esc_html_e( 'Your request to become a Business Partner is under review. Please wait for approval.', 'creativewings-core' ); ?></p>
                 </div>
             </div>
             <?php

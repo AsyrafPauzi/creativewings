@@ -1,6 +1,6 @@
 /* ==========================================================================
    CREATIVE WINGS — CONTESTANT PORTAL STYLES
-   Notion/Figma Soft Aesthetic | Primary: #006599 | Accent: #FE6261
+   Per CW Brand Style Guide v2.0 | Primary: #125B9A | Accent: #F05A7E
    ========================================================================== */
 
 
@@ -101,7 +101,7 @@
     border-radius: var(--cw-radius);
     padding: 22px 24px;
     text-align: center;
-    box-shadow: 0 8px 20px rgba(0, 101, 153, 0.30);
+    box-shadow: 0 8px 20px rgba(18, 91, 154, 0.30);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -270,12 +270,12 @@
     font-size: 14px;
     text-decoration: none;
     transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
-    box-shadow: 0 4px 12px rgba(0, 101, 153, 0.18);
+    box-shadow: 0 4px 12px rgba(18, 91, 154, 0.18);
 }
 .cw-recent-empty-btn:hover {
     background: #004f7a;
     transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(0, 101, 153, 0.28);
+    box-shadow: 0 6px 16px rgba(18, 91, 154, 0.28);
     color: #fff;
 }
 
@@ -365,7 +365,7 @@
 .cw-settings-form .cw-input:focus {
     outline: none;
     border-color: var(--cw-primary);
-    box-shadow: 0 0 0 3px rgba(0, 101, 153, 0.12);
+    box-shadow: 0 0 0 3px rgba(18, 91, 154, 0.12);
 }
 .cw-settings-form .cw-input[disabled],
 .cw-settings-form .cw-input[readonly] {
@@ -558,7 +558,7 @@
     cursor: pointer;
     font-family: inherit;
     white-space: nowrap;
-    box-shadow: 0 2px 6px rgba(0, 101, 153, 0.18);
+    box-shadow: 0 2px 6px rgba(18, 91, 154, 0.18);
 }
 .cw-activity-card .cw-btn-details:hover,
 .cw-activity-card .cw-btn-details:focus-visible {
@@ -566,12 +566,12 @@
     border-color: #004f78;
     color: #fff;
     transform: translateY(-1px);
-    box-shadow: 0 4px 10px rgba(0, 101, 153, 0.25);
+    box-shadow: 0 4px 10px rgba(18, 91, 154, 0.25);
     outline: none;
 }
 .cw-activity-card .cw-btn-details:active {
     transform: translateY(0);
-    box-shadow: 0 1px 3px rgba(0, 101, 153, 0.2);
+    box-shadow: 0 1px 3px rgba(18, 91, 154, 0.2);
 }
 
 /* Mobile / narrow card: stack the footer and let the button fill the row */
@@ -623,7 +623,7 @@
 
 /* Creator card — primary blue gradient accent */
 .cw-role-upgrade-card.creator {
-    border-color: rgba(0, 101, 153, 0.25);
+    border-color: rgba(18, 91, 154, 0.25);
     background: linear-gradient(160deg, var(--cw-surface) 60%, #e9f5fc 100%);
 }
 /* Business card — dark slate */
@@ -698,7 +698,7 @@
 .cw-role-upgrade-card .btn-creator-v2 {
     background: var(--cw-primary);
     color: #fff;
-    box-shadow: 0 4px 14px rgba(0, 101, 153, 0.28);
+    box-shadow: 0 4px 14px rgba(18, 91, 154, 0.28);
 }
 .cw-role-upgrade-card .btn-creator-v2:hover {
     background: var(--cw-primary-hover);
@@ -768,7 +768,7 @@
 .cw-settings-field select:focus,
 .cw-settings-field textarea:focus {
     border-color: var(--cw-primary);
-    box-shadow: 0 0 0 3px rgba(0, 101, 153, 0.12);
+    box-shadow: 0 0 0 3px rgba(18, 91, 154, 0.12);
     outline: none;
 }
 
@@ -826,7 +826,7 @@
     background: var(--cw-primary);
     border-color: var(--cw-primary);
     color: #fff;
-    box-shadow: 0 3px 10px rgba(0, 101, 153, 0.28);
+    box-shadow: 0 3px 10px rgba(18, 91, 154, 0.28);
 }
 .cw-page-btn.disabled {
     opacity: 0.35;
@@ -878,7 +878,7 @@
 }
 .cw-claim-input:focus {
     border-color: var(--cw-primary);
-    box-shadow: 0 0 0 3px rgba(0, 101, 153, 0.12);
+    box-shadow: 0 0 0 3px rgba(18, 91, 154, 0.12);
     outline: none;
 }
 
@@ -1245,7 +1245,7 @@
 .cw-settings-card .cw-input:focus {
     outline: none;
     border-color: var(--cw-primary);
-    box-shadow: 0 0 0 3px rgba(0, 101, 153, 0.12);
+    box-shadow: 0 0 0 3px rgba(18, 91, 154, 0.12);
 }
 .cw-settings-card .cw-input[readonly] {
     background: #fff;

@@ -62,11 +62,22 @@ class CW_Badges_Display {
         $size_cls = 'cw-badge--' . preg_replace( '/[^a-z]/', '', $opts['size'] );
         $extra_cls = $opts['show_label'] ? '' : ' cw-badge--icon-only';
 
+        // Tooltip text: "Title — Tier" when a real tier exists, otherwise just title.
+        // We surface it via BOTH `title=""` (accessible / touch / screen-reader fallback)
+        // AND `data-tooltip=""` (used by the custom CSS popover for a snappy hover UX).
+        // The tooltip ignores `show_tier` because in icon-only mode the title and
+        // tier are otherwise invisible — surfacing both on hover is the whole point.
+        $tooltip_text = $title;
+        if ( $tier_lbl && $tier !== '' && $tier !== CW_Badges_Engine::TIER_FLAT ) {
+            $tooltip_text .= ' — ' . $tier_lbl;
+        }
+
         ob_start();
         ?>
         <div class="cw-badge <?php echo esc_attr( $size_cls . $extra_cls ); ?>"
              data-tier="<?php echo esc_attr( $tier ); ?>"
-             title="<?php echo esc_attr( $title . ( $tier_lbl && $opts['show_tier'] ? ' — ' . $tier_lbl : '' ) ); ?>">
+             data-tooltip="<?php echo esc_attr( $tooltip_text ); ?>"
+             title="<?php echo esc_attr( $tooltip_text ); ?>">
             <span class="cw-badge-medal" style="--cw-badge-color: <?php echo esc_attr( $color ); ?>; --cw-badge-tier-color: <?php echo esc_attr( $tier_color ?: $color ); ?>;">
                 <?php if ( $icon_url ) : ?>
                     <img src="<?php echo esc_url( $icon_url ); ?>" alt="" loading="lazy" decoding="async">

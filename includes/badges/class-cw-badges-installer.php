@@ -175,7 +175,7 @@ class CW_Badges_Installer {
 
             [ 'slug' => 'creator_veteran', 'title' => 'Veteran', 'target_role' => 'creator',
               'rule_type' => 'tenure_days', 'extra_config' => '{"days":365}',
-              'icon_class' => 'fas fa-hourglass-half', 'color' => '#64748b', 'sort_order' => 180,
+              'icon_class' => 'fas fa-hourglass-half', 'color' => '#555555', 'sort_order' => 180,
               'description' => 'Account active for at least 1 year.' ],
 
             [ 'slug' => 'creator_legend', 'title' => 'Legend', 'target_role' => 'creator',
@@ -242,7 +242,7 @@ class CW_Badges_Installer {
 
             [ 'slug' => 'org_long_standing', 'title' => 'Long Standing', 'target_role' => 'business',
               'rule_type' => 'tenure_days', 'extra_config' => '{"days":1095,"require_campaign":true}',
-              'icon_class' => 'fas fa-landmark', 'color' => '#64748b', 'sort_order' => 160,
+              'icon_class' => 'fas fa-landmark', 'color' => '#555555', 'sort_order' => 160,
               'description' => 'Active for 3+ years with at least one published campaign.' ],
 
             [ 'slug' => 'org_featured', 'title' => 'Featured', 'target_role' => 'business',

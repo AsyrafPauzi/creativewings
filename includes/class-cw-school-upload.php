@@ -93,10 +93,10 @@ class CW_School_Upload {
                 body{font-family:system-ui,sans-serif;background:#f1f5f9;margin:0;padding:24px}
                 .cw-box{max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:28px;box-shadow:0 4px 20px rgba(0,0,0,.08)}
                 h1{font-size:22px;margin:0 0 8px;color:#0f172a}
-                .sub{color:#64748b;font-size:14px;margin-bottom:20px}
+                .sub{color:#555555;font-size:14px;margin-bottom:20px}
                 label{display:block;font-weight:600;font-size:13px;margin:12px 0 6px}
                 input[type=text],input[type=file]{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;box-sizing:border-box}
-                .btn{background:#006599;color:#fff;border:none;padding:12px 20px;border-radius:8px;font-weight:700;cursor:pointer;width:100%;margin-top:16px}
+                .btn{background:#125B9A;color:#fff;border:none;padding:12px 20px;border-radius:8px;font-weight:700;cursor:pointer;width:100%;margin-top:16px}
                 .alert{padding:12px;border-radius:8px;margin-bottom:16px;font-size:14px}
                 .alert-error{background:#fef2f2;color:#b91c1c}
                 .alert-success{background:#ecfdf5;color:#047857}
@@ -105,11 +105,11 @@ class CW_School_Upload {
                 .cw-pic-upload{margin-bottom:8px}
                 .cw-pic-upload-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
                 .cw-pic-btn{flex:1;min-width:140px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 14px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:1.5px solid #cbd5e1;background:#f8fafc;color:#0f172a;transition:background .15s,border-color .15s}
-                .cw-pic-btn:hover{background:#eff6ff;border-color:#006599;color:#006599}
+                .cw-pic-btn:hover{background:#eff6ff;border-color:#125B9A;color:#125B9A}
                 .cw-pic-btn i{font-size:15px}
-                .cw-pic-btn--primary{background:#006599;border-color:#006599;color:#fff}
+                .cw-pic-btn--primary{background:#125B9A;border-color:#125B9A;color:#fff}
                 .cw-pic-btn--primary:hover{background:#005580;color:#fff}
-                .cw-pic-hint{font-size:12px;color:#64748b;margin:6px 0 0}
+                .cw-pic-hint{font-size:12px;color:#555555;margin:6px 0 0}
                 .cw-field-file{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
                 .cw-camera-modal{position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.75);display:none;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
                 .cw-camera-modal.is-open{display:flex}
@@ -124,9 +124,9 @@ class CW_School_Upload {
                 .cw-code-status.success{background:#ecfdf5;color:#047857}
                 .cw-code-status.warn{background:#fffbeb;color:#b45309}
                 .cw-code-status.error{background:#fef2f2;color:#b91c1c}
-                .cw-code-status.loading{background:#f8fafc;color:#64748b}
-                input.cw-code-from-qr{background:#f0f9ff;border-color:#7dd3fc;color:#0c4a6e;font-weight:600;letter-spacing:.04em}
-                .cw-code-masked{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#f0f9ff;border:1px solid #7dd3fc;border-radius:8px;padding:10px 12px;margin-top:4px}
+                .cw-code-status.loading{background:#f8fafc;color:#555555}
+                input.cw-code-from-qr{background:#EEF5FB;border-color:#7dd3fc;color:#0c4a6e;font-weight:600;letter-spacing:.04em}
+                .cw-code-masked{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#EEF5FB;border:1px solid #7dd3fc;border-radius:8px;padding:10px 12px;margin-top:4px}
                 .cw-code-masked-info{display:flex;align-items:center;gap:8px;font-size:13px;color:#0c4a6e;font-weight:600}
                 .cw-code-masked-info i{color:#0284c7;font-size:14px}
                 .cw-code-masked-hint{font-size:11.5px;color:#0369a1;font-weight:500}

@@ -520,7 +520,7 @@ class CW_Campaign_Admin {
         echo '<input type="hidden" name="cw_one_entry_per_user_present" value="1">';
         echo '<p style="margin:8px 0 4px;"><label><input type="checkbox" name="cw_one_entry_per_user" value="1" ' . checked( $one_entry_on, true, false ) . '> ';
         echo esc_html__( 'Limit to one entry per user (anti-spam)', 'creativewings-core' ) . '</label></p>';
-        echo '<p class="description" style="margin:2px 0 0;font-size:11px;color:#64748b;">';
+        echo '<p class="description" style="margin:2px 0 0;font-size:11px;color:#555555;">';
         echo esc_html__( 'Each account (email) can only submit once. Different emails count as different users.', 'creativewings-core' );
         echo '</p>';
 
@@ -539,7 +539,7 @@ class CW_Campaign_Admin {
         echo '<p style="margin:6px 0 2px;font-size:12px;color:#475569;">' . esc_html__( 'Label (optional, e.g. "participated")', 'creativewings-core' ) . '</p>';
         echo '<p style="margin:0 0 6px;"><input type="text" name="cw_kpi_label" value="' . esc_attr( $kpi_label ) . '" style="width:100%;" placeholder="participated"></p>';
 
-        echo '<p class="description" style="margin:6px 0 0;font-size:11px;color:#64748b;">';
+        echo '<p class="description" style="margin:6px 0 0;font-size:11px;color:#555555;">';
         echo esc_html__( 'Each completed checkout / registration linked to this campaign increases the count automatically.', 'creativewings-core' );
         echo '</p>';
     }
@@ -732,7 +732,7 @@ class CW_Campaign_Admin {
             body{font-family:system-ui,sans-serif;margin:0;padding:14px;color:#0f172a;background:#fff}
             .hdr{margin-bottom:12px}
             .hdr h1{font-size:18px;margin:0 0 4px}
-            .hdr p{margin:0;color:#64748b;font-size:13px}
+            .hdr p{margin:0;color:#555555;font-size:13px}
             .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
             .card{border:1px solid #e2e8f0;border-radius:8px;padding:8px 8px 10px;text-align:center;page-break-inside:avoid;background:#fff}
             .card img{width:100%;max-width:128px;height:auto;aspect-ratio:1;display:block;margin:0 auto}

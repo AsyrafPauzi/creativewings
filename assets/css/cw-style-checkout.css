@@ -5,7 +5,7 @@
 
 /* ── Page canvas ── */
 body.cw-commerce-page {
-    background: var(--cw-bg, #f4f6f9) !important;
+    background: var(--cw-bg, #F8F9FB) !important;
 }
 
 body.cw-commerce-page #page,
@@ -55,8 +55,8 @@ body.cw-commerce-page .page-title {
     font-weight: 700;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--cw-primary, #006599);
-    background: var(--cw-primary-light, #e0f2fe);
+    color: var(--cw-primary, #125B9A);
+    background: var(--cw-primary-light, #E3EEF7);
     border-radius: var(--cw-radius-pill, 50px);
 }
 
@@ -65,7 +65,7 @@ body.cw-commerce-page .page-title {
     font-size: clamp(1.5rem, 3.5vw, 2rem);
     font-weight: 700;
     letter-spacing: -0.03em;
-    color: var(--cw-text, #1a2332);
+    color: var(--cw-text, #1A1A1A);
     line-height: 1.2;
 }
 
@@ -74,7 +74,7 @@ body.cw-commerce-page .page-title {
     max-width: 560px;
     font-size: 15px;
     line-height: 1.55;
-    color: var(--cw-text-soft, #64748b);
+    color: var(--cw-text-soft, #555555);
 }
 
 .cw-commerce-shell--shop .cw-commerce-hero {
@@ -241,7 +241,7 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
     padding: 0;
     font-size: 1.05rem;
     font-weight: 700;
-    color: var(--cw-text, #1a2332);
+    color: var(--cw-text, #1A1A1A);
     border: none;
     background: transparent;
     box-shadow: none;
@@ -272,7 +272,7 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
     padding: 20px 24px 12px;
     font-size: 1.05rem;
     font-weight: 700;
-    color: var(--cw-text, #1a2332);
+    color: var(--cw-text, #1A1A1A);
     background: transparent;
     border: none;
     border-bottom: 1px solid var(--cw-border, #e8edf2);
@@ -310,10 +310,10 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
     padding: 11px 14px;
     font-size: 13px;
     line-height: 1.45;
-    color: var(--cw-primary, #006599);
-    background: var(--cw-primary-light, #e0f2fe);
+    color: var(--cw-primary, #125B9A);
+    background: var(--cw-primary-light, #E3EEF7);
     border-radius: var(--cw-radius-sm, 8px);
-    border-left: 3px solid var(--cw-primary, #006599);
+    border-left: 3px solid var(--cw-primary, #125B9A);
 }
 
 /* Section headings (billing/shipping only; order review uses .cw-order-review-stack) */
@@ -322,7 +322,7 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
 .cw-commerce-shell .woocommerce-additional-fields > h3 {
     font-size: 1rem;
     font-weight: 700;
-    color: var(--cw-text, #1a2332);
+    color: var(--cw-text, #1A1A1A);
     margin: 0 0 16px;
     padding-bottom: 10px;
     border-bottom: 1px solid var(--cw-border, #e8edf2);
@@ -336,7 +336,7 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
 .cw-commerce-shell label {
     font-size: 13px;
     font-weight: 600;
-    color: var(--cw-text, #1a2332);
+    color: var(--cw-text, #1A1A1A);
     margin-bottom: 5px;
 }
 
@@ -358,9 +358,9 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
 .cw-commerce-shell input.input-text:focus,
 .cw-commerce-shell textarea:focus,
 .cw-commerce-shell select:focus {
-    border-color: var(--cw-primary, #006599) !important;
+    border-color: var(--cw-primary, #125B9A) !important;
     background: #fff !important;
-    box-shadow: 0 0 0 3px rgba(0, 101, 153, 0.1) !important;
+    box-shadow: 0 0 0 3px rgba(18, 91, 154, 0.1) !important;
     outline: none;
 }
 
@@ -378,8 +378,8 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
 .cw-checkout-message-card {
     margin: 16px 0 0;
     padding: 18px 20px;
-    background: linear-gradient(135deg, #fafbfc 0%, var(--cw-primary-light, #e0f2fe) 100%);
-    border: 1px solid rgba(0, 101, 153, 0.12);
+    background: linear-gradient(135deg, #fafbfc 0%, var(--cw-primary-light, #E3EEF7) 100%);
+    border: 1px solid rgba(18, 91, 154, 0.12);
     border-radius: var(--cw-radius-sm, 8px);
 }
 
@@ -397,7 +397,7 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
     display: block;
     font-size: 14px;
     font-weight: 600;
-    color: var(--cw-text, #1a2332);
+    color: var(--cw-text, #1A1A1A);
     margin-bottom: 10px;
 }
 
@@ -451,7 +451,7 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
     font-weight: 600;
     font-size: 14px;
     line-height: 1.4;
-    color: var(--cw-text, #1a2332);
+    color: var(--cw-text, #1A1A1A);
 }
 
 .cw-commerce-shell .product-total {
@@ -482,17 +482,17 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
     margin: 0 0 6px;
     padding: 0;
     font-size: 13px;
-    color: var(--cw-text, #1a2332);
+    color: var(--cw-text, #1A1A1A);
 }
 
 .cw-checkout-meta-link {
     display: inline-block;
     font-size: 12px;
     font-weight: 600;
-    color: var(--cw-primary, #006599) !important;
+    color: var(--cw-primary, #125B9A) !important;
     text-decoration: none;
     padding: 4px 10px;
-    background: var(--cw-primary-light, #e0f2fe);
+    background: var(--cw-primary-light, #E3EEF7);
     border-radius: 6px;
 }
 
@@ -509,7 +509,7 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
 }
 
 .cw-commerce-shell .order-total .woocommerce-Price-amount {
-    color: var(--cw-primary, #006599);
+    color: var(--cw-primary, #125B9A);
 }
 
 /* ── Payment (compact — fix long gateway lists) ── */
@@ -591,9 +591,9 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
     word-break: normal !important;
     border-radius: var(--cw-radius-sm, 8px) !important;
     border: none !important;
-    background: var(--cw-primary, #006599) !important;
+    background: var(--cw-primary, #125B9A) !important;
     color: #fff !important;
-    box-shadow: 0 4px 12px rgba(0, 101, 153, 0.25);
+    box-shadow: 0 4px 12px rgba(18, 91, 154, 0.25);
     transition: background 0.2s, transform 0.15s;
     cursor: pointer;
     text-decoration: none !important;
@@ -603,7 +603,7 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
 .cw-commerce-shell #place_order:hover,
 .cw-commerce-shell .button.alt:hover,
 .cw-commerce-shell a.checkout-button:hover {
-    background: var(--cw-primary-hover, #005480) !important;
+    background: var(--cw-primary-hover, #0E4A7E) !important;
     color: #fff !important;
     transform: translateY(-1px);
 }
@@ -670,8 +670,8 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
 
 .cw-commerce-body--cart button[name="update_cart"] {
     background: transparent !important;
-    color: var(--cw-primary, #006599) !important;
-    border: 1px solid var(--cw-primary, #006599) !important;
+    color: var(--cw-primary, #125B9A) !important;
+    border: 1px solid var(--cw-primary, #125B9A) !important;
     box-shadow: none !important;
     width: auto !important;
     display: inline-block !important;
@@ -759,7 +759,7 @@ body.cw-commerce-page.single-product .woocommerce-product-gallery {
     background: var(--cw-surface, #fff) !important;
     border: 1px solid var(--cw-border, #e8edf2) !important;
     border-radius: var(--cw-radius-sm, 8px) !important;
-    color: var(--cw-text-soft, #64748b) !important;
+    color: var(--cw-text-soft, #555555) !important;
     box-shadow: none;
 }
 
@@ -777,7 +777,7 @@ body.cw-commerce-page.single-product .woocommerce-product-gallery {
     padding: 0 !important;
     background: none !important;
     border: none !important;
-    color: var(--cw-primary, #006599) !important;
+    color: var(--cw-primary, #125B9A) !important;
     font-weight: 600;
 }
 

@@ -124,7 +124,7 @@ class CW_Badges_CPT {
         <style>
             .cw-badge-form-row { display:flex; flex-wrap:wrap; gap:18px; align-items:flex-start; margin-bottom:14px; }
             .cw-badge-form-row label { flex:0 0 220px; font-weight:600; }
-            .cw-badge-form-row .desc { flex:1 1 100%; font-size:12px; color:#64748b; margin:6px 0 0 220px; }
+            .cw-badge-form-row .desc { flex:1 1 100%; font-size:12px; color:#555555; margin:6px 0 0 220px; }
             .cw-badge-form-row input[type=text], .cw-badge-form-row input[type=number], .cw-badge-form-row select { min-width:280px; }
         </style>
         <div class="cw-badge-form">

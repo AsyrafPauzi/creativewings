@@ -300,8 +300,8 @@ class CW_Dashboard_Manager {
         ?>
         <div class="cw-tab-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:8px;">
             <div>
-                <h1 style="margin:0 0 6px;font-size:1.6rem;font-weight:800;color:#0f172a;"><i class="fas fa-medal" style="color:#facc15;margin-right:8px;"></i><?php esc_html_e( 'My Badges', 'creativewings-core' ); ?></h1>
-                <p style="margin:0;color:#64748b;font-size:14px;"><?php esc_html_e( 'Earn badges by participating, hosting campaigns, and growing your profile.', 'creativewings-core' ); ?></p>
+                <h1 style="margin:0 0 6px;font-size:1.6rem;font-weight:800;color:#1A1A1A;"><i class="fas fa-medal" style="color:#facc15;margin-right:8px;"></i><?php esc_html_e( 'My Badges', 'creativewings-core' ); ?></h1>
+                <p style="margin:0;color:#555555;font-size:14px;"><?php esc_html_e( 'Earn badges by participating, hosting campaigns, and growing your profile.', 'creativewings-core' ); ?></p>
             </div>
             <form method="post" style="display:flex;align-items:center;gap:10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:999px;padding:6px 14px;font-size:13px;color:#475569;">
                 <?php wp_nonce_field( 'cw_badge_pref_' . $uid, 'cw_badge_pref_nonce' ); ?>

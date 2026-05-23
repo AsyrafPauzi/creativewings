@@ -264,13 +264,13 @@ class CW_Email {
         $body  = '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;">' . $hi_line . '</p>';
         $body .= '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;">' . $registered . '</p>';
         if ( $when_line ) {
-            $body .= '<p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#64748b;">' . $when_line . '</p>';
+            $body .= '<p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#555555;">' . $when_line . '</p>';
         }
         $body .= '<p style="text-align:center;margin:28px 0;"><a href="' . $url_esc . '" style="display:inline-block;background:#0F6796;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:999px;font-weight:700;font-size:15px;line-height:1;">' . $cta_label . '</a></p>';
-        $body .= '<p style="margin:0 0 10px;font-size:13px;line-height:1.65;color:#64748b;">' . $fallback . '</p>';
+        $body .= '<p style="margin:0 0 10px;font-size:13px;line-height:1.65;color:#555555;">' . $fallback . '</p>';
         $body .= '<p style="margin:0 0 22px;font-size:13px;line-height:1.65;color:#0F6796;word-break:break-all;"><a href="' . $url_esc . '" style="color:#0F6796;">' . esc_html( $args['online_link'] ) . '</a></p>';
         $body .= '<p style="margin:0 0 6px;font-size:14px;line-height:1.65;color:#475569;">' . $hosted_by . '</p>';
-        $body .= '<p style="margin:18px 0 0;padding:14px 16px;background:#f1f5f9;border-radius:10px;font-size:13px;line-height:1.6;color:#64748b;">' . $privacy_note . '</p>';
+        $body .= '<p style="margin:18px 0 0;padding:14px 16px;background:#f1f5f9;border-radius:10px;font-size:13px;line-height:1.6;color:#555555;">' . $privacy_note . '</p>';
 
         return $body;
     }
@@ -305,19 +305,19 @@ class CW_Email {
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>{$heading_esc}</title>
 </head>
-<body style="margin:0;padding:0;background:#f4f6f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f6f9;padding:32px 16px;">
+<body style="margin:0;padding:0;background:#F8F9FB;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1A1A1A;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F8F9FB;padding:32px 16px;">
         <tr>
             <td align="center">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e8edf2;">
                     <tr>
-                        <td style="background:#006599;padding:28px 32px;text-align:center;">
+                        <td style="background:#125B9A;padding:28px 32px;text-align:center;">
                             <a href="{$site_url}" style="color:#ffffff;text-decoration:none;font-size:22px;font-weight:800;letter-spacing:-0.3px;">{$brand}</a>
                         </td>
                     </tr>
                     <tr>
                         <td style="padding:36px 32px 28px;">
-                            <h2 style="margin:0 0 18px;font-size:22px;font-weight:800;color:#1e293b;letter-spacing:-0.2px;">{$heading_esc}</h2>
+                            <h2 style="margin:0 0 18px;font-size:22px;font-weight:800;color:#1A1A1A;letter-spacing:-0.2px;">{$heading_esc}</h2>
                             {$body}
                         </td>
                     </tr>

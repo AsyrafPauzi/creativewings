@@ -1,6 +1,6 @@
 /* ==========================================================================
    CREATIVE WINGS — CREATOR PORTAL STYLES
-   Notion/Figma Soft Aesthetic | Primary: #006599 | Accent: #FE6261
+   Per CW Brand Style Guide v2.0 | Primary: #125B9A | Accent: #F05A7E
    ========================================================================== */
 
 
@@ -211,7 +211,7 @@
     background: var(--cw-primary);
     border-color: var(--cw-primary);
     color: #fff;
-    box-shadow: 0 3px 8px rgba(0, 101, 153, 0.25);
+    box-shadow: 0 3px 8px rgba(18, 91, 154, 0.25);
 }
 
 /* Filter group (pill container) */
@@ -332,7 +332,7 @@
     transition: all 0.2s;
     margin-top: auto;
     cursor: pointer;
-    box-shadow: 0 3px 8px rgba(254, 98, 97, 0.25);
+    box-shadow: 0 3px 8px rgba(240, 90, 126, 0.25);
 }
 .cw-btn-join:hover { background: var(--cw-accent-hover); color: #fff !important; transform: translateY(-1px); }
 .cw-btn-join:disabled {
@@ -552,9 +552,9 @@
     letter-spacing: 0.3px;
     padding: 3px 8px;
     border-radius: 50px;
-    background: #e0f2fe;
-    color: #0369a1;
-    border: 1px solid #bae6fd;
+    background: var(--cw-primary-light, #E3EEF7);
+    color: var(--cw-primary, #125B9A);
+    border: 1px solid #BFD6EB;
     white-space: nowrap;
     cursor: default;
 }
@@ -598,7 +598,7 @@
 .cw-pf-vis-card:has(input[type="radio"]:checked) {
     border-color: var(--cw-primary);
     background: var(--cw-primary-light);
-    box-shadow: 0 0 0 3px rgba(0, 101, 153, 0.10);
+    box-shadow: 0 0 0 3px rgba(18, 91, 154, 0.10);
 }
 .cw-pf-vis-icon {
     width: 30px;
@@ -718,7 +718,7 @@
 .cw-project-card-overlay {
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0, 101, 153, 0.55);
+    background: rgba(18, 91, 154, 0.55);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -920,7 +920,7 @@
 .cw-modal-input::placeholder { color: var(--cw-muted); }
 .cw-modal-input:focus {
     border-color: var(--cw-primary);
-    box-shadow: 0 0 0 3px rgba(0, 101, 153, 0.15);
+    box-shadow: 0 0 0 3px rgba(18, 91, 154, 0.15);
     outline: none;
 }
 select.cw-modal-input {
@@ -947,7 +947,7 @@ select.cw-modal-input {
 }
 .cw-wysiwyg-wrap:focus-within {
     border-color: var(--cw-primary);
-    box-shadow: 0 0 0 3px rgba(0, 101, 153, 0.15);
+    box-shadow: 0 0 0 3px rgba(18, 91, 154, 0.15);
 }
 .cw-wysiwyg-toolbar {
     display: flex;
@@ -974,8 +974,8 @@ select.cw-modal-input {
     font-family: inherit;
     padding: 0;
 }
-.cw-wys-btn:hover { background: rgba(0, 101, 153, 0.08); color: var(--cw-primary); }
-.cw-wys-btn:active { background: rgba(0, 101, 153, 0.16); }
+.cw-wys-btn:hover { background: rgba(18, 91, 154, 0.08); color: var(--cw-primary); }
+.cw-wys-btn:active { background: rgba(18, 91, 154, 0.16); }
 .cw-wys-btn b, .cw-wys-btn i, .cw-wys-btn u { font-style: normal; }
 .cw-wys-btn i.fas { font-size: 12px; }
 .cw-wys-btn b   { font-weight: 800; }
@@ -1139,7 +1139,7 @@ select.cw-modal-input {
     height: 175px; width: 100%;
     object-fit: cover;
     border-radius: 18px 18px 0 0;
-    background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
+    background: linear-gradient(135deg, var(--cw-primary-light, #E3EEF7) 0%, #D6E5F2 100%);
     display: block;
 }
 .cw-header-upload-btn {
@@ -1205,7 +1205,7 @@ select.cw-modal-input {
 .cw-input-dark-v2::placeholder { color: var(--cw-muted); }
 .cw-input-dark-v2:focus {
     border-color: var(--cw-primary);
-    box-shadow: 0 0 0 3px rgba(0, 101, 153, 0.12);
+    box-shadow: 0 0 0 3px rgba(18, 91, 154, 0.12);
     outline: none;
 }
 
@@ -1246,7 +1246,7 @@ select.cw-modal-input {
 .cw-tag-v2 {
     background: var(--cw-primary-light);
     color: var(--cw-primary);
-    border: 1px solid rgba(0, 101, 153, 0.2);
+    border: 1px solid rgba(18, 91, 154, 0.2);
     padding: 4px 10px;
     border-radius: var(--cw-radius-pill);
     font-size: 12px;
@@ -1493,7 +1493,7 @@ select.cw-modal-input {
     background: var(--cw-primary);
     border-color: var(--cw-primary);
     color: #fff;
-    box-shadow: 0 3px 10px rgba(0, 101, 153, 0.28);
+    box-shadow: 0 3px 10px rgba(18, 91, 154, 0.28);
 }
 .cw-page-btn.disabled {
     opacity: 0.35;
@@ -1561,7 +1561,7 @@ select.cw-modal-input {
 .cw-per-page-select:focus {
     border-color: var(--cw-primary);
     outline: none;
-    box-shadow: 0 0 0 3px rgba(0, 101, 153, 0.15);
+    box-shadow: 0 0 0 3px rgba(18, 91, 154, 0.15);
 }
 
 

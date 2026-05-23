@@ -15,6 +15,15 @@ class CW_Staged_Submissions {
         return $wpdb->prefix . 'cw_upload_tokens';
     }
 
+    public static function get_by_id( $id ) {
+        global $wpdb;
+        $row = $wpdb->get_row( $wpdb->prepare(
+            'SELECT * FROM ' . self::table() . ' WHERE id = %d',
+            (int) $id
+        ), ARRAY_A );
+        return $row ?: null;
+    }
+
     public static function get_by_code( $code, $campaign_id = 0 ) {
         global $wpdb;
         $parsed = CW_Submission_Code::parse( $code );
@@ -258,5 +267,125 @@ class CW_Staged_Submissions {
         $born  = new DateTime( '@' . $ts );
         $born->setTimezone( wp_timezone() );
         return (int) $born->diff( $today )->y;
+    }
+
+    /**
+     * Hard-delete a staged submission and everything derived from it.
+     *
+     * Intentional ordering (each step is best-effort — a failure in a later
+     * step does not undo the earlier ones, but is captured in the report so
+     * the caller can surface a warning):
+     *
+     *   1. Hard-delete the published entry CPT (so it disappears from the
+     *      organizer's Manage Entries view and the public gallery).
+     *   2. Hard-delete the artwork attachment (frees disk space — this is the
+     *      main reason organizers want this feature).
+     *   3. Add a note on the linked WooCommerce order recording the deletion.
+     *      No auto-refund and no line-item removal — Woo accounting stays
+     *      intact and the organizer issues refunds manually when warranted.
+     *      The matching order item is flagged with _cw_submission_deleted = 1
+     *      so other UI surfaces can grey it out / hide it.
+     *   4. Delete the staged row itself.
+     *   5. Write an audit-log entry.
+     *
+     * @param int $staged_id        ID of the row in wp_cw_staged_submissions.
+     * @param int $deleter_user_id  WP user performing the deletion (usually the organizer).
+     * @return true|WP_Error        true on success (or partial success — see ['report'] in the log),
+     *                              WP_Error on a hard precondition failure (row missing / not owned).
+     */
+    public static function delete( $staged_id, $deleter_user_id ) {
+        global $wpdb;
+
+        $staged_id       = (int) $staged_id;
+        $deleter_user_id = (int) $deleter_user_id;
+
+        if ( $staged_id <= 0 ) {
+            return new WP_Error( 'cw_staged_delete_bad_id', __( 'Invalid submission id.', 'creativewings-core' ) );
+        }
+
+        $row = self::get_by_id( $staged_id );
+        if ( ! $row ) {
+            return new WP_Error( 'cw_staged_delete_missing', __( 'Submission not found.', 'creativewings-core' ) );
+        }
+
+        $campaign_id = (int) $row['campaign_id'];
+        $entry_id    = isset( $row['entry_id'] ) ? (int) $row['entry_id'] : 0;
+        $artwork_id  = isset( $row['artwork_attachment_id'] ) ? (int) $row['artwork_attachment_id'] : 0;
+        $order_id    = isset( $row['order_id'] ) ? (int) $row['order_id'] : 0;
+        $sub_code    = (string) ( $row['submission_code'] ?? '' );
+
+        // Ownership gate — only the campaign owner (or an administrator) may delete.
+        $campaign_owner = (int) get_post_field( 'post_author', $campaign_id );
+        $is_admin       = user_can( $deleter_user_id, 'manage_options' );
+        if ( ! $is_admin && $deleter_user_id !== $campaign_owner ) {
+            return new WP_Error( 'cw_staged_delete_forbidden', __( 'You do not own this campaign.', 'creativewings-core' ) );
+        }
+
+        $report = [
+            'entry_deleted'      => false,
+            'attachment_deleted' => false,
+            'order_noted'        => false,
+            'staged_deleted'     => false,
+        ];
+
+        // 1. Entry CPT (cw_competition_entry / cw_activity_entry).
+        if ( $entry_id > 0 ) {
+            $entry_post = get_post( $entry_id );
+            if ( $entry_post && in_array( $entry_post->post_type, [ 'cw_competition_entry', 'cw_activity_entry' ], true ) ) {
+                $report['entry_deleted'] = (bool) wp_delete_post( $entry_id, true );
+            }
+        }
+
+        // 2. Uploaded artwork attachment.
+        if ( $artwork_id > 0 ) {
+            $att = get_post( $artwork_id );
+            if ( $att && $att->post_type === 'attachment' ) {
+                $report['attachment_deleted'] = (bool) wp_delete_attachment( $artwork_id, true );
+            }
+        }
+
+        // 3. WooCommerce order note + line-item flag.
+        if ( $order_id > 0 && function_exists( 'wc_get_order' ) ) {
+            $order = wc_get_order( $order_id );
+            if ( $order ) {
+                $deleter      = get_userdata( $deleter_user_id );
+                $deleter_name = $deleter ? $deleter->display_name : __( 'an organizer', 'creativewings-core' );
+
+                $order->add_order_note( sprintf(
+                    /* translators: 1: submission code, 2: deleter name, 3: timestamp */
+                    __( 'Creative Wings: submission %1$s was deleted by %2$s on %3$s. Artwork file and entry post were removed. Order totals are preserved — issue a refund manually if appropriate.', 'creativewings-core' ),
+                    $sub_code !== '' ? $sub_code : '#' . $staged_id,
+                    $deleter_name,
+                    current_time( 'mysql' )
+                ) );
+
+                foreach ( $order->get_items() as $item_id => $item ) {
+                    $item_staged = (int) $item->get_meta( '_cw_staged_id' );
+                    if ( $item_staged === $staged_id ) {
+                        wc_update_order_item_meta( $item_id, '_cw_submission_deleted', 1 );
+                    }
+                }
+
+                $report['order_noted'] = true;
+            }
+        }
+
+        // 4. Staged row.
+        $deleted = $wpdb->delete( self::table(), [ 'id' => $staged_id ], [ '%d' ] );
+        $report['staged_deleted'] = (bool) $deleted;
+
+        // 5. Audit trail.
+        if ( class_exists( 'CW_Audit_Log' ) ) {
+            CW_Audit_Log::log( 'staged_deleted_by_organizer', 'cw_staged_submission', $staged_id, [
+                'campaign_id' => $campaign_id,
+                'order_id'    => $order_id,
+                'entry_id'    => $entry_id,
+                'artwork_id'  => $artwork_id,
+                'sub_code'    => $sub_code,
+                'report'      => $report,
+            ] );
+        }
+
+        return true;
     }
 }

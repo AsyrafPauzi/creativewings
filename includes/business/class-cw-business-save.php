@@ -67,6 +67,74 @@ class CW_Business_Save {
                 }
             }
         }
+
+        // ─── Gallery uploads ──────────────────────────────────────────
+        // Persisted as the WooCommerce product gallery (_product_image_gallery,
+        // CSV of attachment IDs). The public product page picks them up
+        // automatically via standard WC rendering.
+        $gallery_ids = [];
+
+        // 1) Keep-list: IDs of pre-existing gallery items the editor didn't
+        //    remove. Empty string means "keep nothing".
+        if ( isset( $_POST['cw_gallery_keep'] ) ) {
+            $raw = (string) wp_unslash( $_POST['cw_gallery_keep'] );
+            if ( $raw !== '' ) {
+                foreach ( explode( ',', $raw ) as $token ) {
+                    $id = (int) trim( $token );
+                    if ( $id > 0 ) {
+                        $gallery_ids[] = $id;
+                    }
+                }
+            }
+        } elseif ( ! empty( $_POST['campaign_id'] ) ) {
+            // Form was submitted without the hidden field (older payload). Keep
+            // whatever was already on the post so we don't accidentally nuke
+            // the gallery.
+            $existing = (string) get_post_meta( $pid, '_product_image_gallery', true );
+            if ( $existing !== '' ) {
+                foreach ( explode( ',', $existing ) as $token ) {
+                    $id = (int) trim( $token );
+                    if ( $id > 0 ) {
+                        $gallery_ids[] = $id;
+                    }
+                }
+            }
+        }
+
+        // 2) New uploads.
+        if ( ! empty( $_FILES['cw_gallery_files']['name'] ) && is_array( $_FILES['cw_gallery_files']['name'] ) ) {
+            $names = $_FILES['cw_gallery_files']['name'];
+            $count = count( $names );
+            for ( $i = 0; $i < $count; $i++ ) {
+                if ( empty( $names[ $i ] ) ) {
+                    continue;
+                }
+                $single = [
+                    'name'     => $_FILES['cw_gallery_files']['name'][ $i ],
+                    'type'     => $_FILES['cw_gallery_files']['type'][ $i ],
+                    'tmp_name' => $_FILES['cw_gallery_files']['tmp_name'][ $i ],
+                    'error'    => $_FILES['cw_gallery_files']['error'][ $i ],
+                    'size'     => $_FILES['cw_gallery_files']['size'][ $i ],
+                ];
+                if ( $single['error'] !== UPLOAD_ERR_OK ) {
+                    continue;
+                }
+                // Reassign the global $_FILES slot for media_handle_upload().
+                $_FILES['cw_gallery_one'] = $single;
+                $new_id = media_handle_upload( 'cw_gallery_one', $pid );
+                if ( ! is_wp_error( $new_id ) ) {
+                    $gallery_ids[] = (int) $new_id;
+                    if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                        CW_Image_Optimizer::optimize_attachment( $new_id, 'campaign_thumb' );
+                    }
+                }
+            }
+            unset( $_FILES['cw_gallery_one'] );
+        }
+
+        // 3) Write the gallery meta (dedupe, preserve order).
+        $gallery_ids = array_values( array_unique( array_filter( $gallery_ids ) ) );
+        update_post_meta( $pid, '_product_image_gallery', implode( ',', $gallery_ids ) );
         if ( ! empty( $_FILES['cw_cert_template']['name'] ) ) {
             $cid = media_handle_upload( 'cw_cert_template', $pid );
             if ( ! is_wp_error( $cid ) ) {
