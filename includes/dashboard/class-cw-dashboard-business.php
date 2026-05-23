@@ -40,6 +40,398 @@ class CW_Dashboard_Business {
         wp_send_json_success( $series );
     }
 
+    /**
+     * Render the admin "Details" view for a single campaign — used by
+     * the dedicated full-page details route (?tab=campaigns&details_id=NN).
+     * Compact, single-column layout that fits naturally inside the
+     * dashboard content wrapper.
+     *
+     * @param int $campaign_id
+     */
+    protected function render_details_modal_body( $campaign_id ) {
+        $campaign_id = (int) $campaign_id;
+        $title       = get_the_title( $campaign_id );
+        $status      = get_post_status( $campaign_id );
+        $permalink   = get_permalink( $campaign_id );
+
+        $deadline       = (string) get_post_meta( $campaign_id, 'submission_deadline', true );
+        $start          = (string) get_post_meta( $campaign_id, 'cw_submission_start', true );
+        $final_date     = (string) get_post_meta( $campaign_id, 'cw_final_event_date', true );
+        $event_mode     = (string) ( get_post_meta( $campaign_id, 'cw_event_mode', true ) ?: 'physical' );
+        $is_locked      = ( $deadline && strtotime( $deadline ) < time() );
+        $is_competition = has_term( 'competitions', 'product_cat', $campaign_id );
+        $cat_label      = $is_competition ? __( 'Competition', 'creativewings-core' ) : __( 'Activity / Talk', 'creativewings-core' );
+
+        // Currency (decode HTML entities so it doesn't render &#82;&#77; etc).
+        $currency = function_exists( 'get_woocommerce_currency_symbol' )
+            ? html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES | ENT_HTML5, 'UTF-8' )
+            : 'RM';
+
+        // Headline stats — reuse the wallet helpers so the numbers match the
+        // values shown on the dashboard card.
+        $earnings_map = class_exists( 'CW_Wallet' ) ? CW_Wallet::get_product_earnings_map( [ $campaign_id ] ) : [];
+        $entries_map  = class_exists( 'CW_Wallet' ) ? CW_Wallet::get_product_entries_count_map( [ $campaign_id ] ) : [];
+        $earnings     = (float) ( $earnings_map[ $campaign_id ] ?? 0 );
+        $entries      = (int) ( $entries_map[ $campaign_id ] ?? 0 );
+
+        // Sponsor + coupon data.
+        $schools = (array) get_post_meta( $campaign_id, 'cw_school_sponsors', true );
+        $coupons = class_exists( 'CW_Sponsor_Coupons' )
+            ? CW_Sponsor_Coupons::get_coupons_for_campaign( $campaign_id )
+            : [];
+
+        // Quick-tool URLs.
+        $my_account_url     = get_permalink( wc_get_page_id( 'myaccount' ) );
+        $manage_entries_url = add_query_arg( [ 'tab' => 'manage_entries', 'campaign_id' => $campaign_id ], $my_account_url );
+        $edit_url           = add_query_arg( [ 'tab' => 'campaigns', 'edit_id' => $campaign_id ], $my_account_url );
+
+        $bulk_codes_url = wp_nonce_url(
+            add_query_arg( [
+                'action'      => 'cw_bulk_codes',
+                'campaign_id' => $campaign_id,
+                'school'      => '001',
+                'month'       => gmdate( 'm' ),
+                'start'       => 1,
+                'count'       => 50,
+            ], admin_url( 'admin-post.php' ) ),
+            'cw_bulk_codes'
+        );
+        $bulk_qr_url = wp_nonce_url(
+            add_query_arg( [
+                'action'      => 'cw_bulk_qr',
+                'campaign_id' => $campaign_id,
+                'school'      => '001',
+                'month'       => gmdate( 'm' ),
+                'start'       => 1,
+                'count'       => 50,
+            ], admin_url( 'admin-post.php' ) ),
+            'cw_bulk_qr'
+        );
+
+        // Latest 5 entries for the preview strip.
+        $entry_types = class_exists( 'CW_Shop' )
+            ? CW_Shop::entry_post_types()
+            : [ 'cw_competition_entry', 'cw_activity_entry' ];
+
+        $latest_entries = get_posts( [
+            'post_type'      => $entry_types,
+            'posts_per_page' => 5,
+            'orderby'        => 'date',
+            'order'          => 'DESC',
+            'post_status'    => 'publish',
+            'no_found_rows'  => true,
+            'meta_query'     => [
+                [
+                    'key'     => 'product_id',
+                    'value'   => $campaign_id,
+                    'compare' => '=',
+                    'type'    => 'NUMERIC',
+                ],
+            ],
+        ] );
+
+        $public_qr = class_exists( 'CW_Campaign_Admin' )
+            ? CW_Campaign_Admin::qr_image_url( $permalink, 160 )
+            : '';
+
+        $status_meta = [
+            'publish' => [ 'label' => __( 'Published', 'creativewings-core' ), 'class' => 'is-publish', 'icon' => 'fa-circle-check' ],
+            'pending' => [ 'label' => __( 'Pending review', 'creativewings-core' ), 'class' => 'is-pending', 'icon' => 'fa-clock' ],
+            'draft'   => [ 'label' => __( 'Draft', 'creativewings-core' ), 'class' => 'is-draft', 'icon' => 'fa-pen' ],
+        ];
+        $smeta = $status_meta[ $status ] ?? [ 'label' => ucfirst( $status ), 'class' => 'is-draft', 'icon' => 'fa-circle' ];
+
+        // Coupon roll-up for the card meta line.
+        $coupon_used_total = 0;
+        foreach ( $coupons as $c ) { $coupon_used_total += (int) $c['usage_count']; }
+        ?>
+        <div class="cwcd">
+
+            <!-- ── HERO ────────────────────────────────────────────────────── -->
+            <header class="cwcd-hero">
+                <div class="cwcd-hero-pills">
+                    <span class="cwcd-pill cwcd-pill-status <?php echo esc_attr( $smeta['class'] ); ?>">
+                        <i class="fas <?php echo esc_attr( $smeta['icon'] ); ?>"></i>
+                        <?php echo esc_html( $smeta['label'] ); ?>
+                    </span>
+                    <span class="cwcd-pill <?php echo $is_competition ? 'cwcd-pill-blue' : 'cwcd-pill-purple'; ?>">
+                        <i class="fas <?php echo $is_competition ? 'fa-trophy' : 'fa-bullhorn'; ?>"></i>
+                        <?php echo esc_html( $cat_label ); ?>
+                    </span>
+                    <span class="cwcd-pill cwcd-pill-soft">
+                        <i class="fas fa-<?php echo $event_mode === 'online' ? 'globe' : 'map-marker-alt'; ?>"></i>
+                        <?php echo esc_html( ucfirst( $event_mode ) ); ?>
+                    </span>
+                    <?php if ( $is_locked ): ?>
+                        <span class="cwcd-pill cwcd-pill-warn"><i class="fas fa-lock"></i> <?php esc_html_e( 'Locked', 'creativewings-core' ); ?></span>
+                    <?php endif; ?>
+                </div>
+                <h1 class="cwcd-hero-title"><?php echo esc_html( $title ); ?></h1>
+                <?php if ( $start || $final_date || $deadline ): ?>
+                <div class="cwcd-hero-dates">
+                    <?php if ( $start ): ?>
+                        <span><i class="fas fa-flag-checkered"></i> <?php esc_html_e( 'Start', 'creativewings-core' ); ?>: <strong><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $start ) ) ); ?></strong></span>
+                    <?php endif; ?>
+                    <?php if ( $final_date ): ?>
+                        <span><i class="fas fa-calendar-day"></i> <?php esc_html_e( 'Event', 'creativewings-core' ); ?>: <strong><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $final_date ) ) ); ?></strong></span>
+                    <?php endif; ?>
+                    <?php if ( $deadline ): ?>
+                        <span><i class="fas fa-hourglass-half"></i> <?php esc_html_e( 'Deadline', 'creativewings-core' ); ?>: <strong><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $deadline ) ) ); ?></strong></span>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+            </header>
+
+            <!-- ── KPI strip ───────────────────────────────────────────────── -->
+            <section class="cwcd-kpis" aria-label="<?php esc_attr_e( 'Campaign at a glance', 'creativewings-core' ); ?>">
+                <article class="cwcd-kpi cwcd-kpi-blue">
+                    <span class="cwcd-kpi-ico"><i class="fas fa-users"></i></span>
+                    <span class="cwcd-kpi-meta">
+                        <span class="cwcd-kpi-label"><?php esc_html_e( 'Participants', 'creativewings-core' ); ?></span>
+                        <span class="cwcd-kpi-value"><?php echo number_format( $entries ); ?></span>
+                    </span>
+                </article>
+                <article class="cwcd-kpi cwcd-kpi-green">
+                    <span class="cwcd-kpi-ico"><i class="fas fa-wallet"></i></span>
+                    <span class="cwcd-kpi-meta">
+                        <span class="cwcd-kpi-label"><?php esc_html_e( 'Earned', 'creativewings-core' ); ?></span>
+                        <span class="cwcd-kpi-value"><?php echo esc_html( $currency ); ?> <?php echo number_format( $earnings, 0 ); ?></span>
+                    </span>
+                </article>
+                <article class="cwcd-kpi cwcd-kpi-amber">
+                    <span class="cwcd-kpi-ico"><i class="fas fa-ticket-alt"></i></span>
+                    <span class="cwcd-kpi-meta">
+                        <span class="cwcd-kpi-label"><?php esc_html_e( 'Coupon redemptions', 'creativewings-core' ); ?></span>
+                        <span class="cwcd-kpi-value"><?php echo number_format( $coupon_used_total ); ?></span>
+                    </span>
+                </article>
+            </section>
+
+            <!-- ── Public link + QR (split card) ───────────────────────────── -->
+            <section class="cwcd-card cwcd-card-split">
+                <header class="cwcd-card-head">
+                    <h2><i class="fas fa-link"></i> <?php esc_html_e( 'Public campaign link', 'creativewings-core' ); ?></h2>
+                    <p class="cwcd-card-sub"><?php esc_html_e( 'Share this URL or QR with participants so they can find the campaign.', 'creativewings-core' ); ?></p>
+                </header>
+                <div class="cwcd-link-grid">
+                    <div class="cwcd-link-col">
+                        <label class="cwcd-field-label" for="cwcd-public-url"><?php esc_html_e( 'Permalink', 'creativewings-core' ); ?></label>
+                        <div class="cwcd-link-row">
+                            <input id="cwcd-public-url" type="text" readonly value="<?php echo esc_attr( $permalink ); ?>" class="cwcd-link-input" onclick="this.select()">
+                            <button type="button" class="cwcd-btn cwcd-btn-primary cwcd-copy" data-copy="<?php echo esc_attr( $permalink ); ?>">
+                                <i class="fas fa-copy"></i>
+                                <span class="cwcd-copy-text"><?php esc_html_e( 'Copy', 'creativewings-core' ); ?></span>
+                            </button>
+                        </div>
+                        <a href="<?php echo esc_url( $permalink ); ?>" target="_blank" rel="noopener" class="cwcd-link-open">
+                            <i class="fas fa-external-link-alt"></i> <?php esc_html_e( 'Open public page', 'creativewings-core' ); ?>
+                        </a>
+                    </div>
+                    <?php if ( $public_qr ): ?>
+                    <div class="cwcd-qr-col">
+                        <div class="cwcd-qr-frame">
+                            <img src="<?php echo esc_url( $public_qr ); ?>" alt="<?php esc_attr_e( 'Public campaign QR code', 'creativewings-core' ); ?>" width="160" height="160" loading="lazy">
+                        </div>
+                        <a href="<?php echo esc_url( $public_qr ); ?>" download="campaign-<?php echo (int) $campaign_id; ?>-qr.png" class="cwcd-qr-dl">
+                            <i class="fas fa-download"></i> <?php esc_html_e( 'Download QR (PNG)', 'creativewings-core' ); ?>
+                        </a>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </section>
+
+            <!-- ── Sponsor coupons ─────────────────────────────────────────── -->
+            <section class="cwcd-card">
+                <header class="cwcd-card-head">
+                    <h2><i class="fas fa-ticket-alt"></i> <?php esc_html_e( 'Sponsor coupons', 'creativewings-core' ); ?></h2>
+                    <?php if ( ! empty( $coupons ) ): ?>
+                        <span class="cwcd-card-tag"><?php echo (int) count( $coupons ); ?> <?php esc_html_e( 'codes', 'creativewings-core' ); ?> · <?php echo (int) $coupon_used_total; ?> <?php esc_html_e( 'used', 'creativewings-core' ); ?></span>
+                    <?php endif; ?>
+                </header>
+                <?php if ( empty( $coupons ) ): ?>
+                    <p class="cwcd-empty"><i class="fas fa-info-circle"></i> <?php esc_html_e( 'No sponsor coupons attached to this campaign yet.', 'creativewings-core' ); ?></p>
+                <?php else: ?>
+                    <ul class="cwcd-coupon-list" role="list">
+                        <?php foreach ( $coupons as $c ):
+                            $used  = (int) $c['usage_count'];
+                            $limit = (int) $c['usage_limit'];
+                            $pct   = $limit > 0 ? min( 100, ( $used / $limit ) * 100 ) : ( $used > 0 ? 100 : 0 );
+                        ?>
+                        <li class="cwcd-coupon">
+                            <div class="cwcd-coupon-main">
+                                <code class="cwcd-coupon-code"><?php echo esc_html( $c['code'] ); ?></code>
+                                <div class="cwcd-coupon-school">
+                                    <?php if ( $c['school_code'] ): ?>
+                                        <span class="cwcd-school-badge"><?php echo esc_html( $c['school_code'] ); ?></span>
+                                        <?php if ( $c['school_name'] ): ?>
+                                            <span class="cwcd-school-name"><?php echo esc_html( $c['school_name'] ); ?></span>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <span class="cwcd-muted">—</span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <div class="cwcd-coupon-side">
+                                <div class="cwcd-usage">
+                                    <span class="cwcd-usage-num"><?php echo (int) $used; ?><?php if ( $limit ): ?><span class="cwcd-usage-of">/<?php echo (int) $limit; ?></span><?php endif; ?></span>
+                                    <span class="cwcd-usage-bar" aria-hidden="true"><span style="width:<?php echo esc_attr( $pct ); ?>%"></span></span>
+                                </div>
+                                <?php if ( $c['edit_url'] && current_user_can( 'manage_woocommerce' ) ): ?>
+                                    <a href="<?php echo esc_url( $c['edit_url'] ); ?>" target="_blank" rel="noopener" class="cwcd-icon-btn" aria-label="<?php esc_attr_e( 'Edit coupon in WooCommerce', 'creativewings-core' ); ?>" title="<?php esc_attr_e( 'Edit in WooCommerce', 'creativewings-core' ); ?>">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                <?php endif; ?>
+                            </div>
+                        </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </section>
+
+            <!-- ── Per-school PIC upload QRs ───────────────────────────────── -->
+            <?php if ( ! empty( $schools ) && class_exists( 'CW_Staged_Submissions' ) ): ?>
+            <section class="cwcd-card">
+                <header class="cwcd-card-head">
+                    <h2><i class="fas fa-qrcode"></i> <?php esc_html_e( 'School PIC upload QRs', 'creativewings-core' ); ?></h2>
+                    <p class="cwcd-card-sub"><?php esc_html_e( 'Share each QR with the school PIC so their team can scan to open the upload form.', 'creativewings-core' ); ?></p>
+                </header>
+                <div class="cwcd-pic-grid">
+                    <?php foreach ( $schools as $school ):
+                        if ( empty( $school['school_code'] ) ) continue;
+                        $code = str_pad( preg_replace( '/\D/', '', $school['school_code'] ), 3, '0', STR_PAD_LEFT );
+                        $name = (string) ( $school['school_name'] ?? '' );
+                        $url  = CW_Staged_Submissions::get_upload_url( $campaign_id, $code );
+                        if ( ! $url ) continue;
+                        $qr   = class_exists( 'CW_Campaign_Admin' ) ? CW_Campaign_Admin::qr_image_url( $url, 200 ) : '';
+                    ?>
+                    <article class="cwcd-pic-card">
+                        <div class="cwcd-pic-qr">
+                            <img src="<?php echo esc_url( $qr ); ?>" alt="<?php echo esc_attr( sprintf( __( 'PIC upload QR for school %s', 'creativewings-core' ), $code ) ); ?>" width="140" height="140" loading="lazy">
+                        </div>
+                        <div class="cwcd-pic-body">
+                            <span class="cwcd-school-badge cwcd-school-badge-lg"><?php echo esc_html( $code ); ?></span>
+                            <?php if ( $name ): ?><h3 class="cwcd-pic-name"><?php echo esc_html( $name ); ?></h3><?php endif; ?>
+                            <div class="cwcd-pic-actions">
+                                <a href="<?php echo esc_url( $qr ); ?>" download="school-<?php echo esc_attr( $code ); ?>-pic-qr.png" class="cwcd-btn cwcd-btn-ghost cwcd-btn-sm"><i class="fas fa-download"></i> <?php esc_html_e( 'PNG', 'creativewings-core' ); ?></a>
+                                <a href="<?php echo esc_url( $url ); ?>" target="_blank" rel="noopener" class="cwcd-btn cwcd-btn-ghost cwcd-btn-sm"><i class="fas fa-external-link-alt"></i> <?php esc_html_e( 'Open', 'creativewings-core' ); ?></a>
+                            </div>
+                        </div>
+                    </article>
+                    <?php endforeach; ?>
+                </div>
+            </section>
+            <?php endif; ?>
+
+            <!-- ── Admin tools ─────────────────────────────────────────────── -->
+            <section class="cwcd-card">
+                <header class="cwcd-card-head">
+                    <h2><i class="fas fa-toolbox"></i> <?php esc_html_e( 'Admin tools', 'creativewings-core' ); ?></h2>
+                </header>
+                <div class="cwcd-tools">
+                    <a href="<?php echo esc_url( $manage_entries_url ); ?>" class="cwcd-tool cwcd-tool-primary">
+                        <span class="cwcd-tool-ico"><i class="fas fa-user-check"></i></span>
+                        <span class="cwcd-tool-text">
+                            <strong><?php esc_html_e( 'Manage entries', 'creativewings-core' ); ?></strong>
+                            <small><?php esc_html_e( 'Review & moderate', 'creativewings-core' ); ?></small>
+                        </span>
+                    </a>
+                    <a href="<?php echo esc_url( $permalink ); ?>" target="_blank" rel="noopener" class="cwcd-tool">
+                        <span class="cwcd-tool-ico"><i class="fas fa-eye"></i></span>
+                        <span class="cwcd-tool-text">
+                            <strong><?php esc_html_e( 'View public page', 'creativewings-core' ); ?></strong>
+                            <small><?php esc_html_e( 'Opens in new tab', 'creativewings-core' ); ?></small>
+                        </span>
+                    </a>
+                    <a href="<?php echo esc_url( $edit_url ); ?>" class="cwcd-tool">
+                        <span class="cwcd-tool-ico"><i class="fas fa-edit"></i></span>
+                        <span class="cwcd-tool-text">
+                            <strong><?php esc_html_e( 'Edit campaign', 'creativewings-core' ); ?></strong>
+                            <small><?php esc_html_e( 'Reopen the wizard', 'creativewings-core' ); ?></small>
+                        </span>
+                    </a>
+                    <?php if ( current_user_can( 'manage_woocommerce' ) || current_user_can( 'edit_products' ) ): ?>
+                    <a href="<?php echo esc_url( $bulk_codes_url ); ?>" target="_blank" rel="noopener" class="cwcd-tool">
+                        <span class="cwcd-tool-ico"><i class="fas fa-list-ol"></i></span>
+                        <span class="cwcd-tool-text">
+                            <strong><?php esc_html_e( 'Bulk codes', 'creativewings-core' ); ?></strong>
+                            <small><?php esc_html_e( 'Generate code sheet', 'creativewings-core' ); ?></small>
+                        </span>
+                    </a>
+                    <a href="<?php echo esc_url( $bulk_qr_url ); ?>" target="_blank" rel="noopener" class="cwcd-tool">
+                        <span class="cwcd-tool-ico"><i class="fas fa-qrcode"></i></span>
+                        <span class="cwcd-tool-text">
+                            <strong><?php esc_html_e( 'Bulk QR sheet', 'creativewings-core' ); ?></strong>
+                            <small><?php esc_html_e( 'Printable QR codes', 'creativewings-core' ); ?></small>
+                        </span>
+                    </a>
+                    <?php endif; ?>
+                </div>
+            </section>
+
+            <!-- ── Latest entries ──────────────────────────────────────────── -->
+            <section class="cwcd-card">
+                <header class="cwcd-card-head">
+                    <h2><i class="fas fa-images"></i> <?php esc_html_e( 'Latest entries', 'creativewings-core' ); ?></h2>
+                    <?php if ( ! empty( $latest_entries ) ): ?>
+                        <a class="cwcd-card-link" href="<?php echo esc_url( $manage_entries_url ); ?>"><?php esc_html_e( 'See all', 'creativewings-core' ); ?> <i class="fas fa-arrow-right"></i></a>
+                    <?php endif; ?>
+                </header>
+                <?php if ( empty( $latest_entries ) ): ?>
+                    <p class="cwcd-empty"><i class="fas fa-info-circle"></i> <?php esc_html_e( 'No entries yet.', 'creativewings-core' ); ?></p>
+                <?php else: ?>
+                    <div class="cwcd-entries">
+                        <?php foreach ( $latest_entries as $entry ):
+                            $art    = (string) get_post_meta( $entry->ID, 'upload_document', true );
+                            $name   = (string) get_post_meta( $entry->ID, 'cw_participant_name', true );
+                            $is_img = $art && preg_match( '/\.(jpe?g|png|gif|webp)$/i', $art );
+                        ?>
+                        <figure class="cwcd-entry" title="<?php echo esc_attr( $name ); ?>">
+                            <div class="cwcd-entry-thumb">
+                                <?php if ( $is_img ): ?>
+                                    <img src="<?php echo esc_url( $art ); ?>" alt="" loading="lazy" decoding="async">
+                                <?php else: ?>
+                                    <div class="cwcd-entry-blank"><i class="fas fa-user"></i></div>
+                                <?php endif; ?>
+                            </div>
+                            <figcaption class="cwcd-entry-name"><?php echo esc_html( $name ?: __( 'Participant', 'creativewings-core' ) ); ?></figcaption>
+                            <span class="cwcd-entry-date"><?php echo esc_html( human_time_diff( get_post_time( 'U', true, $entry ), current_time( 'timestamp', true ) ) ); ?> <?php esc_html_e( 'ago', 'creativewings-core' ); ?></span>
+                        </figure>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </section>
+
+        </div>
+
+        <script>
+        (function(){
+            // Copy-to-clipboard for the public link button.
+            document.querySelectorAll('.cwcd-copy').forEach(function(btn){
+                btn.addEventListener('click', function(){
+                    var val = btn.getAttribute('data-copy') || '';
+                    if (!val) return;
+                    var label = btn.querySelector('.cwcd-copy-text');
+                    var done  = function(){
+                        btn.classList.add('is-copied');
+                        if (label) label.textContent = '<?php echo esc_js( __( 'Copied!', 'creativewings-core' ) ); ?>';
+                        setTimeout(function(){
+                            btn.classList.remove('is-copied');
+                            if (label) label.textContent = '<?php echo esc_js( __( 'Copy', 'creativewings-core' ) ); ?>';
+                        }, 1500);
+                    };
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(val).then(done).catch(function(){});
+                    } else {
+                        var input = btn.closest('.cwcd-link-row')?.querySelector('input');
+                        if (input) { input.select(); document.execCommand('copy'); done(); }
+                    }
+                });
+            });
+        })();
+        </script>
+        <?php
+    }
+
     /* ==========================================================================
        1. OVERVIEW TAB (TechNova Design)
        ========================================================================== */
@@ -304,7 +696,11 @@ class CW_Dashboard_Business {
                     ? CW_Business_Reports::get_chart_series( $uid, $default_range )
                     : [ 'labels' => [], 'revenue' => [], 'participants' => [], 'range' => $default_range ];
 
-                $currency_symbol = function_exists( 'get_woocommerce_currency_symbol' ) ? get_woocommerce_currency_symbol() : '$';
+                // WooCommerce returns the currency symbol pre-encoded as HTML
+                // entities (e.g. MYR -> "&#82;&#77;"). Chart.js draws labels
+                // straight into the <canvas> and does not decode entities, so
+                // we must decode here before passing the symbol to JavaScript.
+                $currency_symbol = function_exists( 'get_woocommerce_currency_symbol' ) ? html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) : '$';
                 $chart_nonce     = wp_create_nonce( 'cw_biz_chart_series' );
                 ?>
                 <div class="cw-chart-container">
@@ -652,12 +1048,112 @@ class CW_Dashboard_Business {
         // Reset URL (clears all filter/pagination args, keeps the tab)
         $reset_url = add_query_arg('tab', 'campaigns', $my_account_page_url);
 
-        $is_edit_mode = isset($_GET['edit_id']);
-        $edit_id = $is_edit_mode ? intval($_GET['edit_id']) : 0;
-        
+        $is_edit_mode    = isset($_GET['edit_id']);
+        $edit_id         = $is_edit_mode ? intval($_GET['edit_id']) : 0;
+        $is_create_mode  = isset($_GET['action']) && $_GET['action'] === 'create';
+        $is_details_mode = isset($_GET['details_id']) && intval($_GET['details_id']) > 0;
+        $details_id      = $is_details_mode ? intval($_GET['details_id']) : 0;
+        $is_editor_mode  = $is_edit_mode || $is_create_mode;
+
         // Note: Success messages are handled by Transients/SweetAlert2 now
         if ( isset($_GET['saved']) ) echo '<div class="cw-alert success">Campaign saved successfully!</div>';
         if ( isset($_GET['campaign_created']) ) echo '<div class="cw-alert success">New Campaign created successfully!</div>';
+
+        // ────────────────────────────────────────────────────────────────
+        // DETAILS MODE — dedicated full-page view of the admin details for
+        // one campaign. Triggered by `?tab=campaigns&details_id=NN`.
+        // We replaced the old slide-in modal because WooCommerce / theme
+        // wrappers around `.woocommerce-MyAccount-content` frequently
+        // apply `transform`, which strips `position: fixed` from any
+        // descendant — the modal then rendered inline below the cards.
+        // A real page route is also bookmarkable and feels more native.
+        // ────────────────────────────────────────────────────────────────
+        if ( $is_details_mode ) {
+            // Ownership check before we render anything.
+            $owns = ( get_post_type( $details_id ) === 'product' )
+                && ( ! class_exists( 'CW_Roles' ) || CW_Roles::user_owns_campaign( $details_id, $uid ) );
+
+            ?>
+            <div class="cw-content-wrapper cw-campaigns-editor cw-campaigns-details">
+                <nav class="cw-editor-breadcrumb" aria-label="<?php esc_attr_e( 'Breadcrumb', 'creativewings-core' ); ?>">
+                    <a href="<?php echo esc_url( $base_campaigns_url ); ?>" class="cw-editor-back">
+                        <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                        <?php esc_html_e( 'My Campaigns', 'creativewings-core' ); ?>
+                    </a>
+                    <span class="cw-editor-crumb-sep" aria-hidden="true">/</span>
+                    <span class="cw-editor-crumb-current"><?php esc_html_e( 'Campaign Details', 'creativewings-core' ); ?></span>
+                </nav>
+
+                <?php if ( ! $owns ): ?>
+                    <div class="cwcd-error">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <?php esc_html_e( 'Campaign not found or you do not have access.', 'creativewings-core' ); ?>
+                    </div>
+                <?php else:
+                    $this->render_details_modal_body( $details_id );
+                endif; ?>
+            </div>
+            <?php
+            return; // Stop — don't render the cards UI.
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // EDITOR MODE — dedicated full-page view, replaces the old modal.
+        // Triggered by `?tab=campaigns&action=create` (new) or
+        // `?tab=campaigns&edit_id=NN` (existing campaign).
+        // ────────────────────────────────────────────────────────────────
+        if ( $is_editor_mode ) {
+            $editor_title = $is_edit_mode ? __( 'Edit Campaign', 'creativewings-core' ) : __( 'Create New Campaign', 'creativewings-core' );
+            ?>
+            <div class="cw-content-wrapper cw-campaigns-editor">
+                <nav class="cw-editor-breadcrumb" aria-label="<?php esc_attr_e( 'Breadcrumb', 'creativewings-core' ); ?>">
+                    <a href="<?php echo esc_url( $base_campaigns_url ); ?>" class="cw-editor-back">
+                        <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                        <?php esc_html_e( 'My Campaigns', 'creativewings-core' ); ?>
+                    </a>
+                    <span class="cw-editor-crumb-sep" aria-hidden="true">/</span>
+                    <span class="cw-editor-crumb-current"><?php echo esc_html( $editor_title ); ?></span>
+                </nav>
+
+                <div class="cw-editor-wrap">
+                    <?php
+                    if ( class_exists( 'CW_Business_Form' ) ) {
+                        $form = new CW_Business_Form();
+                        // We still pass $is_modal=true so the wizard shell
+                        // renders its full chrome (sidebar stepper, header,
+                        // footer); the close button's behaviour is rewired
+                        // by JS at the bottom of this method to navigate
+                        // back to ?tab=campaigns instead of hiding a modal.
+                        echo $form->render_form( [], null, true, $edit_id );
+                    } else {
+                        echo '<p style="color:red;">' . esc_html__( 'Error: Form class not loaded. Please contact support.', 'creativewings-core' ) . '</p>';
+                    }
+                    ?>
+                </div>
+            </div>
+
+            <script>
+            (function(){
+                // The wizard's close button was originally wired to a modal
+                // closer. In standalone-editor mode it should send the user
+                // back to the cards list.
+                var backUrl = <?php echo wp_json_encode( $base_campaigns_url ); ?>;
+                window.closeCampaignModal = function(){ window.location.href = backUrl; };
+                document.addEventListener('click', function(e){
+                    var t = e.target.closest('#cww-close-btn, .cw-editor-back, .cw-editor-cancel');
+                    if (!t) return;
+                    // Allow plain anchors (.cw-editor-back) to navigate normally;
+                    // only the legacy button needs JS routing.
+                    if (t.id === 'cww-close-btn') {
+                        e.preventDefault();
+                        window.location.href = backUrl;
+                    }
+                });
+            })();
+            </script>
+            <?php
+            return; // Stop here — don't render the cards UI or the details modal.
+        }
 
         ?>
         <div class="cw-content-wrapper">
@@ -666,9 +1162,9 @@ class CW_Dashboard_Business {
                     <h2 style="margin:0 0 4px;">My Campaigns</h2>
                     <p>Manage and track all your campaigns</p>
                 </div>
-                <button type="button" class="cw-btn-primary" id="cw-open-create" style="text-decoration:none;">
-                    <i class="fas fa-plus"></i> Create New Campaign
-                </button>
+                <a href="<?php echo esc_url( add_query_arg( 'action', 'create', $base_campaigns_url ) ); ?>" class="cw-btn-primary" id="cw-open-create" style="text-decoration:none;">
+                    <i class="fas fa-plus"></i> <?php esc_html_e( 'Create New Campaign', 'creativewings-core' ); ?>
+                </a>
             </div>
 
             <!-- Filter / search bar -->
@@ -728,8 +1224,8 @@ class CW_Dashboard_Business {
                         $entries_link   = add_query_arg('campaign_id', $pid, $manage_entries_url);
 
                         $edit_button_html = $is_locked
-                            ? '<button class="cw-btn-disabled full-width" disabled><i class="fas fa-lock"></i> Locked</button>'
-                            : '<a href="' . esc_url($edit_url_safe) . '" class="cw-btn-outline-blue full-width" style="flex:0.5; min-width:80px;"><i class="fas fa-edit"></i> Edit</a>';
+                            ? '<button type="button" class="cw-btn-disabled cw-card-action-icon" disabled title="' . esc_attr__( 'Locked — submission deadline passed', 'creativewings-core' ) . '" aria-label="' . esc_attr__( 'Locked', 'creativewings-core' ) . '"><i class="fas fa-lock" aria-hidden="true"></i><span class="cw-action-sr">' . esc_html__( 'Locked', 'creativewings-core' ) . '</span></button>'
+                            : '<a href="' . esc_url($edit_url_safe) . '" class="cw-btn-outline-blue cw-card-action-icon" title="' . esc_attr__( 'Edit campaign', 'creativewings-core' ) . '" aria-label="' . esc_attr__( 'Edit campaign', 'creativewings-core' ) . '"><i class="fas fa-edit" aria-hidden="true"></i><span class="cw-action-sr">' . esc_html__( 'Edit', 'creativewings-core' ) . '</span></a>';
                     ?>
                         <div class="cw-modern-card">
                             <div class="cw-card-image" style="background-image:url('<?php echo esc_url($img); ?>');">
@@ -750,11 +1246,30 @@ class CW_Dashboard_Business {
                                     <div class="cw-stat-item"><i class="fas fa-users"></i> <?php echo number_format($entries_count); ?> Joined</div>
                                     <div class="cw-stat-item"><i class="fas fa-wallet"></i> RM <?php echo number_format($earnings, 0); ?></div>
                                 </div>
-                                <div class="cw-card-actions">
-                                    <a href="<?php echo esc_url($entries_link); ?>" class="cw-btn-primary full-width" style="flex:1;">
-                                        <i class="fas fa-user-check"></i> Entries (<?php echo $entries_count; ?>)
+                                <div class="cw-card-actions cw-card-actions-icons">
+                                    <a href="<?php echo esc_url($entries_link); ?>"
+                                       class="cw-btn-primary cw-card-action-icon cw-card-action-entries"
+                                       title="<?php echo esc_attr( sprintf( _n( '%s entry — manage', '%s entries — manage', $entries_count, 'creativewings-core' ), number_format_i18n( $entries_count ) ) ); ?>"
+                                       aria-label="<?php echo esc_attr( sprintf( _n( '%s entry, manage', '%s entries, manage', $entries_count, 'creativewings-core' ), number_format_i18n( $entries_count ) ) ); ?>">
+                                        <i class="fas fa-user-check" aria-hidden="true"></i>
+                                        <span class="cw-action-count"><?php echo number_format_i18n( $entries_count ); ?></span>
                                     </a>
-                                    <a href="<?php echo esc_url(get_permalink($pid)); ?>" target="_blank" class="cw-btn-white full-width" style="flex:0.5; min-width:72px;"><i class="fas fa-eye"></i> View</a>
+                                    <a href="<?php echo esc_url( add_query_arg( 'details_id', $pid, $base_campaigns_url ) ); ?>"
+                                       class="cw-btn-outline-blue cw-card-action-icon"
+                                       title="<?php esc_attr_e( 'View campaign details', 'creativewings-core' ); ?>"
+                                       aria-label="<?php esc_attr_e( 'View campaign details', 'creativewings-core' ); ?>">
+                                        <i class="fas fa-info-circle" aria-hidden="true"></i>
+                                        <span class="cw-action-sr"><?php esc_html_e( 'Details', 'creativewings-core' ); ?></span>
+                                    </a>
+                                    <a href="<?php echo esc_url(get_permalink($pid)); ?>"
+                                       target="_blank"
+                                       rel="noopener"
+                                       class="cw-btn-white cw-card-action-icon"
+                                       title="<?php esc_attr_e( 'Open public campaign page in new tab', 'creativewings-core' ); ?>"
+                                       aria-label="<?php esc_attr_e( 'View public campaign page', 'creativewings-core' ); ?>">
+                                        <i class="fas fa-external-link-alt" aria-hidden="true"></i>
+                                        <span class="cw-action-sr"><?php esc_html_e( 'View public', 'creativewings-core' ); ?></span>
+                                    </a>
                                     <?php echo $edit_button_html; ?>
                                 </div>
                             </div>
@@ -812,61 +1327,13 @@ class CW_Dashboard_Business {
                 <div class="cw-empty-state">
                     <i class="fas fa-bullhorn"></i>
                     <p>No campaigns yet. Create your first campaign to get started!</p>
-                    <button type="button" class="cw-btn-primary" id="cw-open-create-empty" style="margin-top:14px;">
-                        <i class="fas fa-plus"></i> Create Campaign
-                    </button>
+                    <a href="<?php echo esc_url( add_query_arg( 'action', 'create', $base_campaigns_url ) ); ?>" class="cw-btn-primary" id="cw-open-create-empty" style="margin-top:14px; text-decoration:none;">
+                        <i class="fas fa-plus"></i> <?php esc_html_e( 'Create Campaign', 'creativewings-core' ); ?>
+                    </a>
                 </div>
             <?php endif; ?>
         </div>
 
-        <!-- CREATE/EDIT MODAL -->
-        <div id="cw-campaign-modal" class="cw-modal" style="display: <?php echo $is_edit_mode ? 'flex' : 'none'; ?>; align-items:center; justify-content:center; padding:16px; box-sizing:border-box;">
-            <?php 
-            if ( class_exists('CW_Business_Form') ) {
-                $form = new CW_Business_Form();
-                echo $form->render_form([], null, true, $edit_id);
-            } else {
-                echo '<p style="color:red;">Error: Form class not loaded. Please contact support.</p>';
-            }
-            ?>
-        </div>
-
-        <script>
-            jQuery(document).ready(function($){
-
-                function openCampaignModal() {
-                    $('#cw-campaign-modal').css('display', 'flex');
-                    if (typeof window.currentStep !== 'undefined' && typeof window.updateWizardUI === 'function') {
-                        window.currentStep = 1;
-                        window.updateWizardUI();
-                    }
-                }
-
-                // Open modal from header button or empty-state button
-                $('.cw-content-wrapper').on('click', '#cw-open-create, #cw-open-create-empty', function(e){
-                    e.preventDefault();
-                    openCampaignModal();
-                });
-
-                // 2. CLOSE MODAL Logic
-                function closeCampaignModal(){ 
-                    $('#cw-campaign-modal').hide();
-                    const url = new URL(window.location);
-                    if (url.searchParams.has('edit_id')) {
-                        url.searchParams.delete('edit_id');
-                        window.history.pushState({}, '', url.toString()); 
-                        location.reload();
-                    }
-                }
-                
-                // 3. Bind Close Events — #cww-close-btn lives inside the wizard shell
-                $(document).on('click', '#cww-close-btn', closeCampaignModal);
-                $(window).on('click', function(e){ 
-                    if($(e.target).hasClass('cw-modal')){ closeCampaignModal(); } 
-                });
-
-            });
-        </script>
         <?php
     }
     
@@ -1437,7 +1904,7 @@ class CW_Dashboard_Business {
                         'status'      => $context['breakdowns']['status'],
                         'school'      => $context['breakdowns']['school'],
                         'scores'      => $context['breakdowns']['scores'],
-                        'currency'    => function_exists( 'get_woocommerce_currency_symbol' ) ? html_entity_decode( get_woocommerce_currency_symbol() ) : 'RM',
+                        'currency'    => function_exists( 'get_woocommerce_currency_symbol' ) ? html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) : 'RM',
                     ] );
                     ?>
                 </script>

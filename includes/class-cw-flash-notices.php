@@ -30,27 +30,45 @@ class CW_Flash_Notices {
     const MAX_LEN = 600;
 
     public function __construct() {
-        add_action( 'wp_footer', [ $this, 'maybe_render' ], 60 );
+        // Render in the footer at priority 99 so we run AFTER every other footer
+        // hook (wp_print_footer_scripts is at 20). Render in the head too as a
+        // belt-and-braces measure for any theme that skips wp_footer.
+        add_action( 'wp_footer', [ $this, 'maybe_render' ], 99 );
+        add_action( 'wp_head',   [ $this, 'maybe_render' ], 99 );
     }
 
     /**
      * Build the notice payload from $_GET, output the SweetAlert2 trigger if any.
+     *
+     * Safe to call twice (head + footer) — a sentinel flag prevents the script
+     * from being printed more than once per request.
      */
     public function maybe_render() {
-        if ( is_admin() ) return;
-        if ( ! is_user_logged_in() ) return; // SweetAlert2 is only enqueued for logged-in users.
+        static $rendered = false;
+        if ( $rendered ) return;
 
+        if ( is_admin() ) return;
+        // Notices should work for logged-out users too (e.g. registration/login
+        // flows redirect back with ?error=... before the user has a session).
         $payload = $this->collect_notices();
         if ( empty( $payload ) ) return;
+
+        $rendered = true;
 
         // The list of keys we strip from the URL after firing the popup. Match
         // every query key we look at so the address bar stays clean.
         $strip_keys = [ 'error', 'success', 'warning', 'info', 'notice', 'linked', 'updated', 'reset', 'requested' ];
+
+        // CDN fallback URL — used by the loader below if SweetAlert2 isn't
+        // already on the page (some non-logged-in flows or aggressive caches).
+        $sa_cdn = 'https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js';
         ?>
-        <script>
+        <script id="cw-flash-notice-js">
         (function(){
-            var payload = <?php echo wp_json_encode( $payload ); ?>;
+            var payload   = <?php echo wp_json_encode( $payload ); ?>;
             var stripKeys = <?php echo wp_json_encode( $strip_keys ); ?>;
+            var saCdn     = <?php echo wp_json_encode( $sa_cdn ); ?>;
+            var fired     = false;
 
             function cleanUrl(){
                 try {
@@ -65,36 +83,6 @@ class CW_Flash_Notices {
                 } catch(e) { /* IE / very old browsers — leave URL as-is. */ }
             }
 
-            function fire(){
-                if (typeof Swal === 'undefined') {
-                    // Fallback for the rare page where SweetAlert2 didn't load.
-                    if (payload.length) {
-                        var first = payload[0];
-                        try { window.alert( (first.title || '') + (first.title ? ' — ' : '') + (first.text || '') ); } catch(e){}
-                    }
-                    cleanUrl();
-                    return;
-                }
-
-                // Chain multiple notices (rare but supported) so they don't stack on top of each other.
-                function showNext(idx){
-                    if (idx >= payload.length) { cleanUrl(); return; }
-                    var n = payload[idx];
-                    Swal.fire({
-                        icon:               n.icon || 'info',
-                        title:              n.title || '',
-                        text:               n.text  || '',
-                        confirmButtonText:  n.button || 'OK',
-                        confirmButtonColor: cwIconColor( n.icon ),
-                        backdrop:           true,
-                        showCloseButton:    true,
-                        timer:              n.timer || undefined,
-                        timerProgressBar:   !!n.timer
-                    }).then(function(){ showNext(idx + 1); });
-                }
-                showNext(0);
-            }
-
             function cwIconColor(icon){
                 switch (icon) {
                     case 'success': return '#16a34a';
@@ -103,6 +91,72 @@ class CW_Flash_Notices {
                     case 'info':    return '#0284c7';
                     default:        return '#0F6796';
                 }
+            }
+
+            function showAll(){
+                function showNext(idx){
+                    if (idx >= payload.length) { cleanUrl(); return; }
+                    var n = payload[idx];
+                    try {
+                        window.Swal.fire({
+                            icon:               n.icon || 'info',
+                            title:              n.title || '',
+                            text:               n.text  || '',
+                            confirmButtonText:  n.button || 'OK',
+                            confirmButtonColor: cwIconColor( n.icon ),
+                            backdrop:           true,
+                            showCloseButton:    true,
+                            timer:              n.timer || undefined,
+                            timerProgressBar:   !!n.timer
+                        }).then(function(){ showNext(idx + 1); });
+                    } catch(e) {
+                        if (window.console) console.warn('[CW Flash] Swal.fire failed:', e);
+                        showNext(idx + 1);
+                    }
+                }
+                showNext(0);
+            }
+
+            function loadSwal(cb){
+                if (document.getElementById('cw-flash-sa-fallback')) return; // already injecting
+                var s = document.createElement('script');
+                s.id = 'cw-flash-sa-fallback';
+                s.src = saCdn;
+                s.async = false;
+                s.onload  = cb;
+                s.onerror = function(){
+                    if (window.console) console.warn('[CW Flash] Failed to load SweetAlert2 fallback from CDN.');
+                    // Last-resort: native alert so the user still gets the message.
+                    payload.forEach(function(n){
+                        try { window.alert( (n.title || '') + (n.title ? ' — ' : '') + (n.text || '') ); } catch(e){}
+                    });
+                    cleanUrl();
+                };
+                document.head.appendChild(s);
+            }
+
+            function fire(){
+                if (fired) return;
+                fired = true;
+                if (window.console) console.info('[CW Flash] notices ready:', payload);
+
+                // Wait briefly for SweetAlert2 (footer-enqueued, so it might not
+                // have parsed yet if our script ran from <head>). Up to 1.5s.
+                var tries = 0;
+                (function waitForSwal(){
+                    if (typeof window.Swal !== 'undefined' && typeof window.Swal.fire === 'function') {
+                        showAll();
+                        return;
+                    }
+                    if (tries++ < 30) {
+                        setTimeout(waitForSwal, 50);
+                        return;
+                    }
+                    // Still no Swal — pull it from the CDN, then show.
+                    loadSwal(function(){
+                        if (typeof window.Swal !== 'undefined') { showAll(); }
+                    });
+                })();
             }
 
             if (document.readyState === 'loading') {

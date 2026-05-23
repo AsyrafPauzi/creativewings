@@ -101,4 +101,86 @@ class CW_Sponsor_Coupons {
             update_post_meta( $coupon_id, '_cw_school_code', sanitize_text_field( $_POST['_cw_school_code'] ) );
         }
     }
+
+    /**
+     * List all sponsor coupons attached to a given campaign, decorated with
+     * usage counts and the matching school metadata stored on the campaign
+     * (so we can show "School 002 - Sekolah X" alongside the code).
+     *
+     * @param int $campaign_id
+     * @return array<int, array{
+     *     id:int, code:string, school_code:string, school_name:string,
+     *     amount:float, discount_type:string, usage_count:int, usage_limit:?int,
+     *     edit_url:string, expires:?string
+     * }>
+     */
+    public static function get_coupons_for_campaign( $campaign_id ) {
+        $campaign_id = (int) $campaign_id;
+        if ( ! $campaign_id || ! class_exists( 'WC_Coupon' ) ) {
+            return [];
+        }
+
+        $ids = get_posts( [
+            'post_type'      => 'shop_coupon',
+            'post_status'    => [ 'publish', 'draft', 'pending', 'private' ],
+            'posts_per_page' => -1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+            'meta_query'     => [
+                [
+                    'key'     => '_cw_campaign_id',
+                    'value'   => $campaign_id,
+                    'compare' => '=',
+                    'type'    => 'NUMERIC',
+                ],
+            ],
+        ] );
+
+        if ( empty( $ids ) ) {
+            return [];
+        }
+
+        // Lookup table of school metadata from the campaign so we can attach
+        // a human-readable school name to each coupon row in one shot.
+        $schools = get_post_meta( $campaign_id, 'cw_school_sponsors', true );
+        $school_map = [];
+        if ( is_array( $schools ) ) {
+            foreach ( $schools as $row ) {
+                if ( empty( $row['school_code'] ) ) continue;
+                $code = str_pad( preg_replace( '/\D/', '', $row['school_code'] ), 3, '0', STR_PAD_LEFT );
+                $school_map[ $code ] = (string) ( $row['school_name'] ?? '' );
+            }
+        }
+
+        $out = [];
+        foreach ( $ids as $id ) {
+            $coupon = new WC_Coupon( (int) $id );
+            $school_code = (string) get_post_meta( $id, '_cw_school_code', true );
+            if ( $school_code !== '' ) {
+                $school_code = str_pad( preg_replace( '/\D/', '', $school_code ), 3, '0', STR_PAD_LEFT );
+            }
+            $expires    = $coupon->get_date_expires();
+            $expires_at = $expires ? $expires->date( 'Y-m-d' ) : null;
+
+            $out[] = [
+                'id'            => (int) $id,
+                'code'          => (string) $coupon->get_code(),
+                'school_code'   => $school_code,
+                'school_name'   => $school_map[ $school_code ] ?? '',
+                'amount'        => (float) $coupon->get_amount(),
+                'discount_type' => (string) $coupon->get_discount_type(),
+                'usage_count'   => (int) $coupon->get_usage_count(),
+                'usage_limit'   => $coupon->get_usage_limit() ? (int) $coupon->get_usage_limit() : null,
+                'edit_url'      => get_edit_post_link( (int) $id, 'raw' ) ?: '',
+                'expires'       => $expires_at,
+            ];
+        }
+
+        // Sort by school code so the table mirrors the campaign's sponsor list.
+        usort( $out, static function ( $a, $b ) {
+            return strcmp( (string) $a['school_code'], (string) $b['school_code'] );
+        } );
+
+        return $out;
+    }
 }

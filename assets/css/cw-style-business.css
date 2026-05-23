@@ -2418,3 +2418,844 @@ body.cw-cert-dragging { cursor: grabbing !important; }
     .cw-report-table th, .cw-report-table td { padding: 10px 10px; }
 }
 
+/* ════════════════════════════════════════════════════════════════════════
+   Campaign card actions — icon-only row so all 4 buttons (Entries,
+   Details, View Public, Edit) fit cleanly in the narrow 3-up grid
+   without label clipping. Tooltips + sr-only labels keep them
+   accessible.
+   ════════════════════════════════════════════════════════════════════════ */
+.cw-card-actions-icons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: auto;
+}
+.cw-card-action-icon {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 10px;
+    border-radius: var(--cw-radius-sm);
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1.5px solid transparent;
+    cursor: pointer;
+    transition: transform .15s ease, background .15s ease, color .15s ease, box-shadow .15s ease;
+    font-family: inherit;
+    line-height: 1;
+    background: var(--cw-surface);
+}
+.cw-card-action-icon i { font-size: 14px; line-height: 1; }
+.cw-card-action-icon:hover { transform: translateY(-1px); }
+.cw-card-action-icon:focus-visible {
+    outline: 2px solid var(--cw-primary);
+    outline-offset: 2px;
+}
+
+/* Entries — primary filled, slightly wider so the count fits comfortably */
+.cw-card-action-entries { flex: 1.4 1 0; gap: 6px; color: #fff; }
+.cw-card-action-entries .cw-action-count {
+    font-size: 13px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .22);
+    line-height: 1.4;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Outline button skin (Details, Edit) — drop the .full-width selector
+   dependency so these work bare. */
+.cw-btn-outline-blue.cw-card-action-icon {
+    border-color: var(--cw-primary);
+    background: var(--cw-surface);
+    color: var(--cw-primary);
+}
+.cw-btn-outline-blue.cw-card-action-icon:hover { background: var(--cw-primary-light); }
+
+/* White button skin (View Public) */
+.cw-btn-white.cw-card-action-icon {
+    border-color: var(--cw-border);
+    background: var(--cw-surface);
+    color: var(--cw-text-soft);
+}
+.cw-btn-white.cw-card-action-icon:hover {
+    background: var(--cw-bg);
+    color: var(--cw-text);
+    border-color: #cbd5e1;
+}
+
+.cw-btn-disabled.cw-card-action-icon {
+    border-color: var(--cw-border);
+    background: var(--cw-bg);
+    color: var(--cw-muted);
+    cursor: not-allowed;
+}
+
+/* Screen-reader-only labels (visually hidden but still readable by AT) */
+.cw-action-sr {
+    position: absolute !important;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0);
+    white-space: nowrap; border: 0;
+}
+
+@media (max-width: 480px) {
+    .cw-card-actions-icons { gap: 6px; }
+    .cw-card-action-icon { height: 38px; font-size: 13px; padding: 0 8px; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   View Details — full-page route (?tab=campaigns&details_id=NN). The
+   old slide-in modal was scrapped because WooCommerce/theme wrappers
+   around .woocommerce-MyAccount-content frequently apply a transform,
+   which breaks `position:fixed` on every descendant and made the
+   modal render inline below the cards. A real page route is also
+   bookmarkable and feels more native.
+
+   IMPORTANT — every selector below is scoped under .cw-campaigns-details
+   so the host theme can't override our typography / spacing / display
+   rules. We use the `cwcd-` prefix for everything inside this surface.
+   ════════════════════════════════════════════════════════════════════════ */
+.cw-campaigns-details { padding: 0; }
+
+.cw-campaigns-details .cw-details-error,
+.cw-campaigns-details .cwcd-error {
+    text-align: center;
+    color: #b91c1c;
+    padding: 40px 18px;
+    font-size: 14px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: var(--cw-radius);
+}
+.cw-campaigns-details .cw-details-error i,
+.cw-campaigns-details .cwcd-error i { margin-right: 6px; }
+
+/* Outer stack of cards. */
+.cw-campaigns-details .cwcd {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 18px;
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────── */
+.cw-campaigns-details .cwcd-hero {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%);
+    color: #fff;
+    border-radius: var(--cw-radius);
+    padding: 28px 28px 26px;
+    box-shadow: 0 12px 28px -16px rgba(29, 78, 216, .55);
+}
+.cw-campaigns-details .cwcd-hero::before {
+    content: "";
+    position: absolute;
+    inset: -40% -10% auto auto;
+    width: 360px;
+    height: 360px;
+    background: radial-gradient(circle, rgba(255,255,255,.18) 0%, rgba(255,255,255,0) 70%);
+    pointer-events: none;
+}
+.cw-campaigns-details .cwcd-hero-pills {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px;
+    margin-bottom: 12px;
+    position: relative;
+    z-index: 1;
+}
+.cw-campaigns-details .cwcd-hero-title {
+    margin: 0 !important;
+    font-size: clamp(20px, 2.2vw, 26px) !important;
+    line-height: 1.25 !important;
+    font-weight: 700 !important;
+    color: #fff !important;
+    word-break: break-word;
+    position: relative;
+    z-index: 1;
+}
+.cw-campaigns-details .cwcd-hero-dates {
+    margin-top: 14px;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 18px;
+    font-size: 13px;
+    color: rgba(255,255,255,.85);
+    position: relative;
+    z-index: 1;
+}
+.cw-campaigns-details .cwcd-hero-dates i { margin-right: 6px; opacity: .9; }
+.cw-campaigns-details .cwcd-hero-dates strong { color: #fff; font-weight: 600; }
+
+/* Pills (used in hero + elsewhere). */
+.cw-campaigns-details .cwcd-pill {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    background: rgba(255,255,255,.16);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,.22);
+    backdrop-filter: blur(2px);
+}
+.cw-campaigns-details .cwcd-pill i { font-size: 10px; }
+.cw-campaigns-details .cwcd-pill-status.is-publish { background: rgba(16,185,129,.22); border-color: rgba(110,231,183,.55); color: #d1fae5; }
+.cw-campaigns-details .cwcd-pill-status.is-pending { background: rgba(245,158,11,.22); border-color: rgba(252,211,77,.55); color: #fef3c7; }
+.cw-campaigns-details .cwcd-pill-status.is-draft   { background: rgba(148,163,184,.22); border-color: rgba(203,213,225,.45); color: #e2e8f0; }
+.cw-campaigns-details .cwcd-pill-blue   { background: rgba(59,130,246,.22); border-color: rgba(147,197,253,.55); color: #dbeafe; }
+.cw-campaigns-details .cwcd-pill-purple { background: rgba(168,85,247,.22); border-color: rgba(216,180,254,.55); color: #f3e8ff; }
+.cw-campaigns-details .cwcd-pill-soft   { background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.20); color: #fff; }
+.cw-campaigns-details .cwcd-pill-warn   { background: rgba(250,204,21,.22); border-color: rgba(253,224,71,.55); color: #fef9c3; }
+
+/* ── KPI strip ─────────────────────────────────────────────────────── */
+.cw-campaigns-details .cwcd-kpis {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.cw-campaigns-details .cwcd-kpi {
+    display: flex !important;
+    align-items: center;
+    gap: 14px;
+    background: #fff;
+    border: 1px solid var(--cw-border);
+    border-radius: var(--cw-radius);
+    padding: 16px 18px;
+    box-shadow: 0 1px 2px rgba(15,23,42,.04);
+    position: relative;
+    overflow: hidden;
+}
+.cw-campaigns-details .cwcd-kpi::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: var(--cw-accent);
+}
+.cw-campaigns-details .cwcd-kpi-blue::before  { background: #3b82f6; }
+.cw-campaigns-details .cwcd-kpi-green::before { background: #10b981; }
+.cw-campaigns-details .cwcd-kpi-amber::before { background: #f59e0b; }
+.cw-campaigns-details .cwcd-kpi-ico {
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: #fff;
+    background: var(--cw-accent);
+}
+.cw-campaigns-details .cwcd-kpi-blue  .cwcd-kpi-ico { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+.cw-campaigns-details .cwcd-kpi-green .cwcd-kpi-ico { background: linear-gradient(135deg, #10b981, #059669); }
+.cw-campaigns-details .cwcd-kpi-amber .cwcd-kpi-ico { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.cw-campaigns-details .cwcd-kpi-meta {
+    display: flex !important;
+    flex-direction: column;
+    min-width: 0;
+}
+.cw-campaigns-details .cwcd-kpi-label {
+    font-size: 11px !important;
+    color: var(--cw-text-soft) !important;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+.cw-campaigns-details .cwcd-kpi-value {
+    font-size: 22px !important;
+    line-height: 1.1 !important;
+    font-weight: 700 !important;
+    color: var(--cw-text) !important;
+    white-space: nowrap;
+}
+
+/* ── Generic content card ──────────────────────────────────────────── */
+.cw-campaigns-details .cwcd-card {
+    background: #fff;
+    border: 1px solid var(--cw-border);
+    border-radius: var(--cw-radius);
+    padding: 22px 24px;
+    box-shadow: 0 1px 2px rgba(15,23,42,.04);
+}
+.cw-campaigns-details .cwcd-card-head {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 16px;
+}
+.cw-campaigns-details .cwcd-card-head h2 {
+    margin: 0 !important;
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    color: var(--cw-text) !important;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 8px;
+    line-height: 1.2 !important;
+}
+.cw-campaigns-details .cwcd-card-head h2 i {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: #eff6ff;
+    color: var(--cw-accent);
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+}
+.cw-campaigns-details .cwcd-card-sub {
+    flex: 1 1 100%;
+    margin: 0 !important;
+    color: var(--cw-text-soft) !important;
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+}
+.cw-campaigns-details .cwcd-card-tag {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--cw-text-soft);
+    background: #f1f5f9;
+    padding: 4px 10px;
+    border-radius: 999px;
+}
+.cw-campaigns-details .cwcd-card-link {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cw-accent);
+    text-decoration: none;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 5px;
+}
+.cw-campaigns-details .cwcd-card-link:hover { text-decoration: underline; }
+
+/* ── Public link + QR split ────────────────────────────────────────── */
+.cw-campaigns-details .cwcd-link-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 220px;
+    gap: 24px;
+    align-items: start;
+}
+.cw-campaigns-details .cwcd-link-col { min-width: 0; }
+.cw-campaigns-details .cwcd-field-label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--cw-text-soft);
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+.cw-campaigns-details .cwcd-link-row {
+    display: flex !important;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.cw-campaigns-details .cwcd-link-input {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 12px !important;
+    border: 1px solid var(--cw-border) !important;
+    border-radius: var(--cw-radius-sm);
+    font-size: 13px !important;
+    background: #f8fafc !important;
+    color: var(--cw-text) !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
+    box-shadow: none !important;
+    height: auto !important;
+    line-height: 1.4 !important;
+}
+.cw-campaigns-details .cwcd-link-input:focus {
+    outline: none;
+    border-color: var(--cw-accent) !important;
+    background: #fff !important;
+}
+.cw-campaigns-details .cwcd-link-open {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--cw-accent);
+    text-decoration: none;
+    font-weight: 600;
+}
+.cw-campaigns-details .cwcd-link-open:hover { text-decoration: underline; }
+.cw-campaigns-details .cwcd-qr-col {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+}
+.cw-campaigns-details .cwcd-qr-frame {
+    background: #fff;
+    border: 1px solid var(--cw-border);
+    padding: 10px;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(15,23,42,.06);
+}
+.cw-campaigns-details .cwcd-qr-frame img {
+    display: block;
+    width: 160px;
+    height: 160px;
+    max-width: 100%;
+}
+.cw-campaigns-details .cwcd-qr-dl {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--cw-accent);
+    text-decoration: none;
+    font-weight: 600;
+}
+.cw-campaigns-details .cwcd-qr-dl:hover { text-decoration: underline; }
+
+/* ── Buttons ──────────────────────────────────────────────────────── */
+.cw-campaigns-details .cwcd-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 14px;
+    border-radius: var(--cw-radius-sm);
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    cursor: pointer;
+    text-decoration: none;
+    line-height: 1.2;
+    transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.cw-campaigns-details .cwcd-btn-primary {
+    background: var(--cw-accent);
+    color: #fff;
+    border-color: var(--cw-accent);
+}
+.cw-campaigns-details .cwcd-btn-primary:hover {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #fff;
+}
+.cw-campaigns-details .cwcd-btn-primary.is-copied {
+    background: #16a34a !important;
+    border-color: #16a34a !important;
+    color: #fff !important;
+}
+.cw-campaigns-details .cwcd-btn-ghost {
+    background: #fff;
+    color: var(--cw-text);
+    border-color: var(--cw-border);
+}
+.cw-campaigns-details .cwcd-btn-ghost:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+.cw-campaigns-details .cwcd-btn-sm { padding: 7px 10px; font-size: 12px; }
+.cw-campaigns-details .cwcd-icon-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    color: var(--cw-text-soft);
+    background: #f1f5f9;
+    text-decoration: none;
+    transition: background .15s ease, color .15s ease;
+}
+.cw-campaigns-details .cwcd-icon-btn:hover {
+    background: #e0e7ff;
+    color: var(--cw-accent);
+}
+
+/* ── Coupon list ──────────────────────────────────────────────────── */
+.cw-campaigns-details .cwcd-coupon-list {
+    list-style: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column;
+    gap: 10px;
+}
+.cw-campaigns-details .cwcd-coupon {
+    display: flex !important;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px;
+    background: #f8fafc;
+    border: 1px solid var(--cw-border);
+    border-radius: var(--cw-radius-sm);
+}
+.cw-campaigns-details .cwcd-coupon-main {
+    flex: 1;
+    min-width: 0;
+    display: flex !important;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+.cw-campaigns-details .cwcd-coupon-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
+    background: #fff !important;
+    color: var(--cw-text) !important;
+    padding: 5px 10px !important;
+    border-radius: 6px !important;
+    border: 1px solid var(--cw-border) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    white-space: nowrap;
+}
+.cw-campaigns-details .cwcd-coupon-school {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+.cw-campaigns-details .cwcd-school-badge {
+    display: inline-block !important;
+    background: #1d4ed8;
+    color: #fff !important;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    padding: 3px 8px;
+    border-radius: 6px;
+    line-height: 1.2;
+}
+.cw-campaigns-details .cwcd-school-badge-lg {
+    font-size: 13px;
+    padding: 5px 12px;
+}
+.cw-campaigns-details .cwcd-school-name {
+    color: var(--cw-text-soft) !important;
+    font-size: 13px;
+}
+.cw-campaigns-details .cwcd-coupon-side {
+    display: flex !important;
+    align-items: center;
+    gap: 12px;
+    flex: 0 0 auto;
+}
+.cw-campaigns-details .cwcd-usage {
+    display: flex !important;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    min-width: 64px;
+}
+.cw-campaigns-details .cwcd-usage-num {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--cw-text);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+.cw-campaigns-details .cwcd-usage-of {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--cw-text-soft);
+}
+.cw-campaigns-details .cwcd-usage-bar {
+    display: block;
+    width: 64px;
+    height: 4px;
+    background: #e2e8f0;
+    border-radius: 999px;
+    overflow: hidden;
+}
+.cw-campaigns-details .cwcd-usage-bar > span {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #34d399);
+    border-radius: inherit;
+}
+.cw-campaigns-details .cwcd-muted { color: var(--cw-text-soft); font-size: 12px; }
+
+/* ── PIC QR grid ──────────────────────────────────────────────────── */
+.cw-campaigns-details .cwcd-pic-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 14px;
+}
+.cw-campaigns-details .cwcd-pic-card {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+    background: #f8fafc;
+    border: 1px solid var(--cw-border);
+    border-radius: var(--cw-radius-sm);
+    padding: 14px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.cw-campaigns-details .cwcd-pic-card:hover {
+    border-color: #93c5fd;
+    box-shadow: 0 4px 12px rgba(59,130,246,.08);
+}
+.cw-campaigns-details .cwcd-pic-qr {
+    background: #fff;
+    padding: 8px;
+    border-radius: 10px;
+    border: 1px solid var(--cw-border);
+}
+.cw-campaigns-details .cwcd-pic-qr img {
+    display: block;
+    width: 140px;
+    height: 140px;
+    max-width: 100%;
+}
+.cw-campaigns-details .cwcd-pic-body {
+    width: 100%;
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+.cw-campaigns-details .cwcd-pic-name {
+    margin: 0 !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: var(--cw-text) !important;
+    line-height: 1.3 !important;
+}
+.cw-campaigns-details .cwcd-pic-actions {
+    display: flex !important;
+    gap: 6px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+/* ── Tools grid ───────────────────────────────────────────────────── */
+.cw-campaigns-details .cwcd-tools {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+}
+.cw-campaigns-details .cwcd-tool {
+    display: flex !important;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: var(--cw-radius-sm);
+    border: 1px solid var(--cw-border);
+    background: #fff;
+    color: var(--cw-text);
+    text-decoration: none !important;
+    transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.cw-campaigns-details .cwcd-tool:hover {
+    border-color: #93c5fd;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(15,23,42,.06);
+}
+.cw-campaigns-details .cwcd-tool-ico {
+    flex: 0 0 auto;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: #eff6ff;
+    color: var(--cw-accent);
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+}
+.cw-campaigns-details .cwcd-tool-text {
+    display: flex !important;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.3;
+}
+.cw-campaigns-details .cwcd-tool-text strong {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cw-text);
+}
+.cw-campaigns-details .cwcd-tool-text small {
+    font-size: 11px;
+    color: var(--cw-text-soft);
+    margin-top: 2px;
+}
+.cw-campaigns-details .cwcd-tool-primary {
+    border-color: var(--cw-accent);
+    background: linear-gradient(135deg, #eff6ff, #ffffff);
+}
+.cw-campaigns-details .cwcd-tool-primary .cwcd-tool-ico {
+    background: var(--cw-accent);
+    color: #fff;
+}
+
+/* ── Entries strip ─────────────────────────────────────────────────── */
+.cw-campaigns-details .cwcd-entries {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 14px;
+}
+.cw-campaigns-details .cwcd-entry {
+    display: flex !important;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    text-align: left;
+}
+.cw-campaigns-details .cwcd-entry-thumb {
+    aspect-ratio: 1;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #f1f5f9;
+    border: 1px solid var(--cw-border);
+}
+.cw-campaigns-details .cwcd-entry-thumb img,
+.cw-campaigns-details .cwcd-entry-blank {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.cw-campaigns-details .cwcd-entry-blank {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    color: var(--cw-text-soft);
+    font-size: 22px;
+}
+.cw-campaigns-details .cwcd-entry-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--cw-text);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.3;
+}
+.cw-campaigns-details .cwcd-entry-date {
+    font-size: 11px;
+    color: var(--cw-text-soft);
+}
+
+/* ── Empty state ───────────────────────────────────────────────────── */
+.cw-campaigns-details .cwcd-empty {
+    margin: 0 !important;
+    padding: 18px;
+    background: #f8fafc;
+    border: 1px dashed var(--cw-border);
+    border-radius: var(--cw-radius-sm);
+    color: var(--cw-text-soft);
+    font-size: 13px;
+    text-align: center;
+}
+.cw-campaigns-details .cwcd-empty i { margin-right: 6px; color: var(--cw-accent); }
+
+/* ── Tablet ───────────────────────────────────────────────────────── */
+@media (max-width: 820px) {
+    .cw-campaigns-details .cwcd-link-grid { grid-template-columns: 1fr; }
+    .cw-campaigns-details .cwcd-qr-col { order: -1; align-items: flex-start; }
+}
+
+/* ── Mobile ───────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+    .cw-campaigns-details .cwcd { gap: 14px; }
+    .cw-campaigns-details .cwcd-hero { padding: 22px 18px 20px; }
+    .cw-campaigns-details .cwcd-hero-dates { gap: 12px; font-size: 12px; }
+    .cw-campaigns-details .cwcd-kpis { grid-template-columns: 1fr; gap: 10px; }
+    .cw-campaigns-details .cwcd-card { padding: 18px 16px; }
+    .cw-campaigns-details .cwcd-card-head { margin-bottom: 12px; }
+    .cw-campaigns-details .cwcd-card-head h2 { font-size: 15px !important; }
+    .cw-campaigns-details .cwcd-link-input { font-size: 12px !important; }
+    .cw-campaigns-details .cwcd-link-row .cwcd-btn .cwcd-copy-text { display: none; }
+    .cw-campaigns-details .cwcd-link-row .cwcd-btn { padding: 10px 12px; }
+    .cw-campaigns-details .cwcd-coupon { flex-wrap: wrap; padding: 12px; gap: 10px; }
+    .cw-campaigns-details .cwcd-coupon-side { width: 100%; justify-content: space-between; padding-top: 8px; border-top: 1px dashed var(--cw-border); }
+    .cw-campaigns-details .cwcd-pic-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .cw-campaigns-details .cwcd-pic-card { padding: 12px; }
+    .cw-campaigns-details .cwcd-pic-qr img { width: 110px; height: 110px; }
+    .cw-campaigns-details .cwcd-tools { grid-template-columns: 1fr; }
+    .cw-campaigns-details .cwcd-entries { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .cw-campaigns-details .cwcd-qr-frame img { width: 140px; height: 140px; }
+}
+
+@media (max-width: 380px) {
+    .cw-campaigns-details .cwcd-pic-grid { grid-template-columns: 1fr; }
+    .cw-campaigns-details .cwcd-entries { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Full-page Campaign editor (replaces the old centered modal). Lives at
+   ?tab=campaigns&action=create or ?tab=campaigns&edit_id=NN.
+   ════════════════════════════════════════════════════════════════════════ */
+.cw-campaigns-editor { padding: 0; }
+.cw-editor-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0 18px;
+    font-size: 14px;
+    color: var(--cw-text-soft);
+    flex-wrap: wrap;
+}
+.cw-editor-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--cw-primary);
+    font-weight: 600;
+    text-decoration: none;
+    padding: 6px 10px;
+    border-radius: var(--cw-radius-sm);
+    transition: background .15s ease;
+}
+.cw-editor-back:hover { background: var(--cw-primary-light); color: var(--cw-primary); }
+.cw-editor-crumb-sep { color: var(--cw-muted); font-size: 13px; }
+.cw-editor-crumb-current { color: var(--cw-text); font-weight: 600; }
+.cw-editor-wrap {
+    background: var(--cw-surface);
+    border: 1px solid var(--cw-border);
+    border-radius: var(--cw-radius);
+    box-shadow: var(--cw-shadow);
+    overflow: hidden;
+}
+.cw-editor-wrap .cww-shell {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    border-radius: 0;
+    max-width: none;
+    width: 100%;
+    margin: 0;
+    height: auto;
+    min-height: 70vh;
+}
+.cw-editor-wrap .cww-close-btn { /* Keep visible; rewired by JS to navigate back */ }
+@media (max-width: 768px) {
+    .cw-editor-breadcrumb { font-size: 13px; padding: 4px 0 12px; }
+    .cw-editor-wrap { border-radius: 12px; }
+}

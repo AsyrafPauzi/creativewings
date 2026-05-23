@@ -154,7 +154,10 @@ class CW_Business_Form {
 
         $is_comp_selected     = $term && (($parent_term && $parent_term->slug === 'competitions') || $term->slug === 'competitions');
         $is_activity_selected = $term && (($parent_term && $parent_term->slug === 'activities')   || $term->slug === 'activities');
-        $is_talk_selected     = $term && (($parent_term && $parent_term->slug === 'talks')         || $term->slug === 'talks');
+        $is_talk_selected     = $term && (
+            ($parent_term && in_array( $parent_term->slug, [ 'talk-seminar', 'talks' ], true ))
+            || in_array( $term->slug, [ 'talk-seminar', 'talks' ], true )
+        );
 
         ob_start();
         ?>
@@ -209,7 +212,7 @@ class CW_Business_Form {
                             <!-- ════════════ STEP 1: CLASSIFY ════════════ -->
                             <div class="cw-wizard-step active" data-step="1">
                                 <h4 class="cw-step-title">Let's classify your campaign</h4>
-                                <p class="cw-step-subtitle">A campaign has two categories: <strong>Competition</strong> or <strong>Activity</strong>. Pick one, then choose a sub-category.</p>
+                                <p class="cw-step-subtitle">Campaigns come in three flavours: <strong>Competition</strong>, <strong>Activity</strong> or <strong>Talk / Seminar</strong>. Pick one, then choose a sub-category.</p>
                                 <div class="cw-step-grid">
                                     <div class="cw-cat-selection">
                                         <label style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--cw-text-soft);margin-bottom:4px;">Main Category</label>
@@ -218,6 +221,9 @@ class CW_Business_Form {
                                         </div>
                                         <div class="cw-cat-card <?php echo $is_activity_selected ? 'selected' : ''; ?>" onclick="selectMainCat(this,'activities')" data-type="activities">
                                             <div class="cw-cat-icon"><i class="fas fa-running"></i></div><span>Activity</span>
+                                        </div>
+                                        <div class="cw-cat-card <?php echo $is_talk_selected ? 'selected' : ''; ?>" onclick="selectMainCat(this,'talk-seminar')" data-type="talk-seminar">
+                                            <div class="cw-cat-icon"><i class="fas fa-microphone-alt"></i></div><span>Talk / Seminar</span>
                                         </div>
                                     </div>
                                     <div class="cw-sub-selection">
@@ -600,6 +606,17 @@ class CW_Business_Form {
                             </div>
                         </div>
                     </div>
+
+                    <!-- ── Public submissions gallery toggle ─────────────────── -->
+                    <div class="cw-config-card" style="margin-top:16px;">
+                        <div class="cw-toggle-box">
+                            <div>
+                                <label for="cw_show_submissions_gallery" style="cursor:pointer;">Show Public Submissions Gallery</label>
+                                <small>Display approved entry artworks <strong>anonymously</strong> on this campaign's public page (image and optional checkout message only — no participant names or contact info).</small>
+                            </div>
+                            <input type="checkbox" name="cw_show_submissions_gallery" value="yes" id="cw_show_submissions_gallery" <?php checked( $val('cw_show_submissions_gallery'), 'yes' ); ?>>
+                        </div>
+                    </div>
                 </div>
 
                                 <div class="cw-publish-ready">
@@ -640,7 +657,10 @@ class CW_Business_Form {
                 }
                 $tree[$p->slug] = $child_data;
             }
-            $tree['talks'] = $tree['activities'] ?? [];
+            // Legacy alias kept so any cached front-end state from older
+            // versions of the wizard still resolves; the new card uses the
+            // real `talk-seminar` slug which is built from get_terms() above.
+            $tree['talks'] = isset( $tree['talk-seminar'] ) ? $tree['talk-seminar'] : ( $tree['activities'] ?? [] );
             echo "const catTree = " . json_encode($tree) . ";";
             echo "const preSelectedSub = " . intval($current_cat_id) . ";";
             echo "const editMode = " . json_encode($mode === 'edit') . ";";
@@ -719,11 +739,23 @@ class CW_Business_Form {
                 const sub = document.getElementById('cw_sub_cat');
                 sub.innerHTML = '<option value="">Select Sub Category...</option>';
                 sub.disabled = false;
-                let lookup = type === 'talks' ? 'activities' : type;
+
+                // Resolve which parent's children to show. `talk-seminar` and
+                // `competitions` map 1:1 to their parent terms in catTree.
+                // Legacy callers may still pass `talks` — treat it as a
+                // synonym for `talk-seminar` to keep old links working.
+                let lookup = type;
+                if (type === 'talks') {
+                    lookup = catTree['talk-seminar'] ? 'talk-seminar' : 'activities';
+                }
+
                 if (catTree[lookup]) {
                     catTree[lookup].forEach(c => {
-                        if (type === 'talks'      && !['talk','seminar','webinar'].some(s => c.slug.includes(s))) return;
-                        if (type === 'activities' && ['talk','seminar','workshop'].some(s => c.slug.includes(s))) return;
+                        // Only filter the Activities list — strip out talk /
+                        // seminar / workshop entries that bled into Activities
+                        // historically. Talk/Seminar parent already only
+                        // contains its own children, so no filtering needed.
+                        if (lookup === 'activities' && ['talk','seminar','workshop'].some(s => c.slug.includes(s))) return;
                         let opt = document.createElement('option');
                         opt.value = c.id; opt.setAttribute('data-slug', c.slug); opt.text = c.name;
                         sub.appendChild(opt);
@@ -738,22 +770,27 @@ class CW_Business_Form {
                 const sub  = document.getElementById('cw_sub_cat');
                 const slug = sub.options[sub.selectedIndex]?.getAttribute('data-slug') || '';
 
+                // Treat both the canonical `talk-seminar` slug and the legacy
+                // `talks` alias as the same non-judged campaign type.
+                const isTalk     = (type === 'talk-seminar' || type === 'talks');
+                const isActivity = (type === 'activities' || isTalk);
+
                 document.querySelectorAll('#cw-conditional-section,#set-competition,#set-activity,#set-talk').forEach(e => e.style.display = 'none');
 
                 if (type === 'competitions' || slug.includes('art') || slug.includes('design')) {
                     document.getElementById('cw-conditional-section').style.display = 'block';
                     document.getElementById('set-competition').style.display = 'block';
-                } else if (type === 'activities' || type === 'talks') {
+                } else if (isActivity) {
                     document.getElementById('cw-conditional-section').style.display = 'block';
                     document.getElementById('set-activity').style.display = 'block';
-                    if (type === 'talks' || slug.includes('talk') || slug.includes('seminar') || slug.includes('workshop')) {
+                    if (isTalk || slug.includes('talk') || slug.includes('seminar') || slug.includes('workshop')) {
                         document.getElementById('set-talk').style.display = 'block';
                     }
                 }
 
                 const nameBlock = document.getElementById('cw-step5-name-block');
                 if (nameBlock) {
-                    nameBlock.style.display = (type === 'activities' || type === 'talks') ? 'block' : 'none';
+                    nameBlock.style.display = isActivity ? 'block' : 'none';
                 }
 
                 window.toggleMultiLimits();

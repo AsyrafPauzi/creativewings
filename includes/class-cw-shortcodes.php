@@ -495,6 +495,7 @@ class CW_Shortcodes {
         $is_seminar      = ( $cat_type === 'seminar' );
         $is_activity     = ! $is_competition && ! $is_seminar;
         $voting_enabled  = $is_competition && ( $g('cw_enable_voting') === 'yes' );
+        $show_public_gallery = ( $g('cw_show_submissions_gallery') === 'yes' );
 
         // ── Dates & status ────────────────────────────────────────────────────
         $date_start  = $g('cw_submission_start');
@@ -674,7 +675,13 @@ class CW_Shortcodes {
                 <!-- Left: event image -->
                 <div class="cwd-hero-img-col">
                     <?php if ( $thumb ): ?>
-                    <img src="<?php echo esc_url($thumb); ?>" alt="<?php the_title_attribute(); ?>" class="cwd-hero-img">
+                    <button type="button"
+                            class="cwd-hero-img-btn"
+                            onclick="if(window.cwdGalleryOpen)window.cwdGalleryOpen(0);"
+                            aria-label="<?php echo esc_attr( sprintf( __( 'Enlarge image for %s', 'creativewings-core' ), get_the_title() ) ); ?>">
+                        <img src="<?php echo esc_url($thumb); ?>" alt="<?php the_title_attribute(); ?>" class="cwd-hero-img" loading="eager" decoding="async">
+                        <span class="cwd-hero-img-zoom" aria-hidden="true"><i class="fas fa-search-plus"></i></span>
+                    </button>
                     <?php else: ?>
                     <div class="cwd-hero-img-placeholder">
                         <i class="fas fa-image"></i>
@@ -1021,7 +1028,152 @@ class CW_Shortcodes {
                 <!-- ── RIGHT MAIN CONTENT ── -->
                 <main class="cwd-main">
 
-                    <!-- GALLERY (WooCommerce product image gallery) -->
+                    <!-- ─────────────────────────────────────────────────────────────
+                         PUBLIC SUBMISSIONS GALLERY (anonymous, opt-in)
+                         Sits at the top of the right column when the campaign
+                         toggle `cw_show_submissions_gallery` is on. Uses the
+                         exact same compact tile design as the WooCommerce
+                         Gallery section below so both feel like one system.
+                         ───────────────────────────────────────────────────────────── -->
+                    <?php
+                    if ( $show_public_gallery ):
+                        $pub_per_page = 12;
+                        $pub_page     = isset( $_GET['cwd_pub_page'] ) ? max( 1, (int) $_GET['cwd_pub_page'] ) : 1;
+
+                        $pub_entry_types = class_exists( 'CW_Shop' )
+                            ? CW_Shop::entry_post_types()
+                            : [ 'cw_competition_entry', 'cw_activity_entry' ];
+
+                        $pub_query = new WP_Query( [
+                            'post_type'      => $pub_entry_types,
+                            'post_status'    => 'publish',
+                            'posts_per_page' => $pub_per_page,
+                            'paged'          => $pub_page,
+                            'orderby'        => 'date',
+                            'order'          => 'DESC',
+                            'meta_query'     => [
+                                [
+                                    'key'     => 'product_id',
+                                    'value'   => $pid,
+                                    'compare' => '=',
+                                    'type'    => 'NUMERIC',
+                                ],
+                            ],
+                        ] );
+
+                        $pub_message_label = (string) get_post_meta( $pid, 'cw_checkout_message_label', true );
+
+                        // Pre-collect rows so we can both render the grid and
+                        // emit a JS lookup table for lightbox prev/next.
+                        $pub_rows = [];
+                        if ( $pub_query->have_posts() ) {
+                            while ( $pub_query->have_posts() ) {
+                                $pub_query->the_post();
+                                $eid = get_the_ID();
+                                $art = (string) get_post_meta( $eid, 'upload_document', true );
+                                if ( ! $art || ! preg_match( '/\.(jpe?g|png|gif|webp)$/i', $art ) ) {
+                                    continue;
+                                }
+                                $msg     = '';
+                                $details = get_post_meta( $eid, 'participant_details', true );
+                                if ( is_array( $details ) ) {
+                                    foreach ( $details as $row ) {
+                                        if ( ! is_array( $row ) || empty( $row['label'] ) ) continue;
+                                        $label = (string) $row['label'];
+                                        if ( ( $pub_message_label && $label === $pub_message_label )
+                                             || ( ! $pub_message_label && stripos( $label, 'message' ) !== false ) ) {
+                                            $msg = wp_strip_all_tags( (string) ( $row['value'] ?? '' ) );
+                                            break;
+                                        }
+                                    }
+                                }
+                                $thumb_url = $art;
+                                $att_id    = function_exists( 'attachment_url_to_postid' ) ? (int) attachment_url_to_postid( $art ) : 0;
+                                if ( $att_id ) {
+                                    $tsrc = wp_get_attachment_image_src( $att_id, 'medium' );
+                                    if ( $tsrc && ! empty( $tsrc[0] ) ) {
+                                        $thumb_url = $tsrc[0];
+                                    }
+                                }
+                                $pub_rows[] = [
+                                    'thumb' => $thumb_url,
+                                    'full'  => $art,
+                                    'msg'   => $msg,
+                                ];
+                            }
+                            wp_reset_postdata();
+                        }
+                    ?>
+                    <section class="cwd-section cwd-gallery-section cwd-public-gallery" id="cwd-public-gallery">
+                        <h2 class="cwd-section-title"><i class="fas fa-images"></i> <?php esc_html_e( 'Public Submissions', 'creativewings-core' ); ?></h2>
+                        <?php if ( empty( $pub_rows ) ): ?>
+                            <p class="cwd-public-empty"><?php esc_html_e( 'No public submissions yet — be the first to join!', 'creativewings-core' ); ?></p>
+                        <?php else: ?>
+                            <div class="cwd-gallery-grid cwd-pub-gallery-grid" id="cwd-public-gallery-grid">
+                                <?php foreach ( $pub_rows as $i => $row ):
+                                    $tip = $row['msg'] !== ''
+                                        ? sprintf( __( '"%s" — tap to enlarge', 'creativewings-core' ), $row['msg'] )
+                                        : __( 'Tap to enlarge', 'creativewings-core' );
+                                ?>
+                                <button type="button"
+                                        class="cwd-gallery-item cwd-pub-gallery-item"
+                                        data-pub-index="<?php echo (int) $i; ?>"
+                                        data-full="<?php echo esc_url( $row['full'] ); ?>"
+                                        title="<?php echo esc_attr( $tip ); ?>"
+                                        aria-label="<?php echo esc_attr( $tip ); ?>">
+                                    <img src="<?php echo esc_url( $row['thumb'] ); ?>"
+                                         alt="<?php esc_attr_e( 'Anonymous submission', 'creativewings-core' ); ?>"
+                                         loading="lazy" decoding="async"
+                                         width="240" height="240">
+                                    <span class="cwd-gallery-zoom-icon" aria-hidden="true"><i class="fas fa-search-plus"></i></span>
+                                    <?php if ( $row['msg'] !== '' ): ?>
+                                        <span class="cwd-pub-gallery-flag" aria-hidden="true"><i class="fas fa-quote-left"></i></span>
+                                    <?php endif; ?>
+                                </button>
+                                <?php endforeach; ?>
+                            </div>
+
+                            <?php
+                            $pub_total_pages = (int) $pub_query->max_num_pages;
+                            if ( $pub_total_pages > 1 ):
+                                $links = paginate_links( [
+                                    'base'      => add_query_arg( 'cwd_pub_page', '%#%' ) . '#cwd-public-gallery',
+                                    'format'    => '',
+                                    'current'   => $pub_page,
+                                    'total'     => $pub_total_pages,
+                                    'mid_size'  => 1,
+                                    'end_size'  => 1,
+                                    'prev_text' => '‹ ' . __( 'Prev', 'creativewings-core' ),
+                                    'next_text' => __( 'Next', 'creativewings-core' ) . ' ›',
+                                    'type'      => 'array',
+                                ] );
+                                if ( $links ): ?>
+                                <nav class="cwd-public-pagination" role="navigation" aria-label="<?php esc_attr_e( 'Submissions pagination', 'creativewings-core' ); ?>">
+                                    <?php foreach ( $links as $link ) echo '<span class="cwd-public-page-item">' . $link . '</span>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                                </nav>
+                            <?php endif;
+                            endif; ?>
+
+                            <script>
+                            window.cwdPublicSubmissions = <?php echo wp_json_encode( array_values( array_map( function ( $r ) {
+                                return [ 'full' => $r['full'], 'alt' => $r['msg'] ?: '' ];
+                            }, $pub_rows ) ) ); ?>;
+                            </script>
+                        <?php endif; ?>
+                    </section>
+                    <?php endif; ?>
+
+                    <!-- About -->
+                    <?php $content = get_post_field('post_content', $pid);
+                    if ( $content ): ?>
+                    <section class="cwd-section">
+                        <h2 class="cwd-section-title"><i class="fas fa-info-circle"></i> About</h2>
+                        <div class="cwd-prose"><?php echo wp_kses_post(wpautop($content)); ?></div>
+                    </section>
+                    <?php endif; ?>
+
+                    <!-- GALLERY (WooCommerce product image gallery) — sits
+                         below About so the page reads: Submissions → About → Gallery. -->
                     <?php if ( ! empty( $gallery_images ) ): ?>
                     <section class="cwd-section cwd-gallery-section">
                         <h2 class="cwd-section-title"><i class="fas fa-images"></i> Gallery</h2>
@@ -1039,15 +1191,6 @@ class CW_Shortcodes {
                             </button>
                             <?php endforeach; ?>
                         </div>
-                    </section>
-                    <?php endif; ?>
-
-                    <!-- About -->
-                    <?php $content = get_post_field('post_content', $pid);
-                    if ( $content ): ?>
-                    <section class="cwd-section">
-                        <h2 class="cwd-section-title"><i class="fas fa-info-circle"></i> About</h2>
-                        <div class="cwd-prose"><?php echo wp_kses_post(wpautop($content)); ?></div>
                     </section>
                     <?php endif; ?>
 
@@ -1140,7 +1283,21 @@ class CW_Shortcodes {
 
         </div><!-- .cwd-wrap -->
 
-        <?php if ( ! empty( $gallery_images ) ): ?>
+        <?php
+        // Build the lightbox image list. The hero image (if any) is index 0,
+        // then any WooCommerce gallery images follow. So grid items map to
+        // `heroOffset + dataIndex` and the hero button maps to `open(0)`.
+        $lightbox_images = [];
+        if ( $thumb ) {
+            $lightbox_images[] = [ 'full' => $thumb, 'alt' => get_the_title( $pid ) ];
+        }
+        if ( ! empty( $gallery_images ) ) {
+            foreach ( $gallery_images as $gi ) {
+                $lightbox_images[] = [ 'full' => $gi['full'], 'alt' => $gi['alt'] ];
+            }
+        }
+        $hero_offset = $thumb ? 1 : 0;
+        if ( ! empty( $lightbox_images ) ): ?>
         <!-- ═════════════════ PRODUCT GALLERY LIGHTBOX ═════════════════ -->
         <div id="cwd-gallery-lightbox" class="cwd-gallery-lightbox" style="display:none;" role="dialog" aria-modal="true" aria-label="Image viewer"
              onclick="if(event.target===this)cwdGalleryClose()">
@@ -1154,10 +1311,9 @@ class CW_Shortcodes {
         </div>
         <script>
         (function(){
-            var images = <?php echo wp_json_encode( array_values( array_map( function( $i ) {
-                return [ 'full' => $i['full'], 'alt' => $i['alt'] ];
-            }, $gallery_images ) ) ); ?>;
-            var current = 0;
+            var images     = <?php echo wp_json_encode( $lightbox_images ); ?>;
+            var heroOffset = <?php echo (int) $hero_offset; ?>;
+            var current    = 0;
             function open(i) {
                 if (!images.length) return;
                 current = ((i % images.length) + images.length) % images.length;
@@ -1181,24 +1337,73 @@ class CW_Shortcodes {
                 document.body.style.overflow = '';
             }
             function step(d) { open(current + d); }
+            // Expose so external clickers (hero image, public submissions tiles) can call us.
+            window.cwdGalleryOpen  = open;
             window.cwdGalleryClose = close;
             window.cwdGalleryStep  = step;
+
+            // WooCommerce-style gallery grid: dataset indices are 0-based on the
+            // original $gallery_images, so add heroOffset to land on the right slot.
             var grid = document.getElementById('cwd-gallery-grid');
             if (grid) {
                 grid.addEventListener('click', function(e){
                     var t = e.target.closest('.cwd-gallery-item');
                     if (!t) return;
                     e.preventDefault();
-                    open(parseInt(t.getAttribute('data-cwd-gallery-index'), 10) || 0);
+                    open( heroOffset + (parseInt(t.getAttribute('data-cwd-gallery-index'), 10) || 0) );
+                });
+            }
+            // Public Submissions gallery (anonymous artwork tiles). The tiles
+            // are NOT part of the WooCommerce image set, so we temporarily
+            // swap the lightbox image list to the public-submissions array
+            // (exposed by the inline script as window.cwdPublicSubmissions)
+            // and open at the clicked index. This gives proper prev/next
+            // navigation through the entire visible page of submissions.
+            var pubGrid = document.getElementById('cwd-public-gallery-grid');
+            if (pubGrid) {
+                pubGrid.addEventListener('click', function(e){
+                    var btn = e.target.closest('.cwd-pub-gallery-item');
+                    if (!btn) return;
+                    e.preventDefault();
+                    var idx     = parseInt(btn.getAttribute('data-pub-index'), 10) || 0;
+                    var pubList = Array.isArray(window.cwdPublicSubmissions) ? window.cwdPublicSubmissions : [];
+                    if (!pubList.length) {
+                        // Fallback to a single-image shot if the inline list
+                        // didn't render for any reason.
+                        var full = btn.getAttribute('data-full');
+                        if (!full) return;
+                        pubList = [ { full: full, alt: '' } ];
+                        idx     = 0;
+                    }
+                    var prevImages  = images;
+                    var prevHeroOff = heroOffset;
+                    images     = pubList;
+                    heroOffset = 0;
+                    open(idx);
+                    // Restore original list when the lightbox closes so
+                    // hero / Gallery clicks keep their own list.
+                    var restore = function(){
+                        images     = prevImages;
+                        heroOffset = prevHeroOff;
+                        document.removeEventListener('cwdGalleryClosed', restore);
+                    };
+                    document.addEventListener('cwdGalleryClosed', restore);
                 });
             }
             document.addEventListener('keydown', function(e){
                 var lb = document.getElementById('cwd-gallery-lightbox');
                 if (!lb || lb.style.display === 'none') return;
-                if (e.key === 'Escape')      close();
+                if (e.key === 'Escape')      { close(); document.dispatchEvent(new CustomEvent('cwdGalleryClosed')); }
                 else if (e.key === 'ArrowLeft')  step(-1);
                 else if (e.key === 'ArrowRight') step(1);
             });
+            // Patch close so anyone listening for cwdGalleryClosed gets notified
+            // (used by the public-gallery one-shot list swap above).
+            var origClose = window.cwdGalleryClose;
+            window.cwdGalleryClose = function(){
+                origClose();
+                document.dispatchEvent(new CustomEvent('cwdGalleryClosed'));
+            };
             // Touch swipe support
             var touchStartX = null;
             var lbEl = document.getElementById('cwd-gallery-lightbox');

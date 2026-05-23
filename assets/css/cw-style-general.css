@@ -1296,6 +1296,120 @@ input.cw-input-text-v2 { padding-left: 42px !important; }
     font-size: 64px;
 }
 
+/* Clickable hero image — wraps the <img> in a button so visitors can
+   enlarge it via the existing lightbox. */
+.cwd-hero-img-btn {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    background: transparent;
+    cursor: zoom-in;
+    display: block;
+    overflow: hidden;
+}
+.cwd-hero-img-btn .cwd-hero-img { transition: transform .35s ease; }
+.cwd-hero-img-btn:hover .cwd-hero-img,
+.cwd-hero-img-btn:focus-visible .cwd-hero-img { transform: scale(1.04); }
+.cwd-hero-img-btn:focus-visible { outline: 3px solid rgba(15, 103, 150, .45); outline-offset: -3px; }
+.cwd-hero-img-zoom {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(15, 23, 42, .55);
+    color: #fff;
+    font-size: 16px;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity .2s ease, transform .2s ease;
+    pointer-events: none;
+    backdrop-filter: blur(4px);
+}
+.cwd-hero-img-btn:hover .cwd-hero-img-zoom,
+.cwd-hero-img-btn:focus-visible .cwd-hero-img-zoom { opacity: 1; transform: translateY(0); }
+
+/* ─────────────────────────────────────────────────────────────────
+   Public Submissions gallery (anonymous, opt-in)
+   Inherits the entire .cwd-gallery-section / .cwd-gallery-grid /
+   .cwd-gallery-item visual system used by the WooCommerce Gallery
+   section below, so both feel like one tightly-built grid. Only a
+   tiny "has message" flag indicator and the empty / pagination
+   chrome live here.
+   ───────────────────────────────────────────────────────────── */
+.cwd-wrap .cwd-public-gallery .cwd-section-title i { color: var(--cwd-accent, #FE6261); }
+.cwd-wrap .cwd-public-empty {
+    margin: 0;
+    padding: 24px 16px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #64748b;
+    text-align: center;
+    font-size: 14px;
+}
+
+/* Small "has message" flag in the top-left corner of each tile so
+   users know there's a quote attached (visible on tap / lightbox). */
+.cwd-wrap .cwd-pub-gallery-item { position: relative; }
+.cwd-wrap .cwd-pub-gallery-flag {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, .55);
+    color: #fff !important;
+    font-size: 10px;
+    line-height: 1;
+    pointer-events: none;
+    backdrop-filter: blur(4px);
+}
+
+/* Pagination — same chips used elsewhere on the page */
+.cwd-wrap .cwd-public-pagination {
+    margin-top: 18px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+}
+.cwd-wrap .cwd-public-pagination .cwd-public-page-item a,
+.cwd-wrap .cwd-public-pagination .cwd-public-page-item span {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--cw-border, #e2e8f0);
+    background: var(--cw-surface, #fff);
+    color: var(--cw-text-soft, #475569);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.cwd-wrap .cwd-public-pagination .cwd-public-page-item a:hover {
+    background: var(--cw-bg, #f1f5f9);
+    color: var(--cwd-primary, #006599);
+    border-color: #cbd5e1;
+}
+.cwd-wrap .cwd-public-pagination .cwd-public-page-item span.current {
+    background: var(--cwd-primary, #006599);
+    color: #fff;
+    border-color: var(--cwd-primary, #006599);
+}
+
 /* Info column */
 .cwd-hero-info-col {
     padding: 32px 30px;

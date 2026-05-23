@@ -137,6 +137,7 @@ class CW_Campaign_Persistence {
             'cw_allow_multiple_participants',
             'cw_use_account_fullname',
             'cw_enable_certificate',
+            'cw_show_submissions_gallery',
         ];
         foreach ( $toggle_keys as $tk ) {
             if ( array_key_exists( $tk, $data ) ) {
@@ -259,6 +260,7 @@ class CW_Campaign_Persistence {
             'cw_enable_school_sponsors'     => isset( $_POST['cw_enable_school_sponsors'] ) ? 'yes' : 'no',
             'cw_allow_multiple_participants' => isset( $_POST['cw_allow_multiple_participants'] ) ? 'yes' : 'no',
             'cw_use_account_fullname'       => isset( $_POST['cw_use_account_fullname'] ) ? 'yes' : 'no',
+            'cw_show_submissions_gallery'   => isset( $_POST['cw_show_submissions_gallery'] ) ? 'yes' : 'no',
             '_save_feature_blocks'          => true,
         ];
 

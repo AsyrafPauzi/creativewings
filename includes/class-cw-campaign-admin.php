@@ -23,45 +23,107 @@ class CW_Campaign_Admin {
     }
 
     /**
-     * Idempotent seeder for default sub-categories that should always exist
-     * (e.g. "Art" under Activity). Runs on init and only inserts when missing.
+     * Idempotent seeder for the default campaign taxonomy structure.
+     *
+     * - Ensures the "Art" sub-category exists under Activities.
+     * - Ensures a top-level "Talk / Seminar" parent category exists, plus a
+     *   couple of generic sub-categories underneath so the create-campaign
+     *   wizard has options to show when the organizer picks it.
+     *
+     * Runs on `init` and only inserts when missing.
      */
     public function seed_default_subcategories() {
         if ( ! taxonomy_exists( 'product_cat' ) ) {
             return;
         }
 
-        $parent = get_term_by( 'slug', 'activities', 'product_cat' );
-        if ( ! $parent || is_wp_error( $parent ) ) {
-            return;
+        // ─────────────────────────────────────────────────────────────────
+        // "Art" sub-category under Activities (original behaviour).
+        // ─────────────────────────────────────────────────────────────────
+        $activities_parent = get_term_by( 'slug', 'activities', 'product_cat' );
+        if ( $activities_parent && ! is_wp_error( $activities_parent ) ) {
+            $desired_slug = 'art-activities';
+
+            $existing = get_terms( [
+                'taxonomy'   => 'product_cat',
+                'hide_empty' => false,
+                'parent'     => (int) $activities_parent->term_id,
+                'name'       => 'Art',
+            ] );
+
+            if ( empty( $existing ) || is_wp_error( $existing ) ) {
+                wp_insert_term(
+                    'Art',
+                    'product_cat',
+                    [
+                        'slug'   => $desired_slug,
+                        'parent' => (int) $activities_parent->term_id,
+                    ]
+                );
+            } else {
+                $term = $existing[0];
+                if ( isset( $term->slug ) && $term->slug !== $desired_slug ) {
+                    wp_update_term( (int) $term->term_id, 'product_cat', [ 'slug' => $desired_slug ] );
+                }
+            }
         }
 
-        $desired_slug = 'art-activities';
-
-        // Find an existing "Art" child term under Activities, regardless of its current slug.
-        $existing = get_terms( [
-            'taxonomy'   => 'product_cat',
-            'hide_empty' => false,
-            'parent'     => (int) $parent->term_id,
-            'name'       => 'Art',
-        ] );
-
-        if ( empty( $existing ) || is_wp_error( $existing ) ) {
-            wp_insert_term(
-                'Art',
+        // ─────────────────────────────────────────────────────────────────
+        // Top-level "Talk / Seminar" parent + default children.
+        // The rest of the codebase already treats `talk-seminar` as a
+        // first-class campaign type (badges, reports, shortcodes, shop),
+        // but the wizard never had a card for it — and the parent term
+        // was never seeded — so organizers couldn't pick it.
+        // ─────────────────────────────────────────────────────────────────
+        $talk_parent = get_term_by( 'slug', 'talk-seminar', 'product_cat' );
+        if ( ! $talk_parent || is_wp_error( $talk_parent ) ) {
+            $inserted = wp_insert_term(
+                'Talk / Seminar',
                 'product_cat',
                 [
-                    'slug'   => $desired_slug,
-                    'parent' => (int) $parent->term_id,
+                    'slug'        => 'talk-seminar',
+                    'description' => 'Talks, webinars and seminars hosted by organizers.',
                 ]
             );
-            return;
+            if ( ! is_wp_error( $inserted ) && ! empty( $inserted['term_id'] ) ) {
+                $talk_parent = get_term( (int) $inserted['term_id'], 'product_cat' );
+            }
         }
 
-        // Realign existing term's slug to the canonical one if it drifted.
-        $term = $existing[0];
-        if ( isset( $term->slug ) && $term->slug !== $desired_slug ) {
-            wp_update_term( (int) $term->term_id, 'product_cat', [ 'slug' => $desired_slug ] );
+        if ( $talk_parent && ! is_wp_error( $talk_parent ) ) {
+            // Use prefixed slugs to avoid colliding with any unrelated top-level
+            // "Talk"/"Seminar" term that an admin may have created previously.
+            // The wizard renders children by parent term, so the prefix has no
+            // UX impact.
+            $default_children = [
+                [ 'name' => 'Seminar', 'slug' => 'talk-seminar-seminar' ],
+                [ 'name' => 'Talk',    'slug' => 'talk-seminar-talk' ],
+                [ 'name' => 'Webinar', 'slug' => 'talk-seminar-webinar' ],
+            ];
+
+            // Only seed children if the parent currently has none, so we don't
+            // shadow custom children the admin has added in the Products UI.
+            $children = get_terms( [
+                'taxonomy'   => 'product_cat',
+                'hide_empty' => false,
+                'parent'     => (int) $talk_parent->term_id,
+            ] );
+
+            if ( empty( $children ) || is_wp_error( $children ) ) {
+                foreach ( $default_children as $child ) {
+                    if ( get_term_by( 'slug', $child['slug'], 'product_cat' ) ) {
+                        continue; // Already inserted on a previous run.
+                    }
+                    wp_insert_term(
+                        $child['name'],
+                        'product_cat',
+                        [
+                            'slug'   => $child['slug'],
+                            'parent' => (int) $talk_parent->term_id,
+                        ]
+                    );
+                }
+            }
         }
     }
 
@@ -583,7 +645,7 @@ class CW_Campaign_Admin {
                 if ( ! $url ) {
                     continue;
                 }
-                $qr = 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' . rawurlencode( $url );
+                $qr = self::qr_image_url( $url, 150 );
                 echo '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:16px;border:1px solid #e2e8f0;padding:10px;border-radius:8px;">';
                 echo '<img src="' . esc_url( $qr ) . '" width="100" height="100" alt="QR">';
                 echo '<div><strong>' . esc_html( ( $row['school_code'] ?? '' ) . ' ' . ( $row['school_name'] ?? '' ) ) . '</strong><br>';
@@ -622,6 +684,25 @@ class CW_Campaign_Admin {
         }
         echo '</tbody></table></body></html>';
         exit;
+    }
+
+    /**
+     * Centralised QR image URL builder. We currently round-trip through the
+     * public qrserver.com endpoint — the goal is to have a single place to
+     * swap that out later (e.g. for a self-hosted endroid/qr-code generator)
+     * without touching every caller.
+     *
+     * @param string $data    The text the QR should encode (typically a URL).
+     * @param int    $size    Width/height in pixels (square).
+     * @param int    $margin  Quiet-zone margin in modules (0-30).
+     * @return string         Fully escaped URL safe to drop into an <img src="…">.
+     */
+    public static function qr_image_url( $data, $size = 200, $margin = 6 ) {
+        $size   = max( 60, min( 1000, (int) $size ) );
+        $margin = max( 0, min( 30, (int) $margin ) );
+        return 'https://api.qrserver.com/v1/create-qr-code/?size=' . $size . 'x' . $size
+             . '&margin=' . $margin
+             . '&data=' . rawurlencode( (string) $data );
     }
 
     /**
@@ -671,7 +752,7 @@ class CW_Campaign_Admin {
             $seq     = $start + $i;
             $code    = CW_Submission_Code::build( $campaign_id, $month, $school, $seq );
             $pic_url = CW_Staged_Submissions::get_pic_qr_url( $campaign_id, $school, $code );
-            $qr_src  = 'https://api.qrserver.com/v1/create-qr-code/?size=128x128&margin=6&data=' . rawurlencode( $pic_url );
+            $qr_src  = self::qr_image_url( $pic_url, 128, 6 );
             echo '<div class="card">';
             echo '<img src="' . esc_url( $qr_src ) . '" width="128" height="128" alt="" loading="lazy">';
             echo '<div class="code">' . esc_html( $code ) . '</div>';
