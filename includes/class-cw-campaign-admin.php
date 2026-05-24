@@ -654,36 +654,251 @@ class CW_Campaign_Admin {
         }
     }
 
+    /**
+     * Generate a printable / downloadable list of submission codes for a
+     * campaign + school + month + sequence range.
+     *
+     * Output formats:
+     *   - html  Printable HTML (default).
+     *   - csv   text/csv attachment.
+     *   - pdf   application/pdf attachment via Dompdf.
+     *
+     * Each row contains: # / Submission code / PIC scan URL.
+     * The previously emitted "Student name" column was dropped — write-by-
+     * hand workflows still work on the HTML view (organisers can pencil
+     * names next to the row) and the digital CSV/PDF flows don't need it.
+     */
     public function render_bulk_codes() {
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
-            wp_die( 'Unauthorized', 403 );
-        }
         check_admin_referer( 'cw_bulk_codes' );
 
-        $serial = str_pad( preg_replace( '/\D/', '', sanitize_text_field( $_GET['serial'] ?? '002' ) ), 3, '0', STR_PAD_LEFT );
-        $school = str_pad( preg_replace( '/\D/', '', sanitize_text_field( $_GET['school'] ?? '001' ) ), 3, '0', STR_PAD_LEFT );
-        $month  = str_pad( preg_replace( '/\D/', '', sanitize_text_field( $_GET['month'] ?? gmdate( 'm' ) ) ), 2, '0', STR_PAD_LEFT );
-        $start  = max( 1, (int) ( $_GET['start'] ?? 1 ) );
-        $count  = min( 500, max( 1, (int) ( $_GET['count'] ?? 50 ) ) );
-        $title  = get_the_title( (int) ( $_GET['campaign_id'] ?? 0 ) );
-
-        header( 'Content-Type: text/html; charset=utf-8' );
-        echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bulk codes</title>';
-        echo '<style>body{font-family:system-ui;padding:20px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:8px;font-size:12px}@media print{.no-print{display:none}}</style></head><body>';
-        echo '<p class="no-print"><button onclick="window.print()">Print</button></p>';
-        echo '<h1>' . esc_html( $title ) . '</h1>';
-        echo '<p>School ' . esc_html( $school ) . ' · Month ' . esc_html( $month ) . '</p>';
-        echo '<table><thead><tr><th>#</th><th>' . esc_html__( 'Submission code', 'creativewings-core' ) . '</th><th>' . esc_html__( 'Student name', 'creativewings-core' ) . '</th></tr></thead><tbody>';
         $campaign_id = (int) ( $_GET['campaign_id'] ?? 0 );
-        for ( $i = 0; $i < $count; $i++ ) {
-            $seq  = $start + $i;
-            $code = class_exists( 'CW_Submission_Code' )
-                ? CW_Submission_Code::build( $campaign_id, $month, $school, $seq )
-                : $serial . $month . $school . str_pad( (string) $seq, $seq > 99999 ? 6 : 5, '0', STR_PAD_LEFT );
-            echo '<tr><td>' . ( $i + 1 ) . '</td><td><strong>' . esc_html( $code ) . '</strong></td><td style="width:40%"></td></tr>';
+        if ( ! $this->user_can_generate_codes_for( $campaign_id ) ) {
+            wp_die( esc_html__( 'Unauthorized', 'creativewings-core' ), '', [ 'response' => 403 ] );
+        }
+
+        $school = CW_Submission_Code::pad_school( sanitize_text_field( $_GET['school'] ?? '001' ) );
+        $month  = CW_Submission_Code::pad_month( sanitize_text_field( $_GET['month'] ?? gmdate( 'm' ) ) );
+        $start  = max( 1, (int) ( $_GET['start'] ?? 1 ) );
+        $count  = min( 1000, max( 1, (int) ( $_GET['count'] ?? 50 ) ) );
+        $format = strtolower( sanitize_key( $_GET['format'] ?? 'html' ) );
+        $title  = $campaign_id ? get_the_title( $campaign_id ) : '';
+
+        $rows = $this->build_code_rows( $campaign_id, $school, $month, $start, $count );
+
+        if ( 'csv' === $format ) {
+            $this->stream_codes_csv( $rows, $title, $school, $month );
+            return;
+        }
+
+        if ( 'pdf' === $format ) {
+            $this->stream_codes_pdf( $rows, $title, $school, $month, false );
+            return;
+        }
+
+        // Default: printable HTML view.
+        header( 'Content-Type: text/html; charset=utf-8' );
+        echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' . esc_html__( 'Bulk codes', 'creativewings-core' ) . '</title>';
+        echo '<style>
+            body{font-family:system-ui,sans-serif;padding:20px;color:#0f172a}
+            h1{margin:0 0 4px;font-size:20px}
+            .meta{margin:0 0 14px;color:#475569;font-size:13px}
+            table{border-collapse:collapse;width:100%;font-size:12px}
+            th,td{border:1px solid #cbd5e1;padding:8px 10px;text-align:left;vertical-align:top}
+            th{background:#f1f5f9;font-weight:700}
+            td.idx{width:48px;text-align:right;font-variant-numeric:tabular-nums;color:#64748b}
+            td.code{font-weight:700;font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.02em}
+            td.url{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:#334155;word-break:break-all}
+            @media print{.no-print{display:none}body{padding:6px}th,td{padding:5px 7px}}
+        </style></head><body>';
+        echo '<p class="no-print"><button onclick="window.print()">' . esc_html__( 'Print', 'creativewings-core' ) . '</button></p>';
+        echo '<h1>' . esc_html( $title ) . '</h1>';
+        echo '<p class="meta">' . esc_html(
+            sprintf(
+                /* translators: 1: school code, 2: month, 3: count, 4: start, 5: end */
+                __( 'School %1$s · Month %2$s · %3$d codes (#%4$d – #%5$d)', 'creativewings-core' ),
+                $school,
+                $month,
+                $count,
+                $start,
+                $start + $count - 1
+            )
+        ) . '</p>';
+
+        echo '<table><thead><tr>';
+        echo '<th>#</th>';
+        echo '<th>' . esc_html__( 'Submission code', 'creativewings-core' ) . '</th>';
+        echo '<th>' . esc_html__( 'PIC scan URL', 'creativewings-core' ) . '</th>';
+        echo '</tr></thead><tbody>';
+        foreach ( $rows as $row ) {
+            echo '<tr>';
+            echo '<td class="idx">' . (int) $row['idx'] . '</td>';
+            echo '<td class="code">' . esc_html( $row['code'] ) . '</td>';
+            echo '<td class="url">' . esc_html( $row['url'] ) . '</td>';
+            echo '</tr>';
         }
         echo '</tbody></table></body></html>';
         exit;
+    }
+
+    /**
+     * Resolve campaign rows once for every output format.
+     *
+     * @return array<int, array{idx:int, code:string, url:string}>
+     */
+    private function build_code_rows( $campaign_id, $school, $month, $start, $count ) {
+        $rows = [];
+        for ( $i = 0; $i < $count; $i++ ) {
+            $seq  = $start + $i;
+            $code = CW_Submission_Code::build( $campaign_id, $month, $school, $seq );
+            $url  = class_exists( 'CW_Staged_Submissions' )
+                ? CW_Staged_Submissions::get_pic_qr_url( $campaign_id, $school, $code )
+                : '';
+            $rows[] = [
+                'idx'  => $i + 1,
+                'code' => $code,
+                'url'  => $url,
+            ];
+        }
+        return $rows;
+    }
+
+    /**
+     * Stream a CSV file with: #, Submission code, PIC scan URL.
+     */
+    private function stream_codes_csv( array $rows, $title, $school, $month ) {
+        $filename = sanitize_file_name(
+            sprintf( 'cw-codes-%s-school-%s-m%s-%s.csv', sanitize_title( $title ), $school, $month, gmdate( 'Ymd-His' ) )
+        );
+
+        nocache_headers();
+        header( 'Content-Type: text/csv; charset=UTF-8' );
+        header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+
+        $out = fopen( 'php://output', 'w' );
+        fwrite( $out, "\xEF\xBB\xBF" ); // UTF-8 BOM so Excel opens cleanly.
+        fputcsv( $out, [ __( '#', 'creativewings-core' ), __( 'Submission code', 'creativewings-core' ), __( 'PIC scan URL', 'creativewings-core' ) ] );
+        foreach ( $rows as $row ) {
+            fputcsv( $out, [ $row['idx'], $row['code'], $row['url'] ] );
+        }
+        fclose( $out );
+        exit;
+    }
+
+    /**
+     * Stream a PDF file via Dompdf.
+     *
+     * @param bool $with_qr  When true (QR sheet mode) embeds a QR image per row.
+     */
+    private function stream_codes_pdf( array $rows, $title, $school, $month, $with_qr ) {
+        if ( ! class_exists( '\\Dompdf\\Dompdf' ) ) {
+            wp_die( esc_html__( 'PDF exporter is not installed. Run composer install.', 'creativewings-core' ), '', [ 'response' => 500 ] );
+        }
+
+        $count = count( $rows );
+        $first = $rows ? (int) $rows[0]['idx'] : 1;
+        $last  = $rows ? (int) end( $rows )['idx'] : $count;
+
+        ob_start();
+        ?>
+        <html><head><meta charset="utf-8">
+        <style>
+            @page { margin: 14mm 12mm; }
+            body { font-family: DejaVu Sans, sans-serif; color: #0f172a; font-size: 11px; }
+            h1   { margin: 0 0 4px; font-size: 16px; }
+            .meta { color: #475569; font-size: 10px; margin: 0 0 10px; }
+            table { width: 100%; border-collapse: collapse; }
+            th,td { border: 1px solid #cbd5e1; padding: 4px 6px; vertical-align: middle; }
+            th    { background: #f1f5f9; font-weight: 700; text-align: left; }
+            td.idx { width: 32px; text-align: right; color: #64748b; }
+            td.code { font-weight: 700; font-family: DejaVu Sans Mono, monospace; }
+            td.url  { font-family: DejaVu Sans Mono, monospace; font-size: 9px; color: #334155; word-break: break-all; }
+            td.qr   { width: 90px; text-align: center; }
+            td.qr img { width: 80px; height: 80px; }
+        </style></head><body>
+            <h1><?php echo esc_html( $title ); ?></h1>
+            <p class="meta">
+                <?php
+                echo esc_html(
+                    sprintf(
+                        /* translators: 1: school code, 2: month, 3: count, 4: start, 5: end */
+                        __( 'School %1$s · Month %2$s · %3$d codes (#%4$d – #%5$d)', 'creativewings-core' ),
+                        $school,
+                        $month,
+                        $count,
+                        $first,
+                        $last
+                    )
+                );
+                ?>
+            </p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <?php if ( $with_qr ) : ?><th><?php esc_html_e( 'QR', 'creativewings-core' ); ?></th><?php endif; ?>
+                        <th><?php esc_html_e( 'Submission code', 'creativewings-core' ); ?></th>
+                        <th><?php esc_html_e( 'PIC scan URL', 'creativewings-core' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $rows as $row ) : ?>
+                        <tr>
+                            <td class="idx"><?php echo (int) $row['idx']; ?></td>
+                            <?php if ( $with_qr ) : ?>
+                                <td class="qr"><img src="<?php echo esc_url( self::qr_image_url( $row['url'], 160, 2 ) ); ?>"></td>
+                            <?php endif; ?>
+                            <td class="code"><?php echo esc_html( $row['code'] ); ?></td>
+                            <td class="url"><?php echo esc_html( $row['url'] ); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </body></html>
+        <?php
+        $html = ob_get_clean();
+
+        $options = new \Dompdf\Options();
+        // QR images come from api.qrserver.com so we need remote fetches
+        // enabled when the QR column is included. Text-only codes don't
+        // need it but enabling here is harmless.
+        $options->set( 'isRemoteEnabled', true );
+        $options->set( 'defaultFont', 'DejaVu Sans' );
+
+        $dompdf = new \Dompdf\Dompdf( $options );
+        $dompdf->loadHtml( $html, 'UTF-8' );
+        $dompdf->setPaper( 'A4', $with_qr ? 'portrait' : 'portrait' );
+        $dompdf->render();
+
+        $filename = sanitize_file_name(
+            sprintf(
+                '%s-%s-school-%s-m%s-%s.pdf',
+                $with_qr ? 'cw-qr-sheet' : 'cw-codes',
+                sanitize_title( $title ),
+                $school,
+                $month,
+                gmdate( 'Ymd-His' )
+            )
+        );
+
+        nocache_headers();
+        header( 'Content-Type: application/pdf' );
+        header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+        echo $dompdf->output();
+        exit;
+    }
+
+    /**
+     * Authorise the current user to generate codes/QR for $campaign_id.
+     * Allowed for: WC managers and the organiser who owns the campaign.
+     */
+    private function user_can_generate_codes_for( $campaign_id ) {
+        if ( current_user_can( 'manage_woocommerce' ) || current_user_can( 'edit_products' ) ) {
+            return true;
+        }
+        if ( $campaign_id && class_exists( 'CW_Roles' ) ) {
+            return CW_Roles::user_owns_campaign( (int) $campaign_id, get_current_user_id() );
+        }
+        return false;
     }
 
     /**
@@ -707,22 +922,40 @@ class CW_Campaign_Admin {
 
     /**
      * Printable grid: one QR per submission code (scan → PIC form with code prefilled).
+     *
+     * Output formats:
+     *   - html  Printable QR grid (default).
+     *   - csv   text/csv with #, Submission code, PIC scan URL.
+     *   - pdf   application/pdf via Dompdf — same grid, downloadable.
      */
     public function render_bulk_qr() {
-        if ( ! current_user_can( 'manage_woocommerce' ) && ! current_user_can( 'edit_products' ) ) {
-            wp_die( esc_html__( 'Unauthorized', 'creativewings-core' ), '', [ 'response' => 403 ] );
-        }
         check_admin_referer( 'cw_bulk_qr' );
 
         $campaign_id = (int) ( $_GET['campaign_id'] ?? 0 );
-        $school      = CW_Submission_Code::pad_school( sanitize_text_field( $_GET['school'] ?? '001' ) );
-        $month       = CW_Submission_Code::pad_month( sanitize_text_field( $_GET['month'] ?? gmdate( 'm' ) ) );
-        $start       = max( 1, (int) ( $_GET['start'] ?? 1 ) );
-        $count       = min( 500, max( 1, (int) ( $_GET['count'] ?? 50 ) ) );
-        $title       = get_the_title( $campaign_id );
+        if ( ! $this->user_can_generate_codes_for( $campaign_id ) ) {
+            wp_die( esc_html__( 'Unauthorized', 'creativewings-core' ), '', [ 'response' => 403 ] );
+        }
+
+        $school = CW_Submission_Code::pad_school( sanitize_text_field( $_GET['school'] ?? '001' ) );
+        $month  = CW_Submission_Code::pad_month( sanitize_text_field( $_GET['month'] ?? gmdate( 'm' ) ) );
+        $start  = max( 1, (int) ( $_GET['start'] ?? 1 ) );
+        $count  = min( 1000, max( 1, (int) ( $_GET['count'] ?? 50 ) ) );
+        $format = strtolower( sanitize_key( $_GET['format'] ?? 'html' ) );
+        $title  = $campaign_id ? get_the_title( $campaign_id ) : '';
 
         if ( ! class_exists( 'CW_Staged_Submissions' ) ) {
             wp_die( esc_html__( 'Upload module not available.', 'creativewings-core' ), '', [ 'response' => 500 ] );
+        }
+
+        $rows = $this->build_code_rows( $campaign_id, $school, $month, $start, $count );
+
+        if ( 'csv' === $format ) {
+            $this->stream_codes_csv( $rows, $title, $school, $month );
+            return;
+        }
+        if ( 'pdf' === $format ) {
+            $this->stream_codes_pdf( $rows, $title, $school, $month, true );
+            return;
         }
 
         header( 'Content-Type: text/html; charset=utf-8' );
@@ -748,14 +981,11 @@ class CW_Campaign_Admin {
         echo '<p class="np"><button type="button" onclick="window.print()">' . esc_html__( 'Print', 'creativewings-core' ) . '</button></p>';
         echo '<div class="grid">';
 
-        for ( $i = 0; $i < $count; $i++ ) {
-            $seq     = $start + $i;
-            $code    = CW_Submission_Code::build( $campaign_id, $month, $school, $seq );
-            $pic_url = CW_Staged_Submissions::get_pic_qr_url( $campaign_id, $school, $code );
-            $qr_src  = self::qr_image_url( $pic_url, 128, 6 );
+        foreach ( $rows as $row ) {
+            $qr_src = self::qr_image_url( $row['url'], 128, 6 );
             echo '<div class="card">';
             echo '<img src="' . esc_url( $qr_src ) . '" width="128" height="128" alt="" loading="lazy">';
-            echo '<div class="code">' . esc_html( $code ) . '</div>';
+            echo '<div class="code">' . esc_html( $row['code'] ) . '</div>';
             echo '</div>';
         }
 

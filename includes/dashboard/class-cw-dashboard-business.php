@@ -91,6 +91,262 @@ class CW_Dashboard_Business {
     }
 
     /**
+     * Render the "Generate codes & QR sheets" picker page reached from the
+     * campaign details view via `?tab=campaigns&details_id=NN&cw_panel=codes`.
+     *
+     * Replaces the old "click → straight to print sheet with hard-coded
+     * school=001/month=this/start=1/count=50" links — organisers now pick
+     * the school + month + start # + how-many up front and choose between
+     * a code list and a QR grid, in either HTML / CSV / PDF.
+     *
+     * @param int    $campaign_id
+     * @param string $base_campaigns_url   /my-account/?tab=campaigns
+     */
+    protected function render_codes_panel( $campaign_id, $base_campaigns_url ) {
+        $campaign_id = (int) $campaign_id;
+        $title       = get_the_title( $campaign_id );
+        $details_url = add_query_arg( 'details_id', $campaign_id, $base_campaigns_url );
+
+        // School sponsor list (configured in the campaign wizard - Step 4).
+        $schools = get_post_meta( $campaign_id, 'cw_school_sponsors', true );
+        if ( ! is_array( $schools ) ) {
+            $schools = [];
+        }
+        $valid_schools = [];
+        foreach ( $schools as $s ) {
+            if ( empty( $s['school_code'] ) ) {
+                continue;
+            }
+            $code = class_exists( 'CW_Submission_Code' )
+                ? CW_Submission_Code::pad_school( $s['school_code'] )
+                : str_pad( preg_replace( '/\D/', '', (string) $s['school_code'] ), 3, '0', STR_PAD_LEFT );
+            $valid_schools[] = [
+                'code' => $code,
+                'name' => trim( (string) ( $s['school_name'] ?? '' ) ),
+            ];
+        }
+
+        // Pre-built nonces for the two admin-post endpoints. We can't keep
+        // them in the form's URL because method=GET form submission *replaces*
+        // the action URL's query string with the form's fields — so the
+        // hidden inputs below are what actually survive the submit.
+        $codes_endpoint = admin_url( 'admin-post.php' );
+        $codes_nonce    = wp_create_nonce( 'cw_bulk_codes' );
+        $qr_nonce       = wp_create_nonce( 'cw_bulk_qr' );
+        $month_default = gmdate( 'm' );
+        $year_default  = gmdate( 'Y' );
+        ?>
+        <nav class="cw-editor-breadcrumb" aria-label="<?php esc_attr_e( 'Breadcrumb', 'creativewings-core' ); ?>" style="margin-bottom:14px;">
+            <a href="<?php echo esc_url( $details_url ); ?>" class="cw-editor-back">
+                <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                <?php echo esc_html( $title ); ?>
+            </a>
+            <span class="cw-editor-crumb-sep" aria-hidden="true">/</span>
+            <span class="cw-editor-crumb-current"><?php esc_html_e( 'Generate codes & QR sheets', 'creativewings-core' ); ?></span>
+        </nav>
+
+        <section class="cw-codes-panel">
+            <header class="cw-codes-panel-head">
+                <h1><i class="fas fa-list-ol" aria-hidden="true"></i> <?php esc_html_e( 'Generate codes & QR sheets', 'creativewings-core' ); ?></h1>
+                <p class="cw-codes-panel-desc">
+                    <?php esc_html_e( 'Pick a school, month and sequence range, then choose whether you want a code list or a printable QR grid. CSV and PDF downloads are available alongside the HTML print view.', 'creativewings-core' ); ?>
+                </p>
+            </header>
+
+            <?php if ( empty( $valid_schools ) ) : ?>
+                <div class="cw-codes-panel-empty">
+                    <i class="fas fa-school" aria-hidden="true"></i>
+                    <h3><?php esc_html_e( 'No schools configured yet', 'creativewings-core' ); ?></h3>
+                    <p>
+                        <?php
+                        echo wp_kses_post(
+                            sprintf(
+                                /* translators: %s: anchor tag opening + closing for the campaign editor */
+                                __( 'Add school sponsors in the campaign wizard (Step 4) first, then come back here. %s', 'creativewings-core' ),
+                                '<a href="' . esc_url( add_query_arg( [ 'tab' => 'campaigns', 'edit_id' => $campaign_id ], get_permalink( wc_get_page_id( 'myaccount' ) ) ) ) . '">' . esc_html__( 'Open campaign editor →', 'creativewings-core' ) . '</a>'
+                            )
+                        );
+                        ?>
+                    </p>
+                </div>
+            <?php else : ?>
+                <form id="cw-codes-form"
+                      method="get"
+                      action="<?php echo esc_url( $codes_endpoint ); ?>"
+                      target="_blank"
+                      rel="noopener"
+                      data-codes-nonce="<?php echo esc_attr( $codes_nonce ); ?>"
+                      data-qr-nonce="<?php echo esc_attr( $qr_nonce ); ?>"
+                      class="cw-codes-form">
+
+                    <input type="hidden" name="action" value="cw_bulk_codes">
+                    <input type="hidden" name="campaign_id" value="<?php echo esc_attr( (string) $campaign_id ); ?>">
+                    <input type="hidden" name="_wpnonce" value="<?php echo esc_attr( $codes_nonce ); ?>">
+
+                    <div class="cw-codes-grid">
+                        <div class="cw-codes-field">
+                            <label for="cw-codes-school"><?php esc_html_e( 'School', 'creativewings-core' ); ?></label>
+                            <select id="cw-codes-school" name="school" required>
+                                <?php foreach ( $valid_schools as $s ) :
+                                    $label = $s['name'] !== ''
+                                        ? sprintf( '%s — %s', $s['code'], $s['name'] )
+                                        : $s['code'];
+                                    ?>
+                                    <option value="<?php echo esc_attr( $s['code'] ); ?>"><?php echo esc_html( $label ); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="cw-codes-field">
+                            <label for="cw-codes-month"><?php esc_html_e( 'Month', 'creativewings-core' ); ?></label>
+                            <select id="cw-codes-month" name="month" required>
+                                <?php
+                                $months = [
+                                    '01' => __( '01 — January',   'creativewings-core' ),
+                                    '02' => __( '02 — February',  'creativewings-core' ),
+                                    '03' => __( '03 — March',     'creativewings-core' ),
+                                    '04' => __( '04 — April',     'creativewings-core' ),
+                                    '05' => __( '05 — May',       'creativewings-core' ),
+                                    '06' => __( '06 — June',      'creativewings-core' ),
+                                    '07' => __( '07 — July',      'creativewings-core' ),
+                                    '08' => __( '08 — August',    'creativewings-core' ),
+                                    '09' => __( '09 — September', 'creativewings-core' ),
+                                    '10' => __( '10 — October',   'creativewings-core' ),
+                                    '11' => __( '11 — November',  'creativewings-core' ),
+                                    '12' => __( '12 — December',  'creativewings-core' ),
+                                ];
+                                foreach ( $months as $val => $label ) {
+                                    printf(
+                                        '<option value="%s"%s>%s</option>',
+                                        esc_attr( $val ),
+                                        selected( $val, $month_default, false ),
+                                        esc_html( $label )
+                                    );
+                                }
+                                ?>
+                            </select>
+                            <small class="cw-codes-hint"><?php echo esc_html( sprintf( __( 'Current year %s — the year is implicit in the code numbering.', 'creativewings-core' ), $year_default ) ); ?></small>
+                        </div>
+
+                        <div class="cw-codes-field">
+                            <label for="cw-codes-start"><?php esc_html_e( 'Start at #', 'creativewings-core' ); ?></label>
+                            <input type="number" id="cw-codes-start" name="start" value="1" min="1" max="999999" required>
+                            <small class="cw-codes-hint"><?php esc_html_e( 'First sequence number in the batch (e.g. 1).', 'creativewings-core' ); ?></small>
+                        </div>
+
+                        <div class="cw-codes-field">
+                            <label for="cw-codes-count"><?php esc_html_e( 'How many', 'creativewings-core' ); ?></label>
+                            <input type="number" id="cw-codes-count" name="count" value="50" min="1" max="1000" required>
+                            <small class="cw-codes-hint"><?php esc_html_e( 'Min 1 · max 1000 codes per generation.', 'creativewings-core' ); ?></small>
+                        </div>
+                    </div>
+
+                    <div class="cw-codes-section cw-codes-section-output">
+                        <h3><?php esc_html_e( 'What do you want to generate?', 'creativewings-core' ); ?></h3>
+                        <div class="cw-codes-radios">
+                            <label class="cw-codes-radio">
+                                <input type="radio" name="cw_kind" value="codes" checked>
+                                <span class="cw-codes-radio-body">
+                                    <i class="fas fa-list-ol" aria-hidden="true"></i>
+                                    <strong><?php esc_html_e( 'Code list', 'creativewings-core' ); ?></strong>
+                                    <small><?php esc_html_e( '# / Submission code / PIC scan URL — text only.', 'creativewings-core' ); ?></small>
+                                </span>
+                            </label>
+                            <label class="cw-codes-radio">
+                                <input type="radio" name="cw_kind" value="qr">
+                                <span class="cw-codes-radio-body">
+                                    <i class="fas fa-qrcode" aria-hidden="true"></i>
+                                    <strong><?php esc_html_e( 'QR sheet', 'creativewings-core' ); ?></strong>
+                                    <small><?php esc_html_e( 'Printable QR grid — one tile per code for posters.', 'creativewings-core' ); ?></small>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="cw-codes-section cw-codes-section-format">
+                        <h3><?php esc_html_e( 'Output format', 'creativewings-core' ); ?></h3>
+                        <div class="cw-codes-radios cw-codes-radios-compact">
+                            <label class="cw-codes-radio">
+                                <input type="radio" name="format" value="html" checked>
+                                <span class="cw-codes-radio-body">
+                                    <i class="fas fa-print" aria-hidden="true"></i>
+                                    <strong><?php esc_html_e( 'Printable (HTML)', 'creativewings-core' ); ?></strong>
+                                    <small><?php esc_html_e( 'Opens in a new tab — use Ctrl/Cmd + P to print.', 'creativewings-core' ); ?></small>
+                                </span>
+                            </label>
+                            <label class="cw-codes-radio">
+                                <input type="radio" name="format" value="csv">
+                                <span class="cw-codes-radio-body">
+                                    <i class="fas fa-file-csv" aria-hidden="true"></i>
+                                    <strong><?php esc_html_e( 'CSV', 'creativewings-core' ); ?></strong>
+                                    <small><?php esc_html_e( 'Excel-friendly spreadsheet download.', 'creativewings-core' ); ?></small>
+                                </span>
+                            </label>
+                            <label class="cw-codes-radio">
+                                <input type="radio" name="format" value="pdf">
+                                <span class="cw-codes-radio-body">
+                                    <i class="fas fa-file-pdf" aria-hidden="true"></i>
+                                    <strong><?php esc_html_e( 'PDF', 'creativewings-core' ); ?></strong>
+                                    <small><?php esc_html_e( 'Download as PDF (server-rendered).', 'creativewings-core' ); ?></small>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="cw-codes-actions">
+                        <a href="<?php echo esc_url( $details_url ); ?>" class="cw-btn-ghost">
+                            <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                            <?php esc_html_e( 'Cancel', 'creativewings-core' ); ?>
+                        </a>
+                        <button type="submit" class="cw-btn-primary">
+                            <i class="fas fa-play" aria-hidden="true"></i>
+                            <?php esc_html_e( 'Generate', 'creativewings-core' ); ?>
+                        </button>
+                    </div>
+                </form>
+
+                <script>
+                (function(){
+                    var form = document.getElementById('cw-codes-form');
+                    if (!form) return;
+
+                    // Sync the hidden `action` and `_wpnonce` fields to match
+                    // the selected kind. Re-sync on radio change AND right
+                    // before submit so the value is always fresh — without
+                    // these, admin-post.php sees no action and returns blank.
+                    function sync(){
+                        var kindEl = form.querySelector('input[name="cw_kind"]:checked');
+                        var kind   = kindEl ? kindEl.value : 'codes';
+                        var fmtEl  = form.querySelector('input[name="format"]:checked');
+                        var fmt    = fmtEl ? fmtEl.value : 'html';
+                        var actionInput = form.querySelector('input[name="action"]');
+                        var nonceInput  = form.querySelector('input[name="_wpnonce"]');
+                        if (!actionInput || !nonceInput) return;
+                        if (kind === 'qr') {
+                            actionInput.value = 'cw_bulk_qr';
+                            nonceInput.value  = form.getAttribute('data-qr-nonce') || '';
+                        } else {
+                            actionInput.value = 'cw_bulk_codes';
+                            nonceInput.value  = form.getAttribute('data-codes-nonce') || '';
+                        }
+                        // HTML view → open in new tab so the picker stays usable.
+                        // CSV / PDF are attachment downloads → keep the current tab
+                        // (browser triggers the save dialog without navigating away).
+                        form.target = (fmt === 'html') ? '_blank' : '_self';
+                    }
+                    form.querySelectorAll('input[name="cw_kind"], input[name="format"]').forEach(function(r){
+                        r.addEventListener('change', sync);
+                    });
+                    form.addEventListener('submit', sync);
+                    sync();
+                })();
+                </script>
+            <?php endif; ?>
+        </section>
+        <?php
+    }
+
+    /**
      * Render the admin "Details" view for a single campaign — used by
      * the dedicated full-page details route (?tab=campaigns&details_id=NN).
      * Compact, single-column layout that fits naturally inside the
@@ -135,28 +391,20 @@ class CW_Dashboard_Business {
         $manage_entries_url = add_query_arg( [ 'tab' => 'manage_entries', 'campaign_id' => $campaign_id ], $my_account_url );
         $edit_url           = add_query_arg( [ 'tab' => 'campaigns', 'edit_id' => $campaign_id ], $my_account_url );
 
-        $bulk_codes_url = wp_nonce_url(
-            add_query_arg( [
-                'action'      => 'cw_bulk_codes',
-                'campaign_id' => $campaign_id,
-                'school'      => '001',
-                'month'       => gmdate( 'm' ),
-                'start'       => 1,
-                'count'       => 50,
-            ], admin_url( 'admin-post.php' ) ),
-            'cw_bulk_codes'
+        // Both "Bulk codes" and "Bulk QR sheet" tiles now route through the
+        // dashboard picker so organisers pick school/month/start/count up
+        // front. The picker submits to the same admin-post.php endpoints
+        // but lets organisers also pick CSV / PDF / printable HTML.
+        $codes_panel_url = add_query_arg(
+            [
+                'tab'        => 'campaigns',
+                'details_id' => $campaign_id,
+                'cw_panel'   => 'codes',
+            ],
+            $my_account_url
         );
-        $bulk_qr_url = wp_nonce_url(
-            add_query_arg( [
-                'action'      => 'cw_bulk_qr',
-                'campaign_id' => $campaign_id,
-                'school'      => '001',
-                'month'       => gmdate( 'm' ),
-                'start'       => 1,
-                'count'       => 50,
-            ], admin_url( 'admin-post.php' ) ),
-            'cw_bulk_qr'
-        );
+        $bulk_codes_url = $codes_panel_url;
+        $bulk_qr_url    = $codes_panel_url;
 
         // Latest 5 entries for the preview strip.
         $entry_types = class_exists( 'CW_Shop' )
@@ -399,21 +647,19 @@ class CW_Dashboard_Business {
                             <small><?php esc_html_e( 'Reopen the wizard', 'creativewings-core' ); ?></small>
                         </span>
                     </a>
-                    <?php if ( current_user_can( 'manage_woocommerce' ) || current_user_can( 'edit_products' ) ): ?>
-                    <a href="<?php echo esc_url( $bulk_codes_url ); ?>" target="_blank" rel="noopener" class="cwcd-tool">
-                        <span class="cwcd-tool-ico"><i class="fas fa-list-ol"></i></span>
-                        <span class="cwcd-tool-text">
-                            <strong><?php esc_html_e( 'Bulk codes', 'creativewings-core' ); ?></strong>
-                            <small><?php esc_html_e( 'Generate code sheet', 'creativewings-core' ); ?></small>
-                        </span>
-                    </a>
-                    <a href="<?php echo esc_url( $bulk_qr_url ); ?>" target="_blank" rel="noopener" class="cwcd-tool">
-                        <span class="cwcd-tool-ico"><i class="fas fa-qrcode"></i></span>
-                        <span class="cwcd-tool-text">
-                            <strong><?php esc_html_e( 'Bulk QR sheet', 'creativewings-core' ); ?></strong>
-                            <small><?php esc_html_e( 'Printable QR codes', 'creativewings-core' ); ?></small>
-                        </span>
-                    </a>
+                    <?php
+                    $can_generate = ( class_exists( 'CW_Roles' ) && CW_Roles::user_owns_campaign( $campaign_id, get_current_user_id() ) )
+                        || current_user_can( 'manage_woocommerce' )
+                        || current_user_can( 'edit_products' );
+                    if ( $can_generate ) :
+                        ?>
+                        <a href="<?php echo esc_url( $codes_panel_url ); ?>" class="cwcd-tool">
+                            <span class="cwcd-tool-ico"><i class="fas fa-list-ol"></i></span>
+                            <span class="cwcd-tool-text">
+                                <strong><?php esc_html_e( 'Generate codes', 'creativewings-core' ); ?></strong>
+                                <small><?php esc_html_e( 'Code list or QR sheet · HTML / CSV / PDF', 'creativewings-core' ); ?></small>
+                            </span>
+                        </a>
                     <?php endif; ?>
                 </div>
             </section>
@@ -1104,6 +1350,7 @@ class CW_Dashboard_Business {
         $is_details_mode = isset($_GET['details_id']) && intval($_GET['details_id']) > 0;
         $details_id      = $is_details_mode ? intval($_GET['details_id']) : 0;
         $is_editor_mode  = $is_edit_mode || $is_create_mode;
+        $sub_panel       = $is_details_mode ? sanitize_key( $_GET['cw_panel'] ?? '' ) : '';
 
         // Note: Success messages are handled by Transients/SweetAlert2 now
         if ( isset($_GET['saved']) ) echo '<div class="cw-alert success">Campaign saved successfully!</div>';
@@ -1139,7 +1386,9 @@ class CW_Dashboard_Business {
                         <i class="fas fa-exclamation-triangle"></i>
                         <?php esc_html_e( 'Campaign not found or you do not have access.', 'creativewings-core' ); ?>
                     </div>
-                <?php else:
+                <?php elseif ( 'codes' === $sub_panel ):
+                    $this->render_codes_panel( $details_id, $base_campaigns_url );
+                else:
                     $this->render_details_modal_body( $details_id );
                 endif; ?>
             </div>
