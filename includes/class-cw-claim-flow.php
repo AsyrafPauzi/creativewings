@@ -261,22 +261,135 @@ class CW_Claim_Flow {
             __( 'Link your submission code', 'creativewings-core' ),
             __( 'Enter the code from your school (e.g. 0020500100001). Link one code per campaign — for several activities, enter each campaign’s code separately. We email you when the school uploads and you can checkout.', 'creativewings-core' )
         );
-        if ( ! empty( $_GET['linked'] ) ) {
-            echo '<div class="cw-alert success">' . esc_html__( 'Your code is saved. We will email you when your school has uploaded the artwork.', 'creativewings-core' ) . '</div>';
+
+        // Collect any feedback flags from the URL. We render an inline
+        // <noscript> fallback so users without JS still see the message, and
+        // we hand the same text to SweetAlert2 below for the modern modal.
+        $linked_flag    = ! empty( $_GET['linked'] );
+        $cancelled_flag = ! empty( $_GET['cancelled'] );
+        $error_text     = ! empty( $_GET['error'] ) ? sanitize_text_field( wp_unslash( $_GET['error'] ) ) : '';
+
+        if ( $linked_flag || $cancelled_flag || $error_text !== '' ) {
+            echo '<noscript>';
+            if ( $linked_flag ) {
+                echo '<div class="cw-alert success">' . esc_html__( 'Your code is saved. We will email you when your school has uploaded the artwork.', 'creativewings-core' ) . '</div>';
+            }
+            if ( $cancelled_flag ) {
+                echo '<div class="cw-alert success">' . esc_html__( 'Code registration removed. You can enter the correct code below.', 'creativewings-core' ) . '</div>';
+            }
+            if ( $error_text !== '' ) {
+                echo '<div class="cw-alert error">' . esc_html( $error_text ) . '</div>';
+            }
+            echo '</noscript>';
         }
-        if ( ! empty( $_GET['cancelled'] ) ) {
-            echo '<div class="cw-alert success">' . esc_html__( 'Code registration removed. You can enter the correct code below.', 'creativewings-core' ) . '</div>';
-        }
+
         if ( class_exists( 'CW_Pending_Parent_Link' ) ) {
             $pending_list = CW_Pending_Parent_Link::list_for_user( get_current_user_id() );
             if ( ! empty( $pending_list ) ) {
                 $this->render_pending_cards( $pending_list, $base, true, __( 'Your registered codes (waiting for school)', 'creativewings-core' ) );
             }
         }
-        if ( ! empty( $_GET['error'] ) ) {
-            echo '<div class="cw-alert error">' . esc_html( sanitize_text_field( wp_unslash( $_GET['error'] ) ) ) . '</div>';
-        }
+
         $this->render_enter_step_form( $base );
+
+        // Surface URL-flag feedback (error / linked / cancelled) as a proper
+        // SweetAlert2 modal/toast. We attach the popup script as an inline
+        // *companion* to the registered `sweetalert2` handle via
+        // wp_add_inline_script(). This bypasses both:
+        //   (a) wp_footer add_action timing — the my-account shortcode pipeline
+        //       can render after wp_footer has already fired.
+        //   (b) the_content shortcode HTML being stripped by security/perf
+        //       plugins — inline-script attachments are printed inside the
+        //       proper <script> tag along with SweetAlert2 itself.
+        if ( $linked_flag || $cancelled_flag || $error_text !== '' ) {
+            $success_msg = '';
+            if ( $linked_flag ) {
+                $success_msg = __( 'Your code is saved. We will email you when your school has uploaded the artwork.', 'creativewings-core' );
+            } elseif ( $cancelled_flag ) {
+                $success_msg = __( 'Code registration removed. You can enter the correct code below.', 'creativewings-core' );
+            }
+
+            $cfg_json = wp_json_encode(
+                [
+                    'err'      => $error_text,
+                    'ok'       => $success_msg,
+                    'errTitle' => __( 'We can’t link this code', 'creativewings-core' ),
+                    'okText'   => __( 'OK', 'creativewings-core' ),
+                    'ver'      => defined( 'CW_VERSION' ) ? CW_VERSION : '0',
+                ]
+            );
+
+            $inline = <<<JS
+/* CW: claim feedback modal */
+(function(){
+    var cfg = {$cfg_json};
+    if (window.console && console.log) {
+        console.log('[CW] claim feedback modal script loaded', cfg);
+    }
+    function fire(){
+        if (typeof window.Swal === 'undefined') return false;
+        if (cfg.err) {
+            Swal.fire({
+                icon: 'error',
+                title: cfg.errTitle,
+                text:  cfg.err,
+                confirmButtonText:  cfg.okText,
+                confirmButtonColor: '#125B9A'
+            });
+        } else if (cfg.ok) {
+            Swal.fire({
+                toast: true,
+                position: 'top-end',
+                icon: 'success',
+                title: cfg.ok,
+                showConfirmButton: false,
+                timer: 4500,
+                timerProgressBar: true
+            });
+        }
+        return true;
+    }
+    function start(){
+        if (fire()) return;
+        var tries = 0;
+        var iv = setInterval(function(){
+            if (fire() || ++tries > 80) clearInterval(iv);
+        }, 100);
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', start);
+    } else {
+        start();
+    }
+    if (window.history && window.history.replaceState) {
+        try {
+            var u = new URL(window.location.href);
+            u.searchParams.delete('error');
+            u.searchParams.delete('linked');
+            u.searchParams.delete('cancelled');
+            window.history.replaceState({}, document.title, u.pathname + (u.search ? u.search : '') + u.hash);
+        } catch (e) { /* old browser — leave URL as-is */ }
+    }
+})();
+JS;
+
+            // Path 1 (preferred): attach to the registered SweetAlert2 handle.
+            $attached_inline = false;
+            if ( wp_script_is( 'sweetalert2', 'registered' ) || wp_script_is( 'sweetalert2', 'enqueued' ) ) {
+                $attached_inline = wp_add_inline_script( 'sweetalert2', $inline, 'after' );
+            }
+
+            // Path 2 (belt + braces): if the handle wasn't available for any
+            // reason (different page-type detection, deferred registration,
+            // cache plugin chopping things up), drop the same payload inline
+            // so we still get the popup.
+            if ( ! $attached_inline ) {
+                echo '<script id="cw-claim-feedback-modal" data-cw-marker="claim-feedback">' . $inline . '</script>';
+            } else {
+                echo '<!-- cw-claim-feedback: inline script attached to sweetalert2 handle -->';
+            }
+        }
+
         $this->render_claim_shell_close();
     }
 
