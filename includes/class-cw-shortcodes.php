@@ -1697,6 +1697,16 @@ class CW_Shortcodes {
                     <input type="hidden" name="add-to-cart" value="<?php echo esc_attr($pid); ?>">
                     <input type="hidden" name="quantity" id="cwd-reg-qty" value="1">
 
+                    <?php
+                    // Extension point for feature modules that need to inject extra
+                    // fields above the per-participant rows. The Design Submission
+                    // module hooks this to render its PNG artwork uploader (the
+                    // campaign page renders via this shortcode and bypasses
+                    // WooCommerce's standard `woocommerce_before_add_to_cart_button`,
+                    // so we provide our own anchor here).
+                    do_action( 'cw_reg_modal_before_rows', (int) $pid );
+                    ?>
+
                     <div id="cwd-reg-rows"></div>
 
                     <?php if ( $reg_max > 1 ): ?>

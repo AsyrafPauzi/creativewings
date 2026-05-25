@@ -63,8 +63,15 @@ class CW_Design_Submission {
         // AJAX upload (artwork + optional source).
         add_action( 'wp_ajax_' . self::AJAX_ACTION, [ $this, 'handle_artwork_upload' ] );
 
+        // Campaign registration modal — the `[cw_event_detail]` shortcode bypasses
+        // the standard WooCommerce single-product template, so we render the
+        // upload UI inside its registration modal via our own hook.
+        add_action( 'cw_reg_modal_before_rows', [ $this, 'render_upload_fields_for_product' ], 5, 1 );
+
         // WooCommerce integration.
         if ( class_exists( 'WooCommerce' ) ) {
+            // Belt-and-braces: also render under the standard WC product template
+            // for any theme / site that still serves the default product page.
             add_action( 'woocommerce_before_add_to_cart_button', [ $this, 'render_upload_fields' ], 5 );
             add_filter( 'woocommerce_add_to_cart_validation', [ $this, 'validate_cart_addition' ], 20, 6 );
             add_filter( 'woocommerce_add_cart_item_data', [ $this, 'save_to_cart_item_data' ], 20, 2 );
@@ -636,6 +643,19 @@ class CW_Design_Submission {
     // CAMPAIGN PAGE — render upload UI before "Add to cart"
     // ─────────────────────────────────────────────────────────────────────
 
+    /**
+     * Modal-context entrypoint: receives the product id explicitly because the
+     * `[cw_event_detail]` shortcode invokes us outside a WC product template
+     * (no `global $product`).
+     */
+    public function render_upload_fields_for_product( $product_id ) {
+        $product_id = (int) $product_id;
+        if ( ! $product_id || ! self::is_enabled( $product_id ) ) {
+            return;
+        }
+        $this->print_upload_html( $product_id );
+    }
+
     public function render_upload_fields() {
         global $product;
         if ( ! $product ) {
@@ -645,7 +665,10 @@ class CW_Design_Submission {
         if ( ! self::is_enabled( $product_id ) ) {
             return;
         }
+        $this->print_upload_html( (int) $product_id );
+    }
 
+    private function print_upload_html( $product_id ) {
         $cfg = self::get_config( $product_id );
         $art_session    = self::session_key( $product_id, 'artwork' );
         $source_session = self::session_key( $product_id, 'source' );
