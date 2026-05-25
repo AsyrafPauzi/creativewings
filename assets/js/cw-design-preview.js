@@ -237,8 +237,13 @@
 
     function loadImage(url) {
         return new Promise(function (resolve, reject) {
+            // No `img.crossOrigin = 'anonymous'` here on purpose. WordPress doesn't
+            // emit CORS headers on /wp-content/uploads, so requesting in CORS mode
+            // makes browsers (Safari especially) refuse the load even for same-
+            // origin variant images. We only `drawImage` onto the canvas — we
+            // never `getImageData()` or `toDataURL()` it — so a tainted canvas
+            // is fine and not requesting CORS at all is the right call.
             var img = new Image();
-            img.crossOrigin = 'anonymous';
             img.onload = function () { resolve(img); };
             img.onerror = function () { reject(new Error('load:' + url)); };
             img.src = url;

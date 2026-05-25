@@ -971,8 +971,24 @@ class CW_Design_Submission {
                     <?php endforeach; ?>
                 </div>
 
-                <div class="cw-design-picker__preview-wrap" style="aspect-ratio:<?php echo (int) $cfg['width']; ?> / <?php echo (int) $cfg['height']; ?>;">
-                    <canvas class="cw-design-picker__canvas" width="<?php echo (int) $cfg['width']; ?>" height="<?php echo (int) $cfg['height']; ?>"></canvas>
+                <?php
+                // Compute the display size server-side so the canvas always renders at
+                // a phone-sized portrait regardless of aspect ratio. The drawing buffer
+                // (the `width`/`height` attributes) stays at the full artwork dimensions
+                // so the composited image is still crisp; only the CSS pixels shrink.
+                $buf_w = max( 1, (int) $cfg['width'] );
+                $buf_h = max( 1, (int) $cfg['height'] );
+                $max_w = 220; // portrait-friendly cap
+                $max_h = 420; // landscape-friendly cap
+                $scale = min( $max_w / $buf_w, $max_h / $buf_h, 1 );
+                $disp_w = (int) round( $buf_w * $scale );
+                $disp_h = (int) round( $buf_h * $scale );
+                ?>
+                <div class="cw-design-picker__preview-wrap">
+                    <canvas class="cw-design-picker__canvas"
+                            width="<?php echo $buf_w; ?>"
+                            height="<?php echo $buf_h; ?>"
+                            style="width:<?php echo $disp_w; ?>px;height:<?php echo $disp_h; ?>px;"></canvas>
                     <div class="cw-design-picker__loading"><?php esc_html_e( 'Loading preview…', 'creativewings-core' ); ?></div>
                 </div>
 

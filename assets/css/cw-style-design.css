@@ -151,6 +151,12 @@
     word-wrap: break-word;
 }
 
+/*
+ * Preview wrap is a centred, padded stage. The canvas inside is pinned to an
+ * explicit display size via inline `style="width:Npx;height:Npx;"` set in
+ * PHP — relying on CSS aspect-ratio + max-width/max-height alone was flaky
+ * across browsers (some kept the canvas at its 600×2400 intrinsic size).
+ */
 .cw-design-picker__preview-wrap {
     position: relative;
     width: 100%;
@@ -159,12 +165,18 @@
     border-radius: 10px;
     overflow: hidden;
     border: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    box-sizing: border-box;
+    min-height: 220px;
 }
 
 .cw-design-picker__canvas {
     display: block;
-    width: 100%;
-    height: auto;
+    margin: 0 auto;
+    max-width: 100%;
 }
 
 .cw-design-picker__loading {
