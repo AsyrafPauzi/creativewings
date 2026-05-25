@@ -256,6 +256,39 @@ class CW_Business_Form {
                                     </div>
                                 </div>
 
+                                <?php
+                                // ─────── KPI / Target progress bar ───────
+                                // Three meta keys drive the public-facing progress widget on the campaign
+                                // page (rendered by class-cw-shortcodes.php). Surfacing them here in the
+                                // wizard lets organizers set a measurable goal (e.g. "500 submissions")
+                                // at campaign-creation time instead of having to dig into the WP admin
+                                // metabox. The participant count is computed live from completed orders;
+                                // organizers only own the target + label + visibility toggle.
+                                $kpi_show_val   = $val('cw_kpi_show_progress');
+                                $kpi_target_val = $val('cw_kpi_target');
+                                $kpi_label_val  = $val('cw_kpi_label');
+                                ?>
+                                <p class="cw-mini-head">Campaign KPI <small style="font-weight:400;color:var(--cw-text-soft);">(optional · public progress bar)</small></p>
+                                <div class="cw-toggle-box">
+                                    <div>
+                                        <label for="cw_kpi_show_progress"><strong>Show KPI progress on campaign page</strong></label>
+                                        <small>Displays "X of Y &lt;label&gt; · NN%" with a live progress bar. Count updates automatically as participants register.</small>
+                                    </div>
+                                    <input type="checkbox" name="cw_kpi_show_progress" value="yes" id="cw_kpi_show_progress" <?php checked( $kpi_show_val, 'yes' ); ?>>
+                                </div>
+                                <div class="cw-form-row-2" style="padding-top:10px;">
+                                    <div class="cw-field">
+                                        <label>KPI Target</label>
+                                        <input type="number" name="cw_kpi_target" min="0" step="1" class="cw-input-dark"
+                                               value="<?php echo esc_attr( $kpi_target_val ); ?>" placeholder="e.g. 500">
+                                    </div>
+                                    <div class="cw-field">
+                                        <label>KPI Label</label>
+                                        <input type="text" name="cw_kpi_label" class="cw-input-dark"
+                                               value="<?php echo esc_attr( $kpi_label_val ); ?>" placeholder="e.g. submissions, participated">
+                                    </div>
+                                </div>
+
                                 <div class="cw-field full">
                                     <label>Banner Image</label>
                                     <div class="cw-upload-box" onclick="document.getElementById('cwBannerFile').click()">
@@ -349,6 +382,98 @@ class CW_Business_Form {
                                         <div id="cw-multi-limits" class="cw-form-row-2" style="display:none;padding-top:10px;">
                                             <div class="cw-field"><label>Min Entries</label><input type="number" name="cw_multi_min" value="<?php echo $val('cw_multi_min')?:1; ?>" class="cw-input-dark" placeholder="1"></div>
                                             <div class="cw-field"><label>Max Entries</label><input type="number" name="cw_multi_max" value="<?php echo $val('cw_multi_max')?:10; ?>" class="cw-input-dark" placeholder="10"></div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Design submission block — only shown when the chosen sub-category slug includes 'design'. -->
+                                    <?php
+                                    $design_enable_val   = $val('cw_enable_design');
+                                    $design_label_val    = $val('cw_design_picker_label');
+                                    $design_w_val        = $val('cw_design_artwork_w');
+                                    $design_h_val        = $val('cw_design_artwork_h');
+                                    $design_default_val  = $val('cw_design_default_variant');
+                                    $design_variants_raw = get_post_meta($edit_id, 'cw_design_variants', true);
+                                    $design_variants     = is_array($design_variants_raw) ? array_values($design_variants_raw) : [];
+                                    if ($design_enable_val === '' && ! empty($design_variants)) {
+                                        $design_enable_val = 'yes';
+                                    }
+                                    ?>
+                                    <div id="set-design" style="display:none;" class="cw-config-card">
+                                        <div class="cw-toggle-box">
+                                            <div>
+                                                <label for="cw_design_enable_check"><strong>Enable Design Submission</strong></label>
+                                                <small>Participants upload a PNG artwork that gets previewed on a product variant they pick at checkout.</small>
+                                            </div>
+                                            <input type="checkbox" name="cw_enable_design" value="yes" id="cw_design_enable_check" onchange="toggleWizardSection('cw-design-config-body', this)" <?php checked($design_enable_val, 'yes'); ?>>
+                                        </div>
+
+                                        <div id="cw-design-config-body" style="display:<?php echo $design_enable_val === 'yes' ? 'block' : 'none'; ?>;padding-top:10px;">
+                                            <div class="cw-field">
+                                                <label>Variant picker label (shown on checkout) *</label>
+                                                <input type="text" name="cw_design_picker_label" class="cw-input-dark"
+                                                       value="<?php echo esc_attr($design_label_val ?: ''); ?>"
+                                                       placeholder="Choose your color">
+                                            </div>
+
+                                            <div class="cw-form-row-2">
+                                                <div class="cw-field">
+                                                    <label>Artwork width (px) *</label>
+                                                    <input type="number" min="1" step="1" name="cw_design_artwork_w" class="cw-input-dark"
+                                                           value="<?php echo esc_attr($design_w_val ?: ''); ?>" placeholder="2400">
+                                                </div>
+                                                <div class="cw-field">
+                                                    <label>Artwork height (px) *</label>
+                                                    <input type="number" min="1" step="1" name="cw_design_artwork_h" class="cw-input-dark"
+                                                           value="<?php echo esc_attr($design_h_val ?: ''); ?>" placeholder="600">
+                                                </div>
+                                            </div>
+                                            <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 8px;">
+                                                Every participant uploads at this exact size. Each variant image you add below must also be the same dimensions so the artwork lines up pixel-perfect.
+                                            </p>
+
+                                            <p class="cw-mini-head">Product variants</p>
+                                            <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 8px;">
+                                                Add as many as you like (most campaigns use 3-6). Pick which one is the default pre-selected on checkout.
+                                            </p>
+
+                                            <div id="cw-design-variants-list">
+                                                <?php
+                                                if (empty($design_variants)) {
+                                                    $design_variants = [ [ 'slug' => '', 'name' => '', 'attachment_id' => 0 ] ];
+                                                }
+                                                foreach ($design_variants as $idx => $v) :
+                                                    $vname = sanitize_text_field($v['name'] ?? '');
+                                                    $vslug = sanitize_title($v['slug'] ?? sanitize_title($vname));
+                                                    $vaid  = (int) ($v['attachment_id'] ?? 0);
+                                                    $vurl  = $vaid ? wp_get_attachment_url($vaid) : '';
+                                                    $is_default = ($vslug !== '' && $vslug === $design_default_val);
+                                                ?>
+                                                <div class="cww-rep-row cw-design-variant-row" data-idx="<?php echo (int) $idx; ?>" style="grid-template-columns: 80px 1fr 1fr auto auto;align-items:center;">
+                                                    <div class="cw-design-variant-thumb" style="width:70px;height:46px;background:<?php echo $vurl ? '#fff' : '#f1f5f9'; ?>;border:1px <?php echo $vurl ? 'solid' : 'dashed'; ?> #cbd5e1;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:10px;text-align:center;overflow:hidden;">
+                                                        <?php if ($vurl) : ?>
+                                                            <img src="<?php echo esc_url($vurl); ?>" style="max-width:100%;max-height:100%;object-fit:contain;">
+                                                        <?php else : ?>
+                                                            No image
+                                                        <?php endif; ?>
+                                                    </div>
+                                                    <input type="text" name="cw_design_variants[<?php echo (int) $idx; ?>][name]" value="<?php echo esc_attr($vname); ?>" placeholder="Variant name (e.g. Midnight Blue)" class="cw-design-variant-name">
+                                                    <div>
+                                                        <input type="file" accept="image/png,image/jpeg,image/webp" class="cw-file-upload-input cw-design-variant-file" data-session-key="cw_design_wizard_variant_<?php echo (int) $idx; ?>" style="width:100%;font-size:12px;">
+                                                        <input type="hidden" name="cw_design_variants[<?php echo (int) $idx; ?>][attachment_id]" value="<?php echo esc_attr($vaid); ?>" class="cw-design-variant-aid">
+                                                        <input type="hidden" name="cw_design_variants[<?php echo (int) $idx; ?>][slug]" value="<?php echo esc_attr($vslug); ?>" class="cw-design-variant-slug">
+                                                    </div>
+                                                    <label style="text-align:center;font-size:11px;color:var(--cw-text-soft);">
+                                                        <input type="radio" name="cw_design_default_variant" value="<?php echo esc_attr($vslug); ?>" class="cw-design-variant-default-radio" <?php checked($is_default, true); ?>>
+                                                        <br>Default
+                                                    </label>
+                                                    <button type="button" class="cww-rep-del cw-design-variant-remove" onclick="this.closest('.cw-design-variant-row').remove()"><i class="fas fa-times"></i></button>
+                                                </div>
+                                                <?php endforeach; ?>
+                                            </div>
+
+                                            <button type="button" class="cww-rep-add" onclick="window.addDesignVariantRow()">
+                                                <i class="fas fa-plus"></i> Add variant
+                                            </button>
                                         </div>
                                     </div>
 
@@ -812,11 +937,16 @@ class CW_Business_Form {
                 const isTalk     = (type === 'talk-seminar' || type === 'talks');
                 const isActivity = (type === 'activities' || isTalk);
 
-                document.querySelectorAll('#cw-conditional-section,#set-competition,#set-activity,#set-talk').forEach(e => e.style.display = 'none');
+                document.querySelectorAll('#cw-conditional-section,#set-competition,#set-activity,#set-talk,#set-design').forEach(e => e.style.display = 'none');
 
                 if (type === 'competitions' || slug.includes('art') || slug.includes('design')) {
                     document.getElementById('cw-conditional-section').style.display = 'block';
                     document.getElementById('set-competition').style.display = 'block';
+                    // Reveal the Design block only when the sub-category itself is design-flavoured.
+                    if (slug.includes('design')) {
+                        var setDesign = document.getElementById('set-design');
+                        if (setDesign) setDesign.style.display = 'block';
+                    }
                 } else if (isActivity) {
                     document.getElementById('cw-conditional-section').style.display = 'block';
                     document.getElementById('set-activity').style.display = 'block';
@@ -944,6 +1074,79 @@ class CW_Business_Form {
                     keep.value = list.join(',');
                 }
             };
+
+            // ── Design Submission variants ──
+            window.addDesignVariantRow = function() {
+                var list = document.getElementById('cw-design-variants-list');
+                if (!list) return;
+                var idx = Date.now();
+                var html =
+                  '<div class="cww-rep-row cw-design-variant-row" data-idx="' + idx + '" style="grid-template-columns: 80px 1fr 1fr auto auto;align-items:center;">' +
+                    '<div class="cw-design-variant-thumb" style="width:70px;height:46px;background:#f1f5f9;border:1px dashed #cbd5e1;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:10px;text-align:center;overflow:hidden;">No image</div>' +
+                    '<input type="text" name="cw_design_variants[' + idx + '][name]" placeholder="Variant name (e.g. Midnight Blue)" class="cw-design-variant-name">' +
+                    '<div>' +
+                      '<input type="file" accept="image/png,image/jpeg,image/webp" class="cw-file-upload-input cw-design-variant-file" data-session-key="cw_design_wizard_variant_' + idx + '" style="width:100%;font-size:12px;">' +
+                      '<input type="hidden" name="cw_design_variants[' + idx + '][attachment_id]" value="" class="cw-design-variant-aid">' +
+                      '<input type="hidden" name="cw_design_variants[' + idx + '][slug]" value="" class="cw-design-variant-slug">' +
+                    '</div>' +
+                    '<label style="text-align:center;font-size:11px;color:var(--cw-text-soft);">' +
+                      '<input type="radio" name="cw_design_default_variant" value="" class="cw-design-variant-default-radio">' +
+                      '<br>Default' +
+                    '</label>' +
+                    '<button type="button" class="cww-rep-del cw-design-variant-remove" onclick="this.closest(\'.cw-design-variant-row\').remove()"><i class="fas fa-times"></i></button>' +
+                  '</div>';
+                list.insertAdjacentHTML('beforeend', html);
+            };
+
+            // Auto-slug from name + sync the "Default" radio's value so the
+            // posted value matches the (auto-generated) slug.
+            document.addEventListener('input', function(e) {
+                if (!e.target.classList || !e.target.classList.contains('cw-design-variant-name')) return;
+                var row = e.target.closest('.cw-design-variant-row');
+                if (!row) return;
+                var slug = e.target.value.toString().toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/^-+|-+$/g, '');
+                var slugInput = row.querySelector('.cw-design-variant-slug');
+                var radio     = row.querySelector('.cw-design-variant-default-radio');
+                if (slugInput) slugInput.value = slug;
+                if (radio) radio.value = slug;
+            });
+
+            // Variant file upload (re-uses the cw_file_upload AJAX endpoint
+            // that's already on the AJAX surface — same pattern as the
+            // banner / participant-field uploads).
+            jQuery(document).on('change', '.cw-design-variant-file', function(e) {
+                var fileInput = jQuery(this);
+                var file = fileInput[0].files[0];
+                if (!file) return;
+                var sessionKey = fileInput.data('session-key') || ('cw_design_wizard_variant_' + Date.now());
+                var fd = new FormData();
+                fd.append('action', 'cw_file_upload');
+                fd.append('security', cw_vars.nonce);
+                fd.append('file_data', file);
+                fd.append('session_key', sessionKey);
+                var row = fileInput.closest('.cw-design-variant-row');
+                var aidInput = row.find('.cw-design-variant-aid');
+                var thumb    = row.find('.cw-design-variant-thumb');
+                thumb.html('<i class="fas fa-spinner fa-spin" style="color:#94a3b8;"></i>');
+
+                jQuery.ajax({
+                    url: cw_vars.ajax_url, type: 'POST', data: fd, processData: false, contentType: false,
+                    success: function(res) {
+                        if (res && res.success && res.data && res.data.attach_id) {
+                            aidInput.val(res.data.attach_id);
+                            thumb.css({ background: '#fff', border: '1px solid #cbd5e1' })
+                                 .html('<img src="' + res.data.url + '" style="max-width:100%;max-height:100%;object-fit:contain;">');
+                        } else {
+                            thumb.html('<span style="color:#b91c1c;font-size:10px;">Failed</span>');
+                        }
+                    },
+                    error: function() {
+                        thumb.html('<span style="color:#b91c1c;font-size:10px;">Failed</span>');
+                    }
+                });
+            });
 
             // ── Repeaters ──
             window.addPrizeRow = function() {

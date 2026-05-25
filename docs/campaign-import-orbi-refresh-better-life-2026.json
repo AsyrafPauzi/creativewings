@@ -1,0 +1,206 @@
+{
+  "version": "1.0",
+  "_comment": "PROJECT 003 — Refresh a Better Life (ORBI x Yibon, 2026). Children, family & professional drawing campaign. Uses the new Design Submission feature: participants upload a PNG artwork that gets composited onto an ORBI personalised toothbrush casing they pick at checkout. After import, open the draft in WooCommerce → Products and upload the casing-color variant images in the Design Submission metabox (variants need WP attachment IDs which the JSON importer can't side-load). Import via WooCommerce → Import CW Campaign.",
+  "campaign": {
+    "post_title": "Refresh a Better Life — 《刷新美好生活》 (2026)",
+    "post_content": "<p><strong>Refresh a Better Life — 《刷新美好生活》</strong> is ORBI's nationwide children, family & professional drawing campaign for 2026, jointly executed with Creative Wings (Yibon Mag Enterprise). Theme: <em>从一刷开始 · 从小习惯，改变世界</em> — Start with one brush, small habits change the world.</p><h3>How it works</h3><ol><li>Pick your category — Primary (7–12), Secondary A (13–15), Secondary B (16–18), or Open (18+).</li><li>Upload your artwork PNG at the required dimensions.</li><li>At checkout, pick your favourite ORBI toothbrush casing colour — you'll see a live preview of your design printed on the casing.</li><li>Pay the RM 15 entry fee and submit. You'll receive an e-Certificate once registration is complete.</li><li>Every participant receives an <strong>ORBI Personalised Toothbrush Set</strong> with their own artwork printed on the product (provided by ORBI).</li></ol><h3>Categories & Prizes</h3><p>RM 3,500 total prize pool across 12 winners (3 per category). Cash prizes & toothbrush sets fully sponsored by ORBI; Yibon issues every participant's e-Certificate.</p><ul><li><strong>Primary / Secondary A / Secondary B</strong> — Champion RM 400 · 1st Runner-Up RM 200 · 2nd Runner-Up RM 100</li><li><strong>Open Category (Professional)</strong> — Champion RM 800 · 1st Runner-Up RM 400 · 2nd Runner-Up RM 200</li></ul><h3>Judging criteria (out of 100)</h3><ol><li>Creativity & Originality</li><li>Relevance to Theme — 《刷新美好生活》</li><li>Technical Execution</li><li>Emotional Impact</li></ol><p>Submission target: <strong>500 artworks</strong> · Prize Presentation at the physical exhibition (date TBC, joint announcement with ORBI). Top artworks will be displayed at the curated exhibition (50–80 pieces). All other participants still receive their printed toothbrush set and digital certificate.</p><p><strong>Organiser:</strong> ORBI (One Morning Sdn Bhd) · <strong>Campaign Manager:</strong> Yibon Mag Enterprise — Creative Wings · creativewings.asia</p>",
+    "product_cat_slug": "competitions-design",
+    "main_category": "competitions",
+    "regular_price": "15",
+    "cw_school_coupons_optional": false,
+    "cw_campaign_serial": "003",
+    "cw_total_prize_value": "RM 3,500.00 — cash + ORBI personalised toothbrush set for every participant",
+    "cw_event_mode": "physical",
+    "cw_location_details": "Online submissions nationwide (Malaysia) · Physical exhibition + prize presentation venue TBC with ORBI",
+    "cw_submission_start": "2026-06-01",
+    "submission_deadline": "2026-08-31",
+    "cw_review_start": "2026-09-01",
+    "cw_final_event_date": "2026-10-15",
+    "cw_allow_multiple_participants": false,
+    "cw_use_account_fullname": true,
+    "cw_min_participants": 1,
+    "cw_max_participants": 1,
+    "cw_enable_certificate": "yes",
+    "cw_enable_voting": "no",
+    "multiple_submissions": "true",
+    "cw_multi_min": 1,
+    "cw_multi_max": 5,
+    "cw_enable_checkout_message": "no",
+    "cw_checkout_message_label": "",
+    "cw_checkout_message_required": false,
+    "cw_kpi_show_progress": "yes",
+    "cw_kpi_target": 500,
+    "cw_kpi_label": "submissions",
+    "cw_enable_addons": false,
+    "cw_enable_age_brackets": true,
+    "cw_enable_school_sponsors": false,
+    "cw_judging_criteria": "<p>Each artwork is scored out of 100 across four criteria by a panel of at least three judges. Aggregated average score determines ranking within each category.</p><ol><li><strong>Creativity & Originality</strong> — how fresh and inventive the idea is.</li><li><strong>Relevance to Theme</strong> — how well the artwork expresses <em>《刷新美好生活》— Refresh a Better Life</em> and the message of small daily habits.</li><li><strong>Technical Execution</strong> — composition, line work, colour, finish.</li><li><strong>Emotional Impact</strong> — does it move the viewer / leave an impression.</li></ol><p>Top 3 per category become winners; the next ~50–80 high-scorers are curated for the physical exhibition.</p>",
+    "sdg_goals": [3, 4, 12],
+    "faq": [
+      {
+        "question": "Who can join Refresh a Better Life?",
+        "answer": "Anyone aged 7 and above, in one of four categories: Primary (7–12), Secondary A (13–15), Secondary B (16–18), or Open / Professional (18+). Participants 17 and under should have a guardian complete the registration."
+      },
+      {
+        "question": "How much is the entry fee?",
+        "answer": "RM 15.00 per submission across all four categories. The fee covers your printed ORBI toothbrush set, digital e-Certificate, and the chance to win cash prizes."
+      },
+      {
+        "question": "What dimensions must my artwork be?",
+        "answer": "Your artwork must be a PNG file at exactly the dimensions shown on the upload form (the form will reject other sizes automatically). The fixed size makes sure your design lines up pixel-perfect on the toothbrush casing in the live preview at checkout."
+      },
+      {
+        "question": "What if I have a vector source file (.ai / .pdf / .svg)?",
+        "answer": "You can optionally upload it alongside your PNG. The printer will use it for the highest-quality reproduction. The PNG is what's used for the live mockup preview and is sufficient on its own — the source file is a bonus."
+      },
+      {
+        "question": "How do I pick my toothbrush casing colour?",
+        "answer": "On the checkout page you'll see swatches for every available ORBI casing colour with a live mockup canvas. Click any swatch and the preview re-paints with your design composited onto that casing. Your final choice is recorded with your order."
+      },
+      {
+        "question": "What do winners receive?",
+        "answer": "Cash prizes (RM 100 to RM 800 depending on category and rank) plus the same ORBI personalised toothbrush set every participant gets. All cash prizes are fully sponsored by ORBI."
+      },
+      {
+        "question": "When and where is the exhibition?",
+        "answer": "A physical exhibition + prize presentation ceremony is planned after judging concludes. Exact date and venue will be announced jointly with ORBI once confirmed. ~50–80 shortlisted artworks will be on display."
+      },
+      {
+        "question": "Can I submit more than one artwork?",
+        "answer": "Yes — you may submit up to 5 artworks in total across the campaign. Each submission is a separate RM 15 entry. Each must be a complete, original work."
+      }
+    ],
+    "prizes": [
+      {
+        "prize_title": "Primary Champion (Age 7–12)",
+        "prize_description": "RM 400 cash + ORBI Personalised Toothbrush Set + e-Certificate + exhibition feature"
+      },
+      {
+        "prize_title": "Primary 1st Runner-Up (Age 7–12)",
+        "prize_description": "RM 200 cash + ORBI Personalised Toothbrush Set + e-Certificate"
+      },
+      {
+        "prize_title": "Primary 2nd Runner-Up (Age 7–12)",
+        "prize_description": "RM 100 cash + ORBI Personalised Toothbrush Set + e-Certificate"
+      },
+      {
+        "prize_title": "Secondary A Champion (Age 13–15)",
+        "prize_description": "RM 400 cash + ORBI Personalised Toothbrush Set + e-Certificate + exhibition feature"
+      },
+      {
+        "prize_title": "Secondary A 1st Runner-Up (Age 13–15)",
+        "prize_description": "RM 200 cash + ORBI Personalised Toothbrush Set + e-Certificate"
+      },
+      {
+        "prize_title": "Secondary A 2nd Runner-Up (Age 13–15)",
+        "prize_description": "RM 100 cash + ORBI Personalised Toothbrush Set + e-Certificate"
+      },
+      {
+        "prize_title": "Secondary B Champion (Age 16–18)",
+        "prize_description": "RM 400 cash + ORBI Personalised Toothbrush Set + e-Certificate + exhibition feature"
+      },
+      {
+        "prize_title": "Secondary B 1st Runner-Up (Age 16–18)",
+        "prize_description": "RM 200 cash + ORBI Personalised Toothbrush Set + e-Certificate"
+      },
+      {
+        "prize_title": "Secondary B 2nd Runner-Up (Age 16–18)",
+        "prize_description": "RM 100 cash + ORBI Personalised Toothbrush Set + e-Certificate"
+      },
+      {
+        "prize_title": "Open Category Champion (Age 18+)",
+        "prize_description": "RM 800 cash + ORBI Personalised Toothbrush Set + e-Certificate + exhibition feature"
+      },
+      {
+        "prize_title": "Open Category 1st Runner-Up (Age 18+)",
+        "prize_description": "RM 400 cash + ORBI Personalised Toothbrush Set + e-Certificate"
+      },
+      {
+        "prize_title": "Open Category 2nd Runner-Up (Age 18+)",
+        "prize_description": "RM 200 cash + ORBI Personalised Toothbrush Set + e-Certificate"
+      },
+      {
+        "prize_title": "Every Participant",
+        "prize_description": "ORBI Personalised Toothbrush Set with your own artwork printed on the casing (provided by ORBI) + digital e-Certificate (issued by Yibon)"
+      }
+    ],
+    "addons": [],
+    "custom_fields": [
+      {
+        "label": "Guardian Full Name (if participant is under 18)",
+        "type": "text",
+        "opts": "",
+        "required": 0
+      },
+      {
+        "label": "Guardian Contact (if participant is under 18)",
+        "type": "phone",
+        "opts": "",
+        "required": 0
+      },
+      {
+        "label": "School / Occupation",
+        "type": "text",
+        "opts": "",
+        "required": 1
+      },
+      {
+        "label": "Inspiration behind your artwork (one or two sentences)",
+        "type": "textarea",
+        "opts": "",
+        "required": 0
+      }
+    ],
+    "age_brackets": [
+      {
+        "label": "Primary (Age 7–12)",
+        "min_age": 7,
+        "max_age": 12,
+        "product_cat_slug": "competitions-design",
+        "key": "orbi-primary"
+      },
+      {
+        "label": "Secondary A (Age 13–15)",
+        "min_age": 13,
+        "max_age": 15,
+        "product_cat_slug": "competitions-design",
+        "key": "orbi-secondary-a"
+      },
+      {
+        "label": "Secondary B (Age 16–18)",
+        "min_age": 16,
+        "max_age": 18,
+        "product_cat_slug": "competitions-design",
+        "key": "orbi-secondary-b"
+      },
+      {
+        "label": "Open / Professional (Age 18+)",
+        "min_age": 18,
+        "max_age": 99,
+        "product_cat_slug": "competitions-design",
+        "key": "orbi-open"
+      }
+    ],
+    "schools": [],
+    "cw_enable_design": "yes",
+    "cw_design_picker_label": "Choose your toothbrush casing colour",
+    "cw_design_artwork_w": 600,
+    "cw_design_artwork_h": 2400,
+    "cw_design_variants": [],
+    "cw_design_default_variant": "",
+    "_design_variants_post_import_setup": {
+      "_comment": "After importing this JSON, open the campaign product in WooCommerce → Products → edit, scroll to the 'Design Submission' metabox, and upload the casing-color images at exactly 600 × 2400 px each. Suggested starter set (from the ORBI playbook artwork samples — confirm exact SKU list with ORBI before publishing):",
+      "suggested_variants": [
+        { "name": "Pepper White",    "slug": "pepper-white" },
+        { "name": "Charcoal Black",  "slug": "charcoal-black" },
+        { "name": "Mint Green",      "slug": "mint-green" },
+        { "name": "Coral Pink",      "slug": "coral-pink" },
+        { "name": "Ocean Blue",      "slug": "ocean-blue" },
+        { "name": "Sunny Yellow",    "slug": "sunny-yellow" }
+      ],
+      "default_recommendation": "pepper-white"
+    },
+    "banner_image_url": "",
+    "cert_template_url": ""
+  }
+}

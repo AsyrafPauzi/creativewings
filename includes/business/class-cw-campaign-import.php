@@ -38,6 +38,8 @@ class CW_Campaign_Import {
             <p>
                 <a href="<?php echo esc_url( CW_URL . 'docs/campaign-import-one-smile-one-world-2026.json' ); ?>" download><strong><?php esc_html_e( 'Download One Smile, One World 2026 (production)', 'creativewings-core' ); ?></strong></a>
                 &nbsp;|&nbsp;
+                <a href="<?php echo esc_url( CW_URL . 'docs/campaign-import-orbi-refresh-better-life-2026.json' ); ?>" download><strong><?php esc_html_e( 'Download ORBI Refresh a Better Life 2026 (Design)', 'creativewings-core' ); ?></strong></a>
+                &nbsp;|&nbsp;
                 <a href="<?php echo esc_url( CW_URL . 'docs/campaign-import-test-dummy.json' ); ?>" download><?php esc_html_e( 'Download TEST dummy', 'creativewings-core' ); ?></a>
                 &nbsp;|&nbsp;
                 <a href="<?php echo esc_url( CW_URL . 'docs/campaign-import-schema-v1.json' ); ?>" download><?php esc_html_e( 'Schema sample', 'creativewings-core' ); ?></a>

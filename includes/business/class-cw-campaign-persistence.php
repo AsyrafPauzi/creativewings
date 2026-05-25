@@ -114,6 +114,7 @@ class CW_Campaign_Persistence {
             'cw_campaign_serial', 'cw_checkout_message_label',
             'cw_enable_addons', 'cw_enable_age_brackets', 'cw_enable_school_sponsors',
             'cw_allow_multiple_participants', 'cw_use_account_fullname',
+            'cw_design_picker_label', 'cw_design_artwork_w', 'cw_design_artwork_h',
         ];
         foreach ( $scalar_keys as $k ) {
             if ( array_key_exists( $k, $data ) ) {
@@ -215,6 +216,78 @@ class CW_Campaign_Persistence {
             delete_post_meta( $product_id, 'cw_enable_moderation' );
         }
 
+        // ── KPI / Target progress bar ──
+        // Mirror the WP admin metabox's "set when non-empty, delete otherwise"
+        // semantics so the meta table looks identical regardless of which save
+        // path (metabox, wizard POST, JSON import) wrote the row. The public
+        // renderer in class-cw-shortcodes.php only paints the bar when
+        // cw_kpi_show_progress === 'yes' AND cw_kpi_target > 0.
+        if (
+            array_key_exists( 'cw_kpi_show_progress', $data )
+            || array_key_exists( 'cw_kpi_target', $data )
+            || array_key_exists( 'cw_kpi_label', $data )
+            || ! empty( $data['_save_feature_blocks'] )
+        ) {
+            if ( self::is_yes( $data['cw_kpi_show_progress'] ?? 'no' ) ) {
+                update_post_meta( $product_id, 'cw_kpi_show_progress', 'yes' );
+            } else {
+                delete_post_meta( $product_id, 'cw_kpi_show_progress' );
+            }
+
+            if ( array_key_exists( 'cw_kpi_target', $data ) ) {
+                $kpi_target = max( 0, (int) $data['cw_kpi_target'] );
+                if ( $kpi_target > 0 ) {
+                    update_post_meta( $product_id, 'cw_kpi_target', $kpi_target );
+                } else {
+                    delete_post_meta( $product_id, 'cw_kpi_target' );
+                }
+            }
+
+            if ( array_key_exists( 'cw_kpi_label', $data ) ) {
+                $kpi_label = sanitize_text_field( (string) $data['cw_kpi_label'] );
+                if ( $kpi_label !== '' ) {
+                    update_post_meta( $product_id, 'cw_kpi_label', $kpi_label );
+                } else {
+                    delete_post_meta( $product_id, 'cw_kpi_label' );
+                }
+            }
+        }
+
+        // ── Design Submission ──
+        // Toggle + variants repeater + chosen-default. Sanitisation lives on
+        // CW_Design_Submission so the admin metabox and wizard share the same
+        // canonical shape (unique slugs, empty rows dropped, etc.).
+        if ( array_key_exists( 'cw_enable_design', $data ) || array_key_exists( 'cw_design_variants', $data ) || ! empty( $data['_save_feature_blocks'] ) ) {
+            $design_on = self::is_yes( $data['cw_enable_design'] ?? 'no' );
+            update_post_meta( $product_id, 'cw_enable_design', $design_on ? 'yes' : 'no' );
+
+            if ( $design_on && class_exists( 'CW_Design_Submission' ) ) {
+                $raw_variants = isset( $data['cw_design_variants'] ) && is_array( $data['cw_design_variants'] )
+                    ? $data['cw_design_variants']
+                    : [];
+                $variants = CW_Design_Submission::sanitize_variants( $raw_variants );
+                update_post_meta( $product_id, 'cw_design_variants', $variants );
+
+                $default = isset( $data['cw_design_default_variant'] )
+                    ? sanitize_title( (string) $data['cw_design_default_variant'] )
+                    : '';
+                $valid_default = '';
+                foreach ( $variants as $v ) {
+                    if ( ( $v['slug'] ?? '' ) === $default ) {
+                        $valid_default = $default;
+                        break;
+                    }
+                }
+                if ( $valid_default === '' && ! empty( $variants ) ) {
+                    $valid_default = (string) $variants[0]['slug'];
+                }
+                update_post_meta( $product_id, 'cw_design_default_variant', $valid_default );
+            } else {
+                update_post_meta( $product_id, 'cw_design_variants', [] );
+                update_post_meta( $product_id, 'cw_design_default_variant', '' );
+            }
+        }
+
         if ( class_exists( 'CW_Campaign_Resolver' ) ) {
             CW_Campaign_Resolver::flush_serial_cache( $product_id );
         }
@@ -261,8 +334,20 @@ class CW_Campaign_Persistence {
             'cw_allow_multiple_participants' => isset( $_POST['cw_allow_multiple_participants'] ) ? 'yes' : 'no',
             'cw_use_account_fullname'       => isset( $_POST['cw_use_account_fullname'] ) ? 'yes' : 'no',
             'cw_show_submissions_gallery'   => isset( $_POST['cw_show_submissions_gallery'] ) ? 'yes' : 'no',
+            'cw_enable_design'              => isset( $_POST['cw_enable_design'] ) ? 'yes' : 'no',
+            'cw_design_picker_label'        => $_POST['cw_design_picker_label'] ?? '',
+            'cw_design_artwork_w'           => $_POST['cw_design_artwork_w'] ?? '',
+            'cw_design_artwork_h'           => $_POST['cw_design_artwork_h'] ?? '',
+            'cw_design_default_variant'     => $_POST['cw_design_default_variant'] ?? '',
+            'cw_kpi_show_progress'          => isset( $_POST['cw_kpi_show_progress'] ) ? 'yes' : 'no',
+            'cw_kpi_target'                 => $_POST['cw_kpi_target'] ?? '',
+            'cw_kpi_label'                  => $_POST['cw_kpi_label'] ?? '',
             '_save_feature_blocks'          => true,
         ];
+
+        if ( isset( $_POST['cw_design_variants'] ) && is_array( $_POST['cw_design_variants'] ) ) {
+            $data['cw_design_variants'] = $_POST['cw_design_variants'];
+        }
 
         if ( ! self::is_yes( $data['cw_allow_multiple_participants'] ) ) {
             $data['cw_min_participants'] = '1';

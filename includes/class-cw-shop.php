@@ -934,6 +934,10 @@ class CW_Shop {
                         foreach ($fields as $f) {
                             if ( isset($f['value']) && preg_match('/\.(jpg|jpeg|png|pdf)$/i', $f['value']) ) update_post_meta( $entry_id, 'upload_document', $f['value'] );
                         }
+
+                        // Lets feature modules (Design Submission, etc.) stamp extra meta
+                        // onto the freshly-created entry from the corresponding order line.
+                        do_action( 'cw_entry_created_from_order', (int) $entry_id, $item, $order );
                     }
                 }
             } 

@@ -29,6 +29,9 @@ class CW_Campaign_Admin {
      * - Ensures a top-level "Talk / Seminar" parent category exists, plus a
      *   couple of generic sub-categories underneath so the create-campaign
      *   wizard has options to show when the organizer picks it.
+     * - Ensures the "Competitions" parent exists and a "Design" child sits
+     *   under it (powers the Design Submission feature — organizers won't see
+     *   the Design wizard branch unless this term exists).
      *
      * Runs on `init` and only inserts when missing.
      */
@@ -123,6 +126,49 @@ class CW_Campaign_Admin {
                         ]
                     );
                 }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Top-level "Competitions" parent + "Design" child.
+        // The wizard JS already routes the `design` slug into the
+        // set-competition conditional branch (handleConditionalFields), but
+        // historically neither term was auto-seeded — organizers had to
+        // create them by hand. Seeding here is idempotent so it's safe on
+        // installs where an admin already created them in the Products UI.
+        // ─────────────────────────────────────────────────────────────────
+        $competitions_parent = get_term_by( 'slug', 'competitions', 'product_cat' );
+        if ( ! $competitions_parent || is_wp_error( $competitions_parent ) ) {
+            $inserted = wp_insert_term(
+                'Competitions',
+                'product_cat',
+                [
+                    'slug'        => 'competitions',
+                    'description' => 'Judged campaigns where participants submit entries and winners receive prizes.',
+                ]
+            );
+            if ( ! is_wp_error( $inserted ) && ! empty( $inserted['term_id'] ) ) {
+                $competitions_parent = get_term( (int) $inserted['term_id'], 'product_cat' );
+            }
+        }
+
+        if ( $competitions_parent && ! is_wp_error( $competitions_parent ) ) {
+            // Prefix the slug with the parent name to avoid colliding with any
+            // unrelated top-level "Design" term that an admin may have created
+            // elsewhere (matches the `talk-seminar-*` namespacing convention).
+            $design_slug = 'competitions-design';
+            $existing_design = get_term_by( 'slug', $design_slug, 'product_cat' );
+
+            if ( ! $existing_design || is_wp_error( $existing_design ) ) {
+                wp_insert_term(
+                    'Design',
+                    'product_cat',
+                    [
+                        'slug'        => $design_slug,
+                        'parent'      => (int) $competitions_parent->term_id,
+                        'description' => 'Design submission competitions — participants upload artwork that gets printed onto a configured product variant.',
+                    ]
+                );
             }
         }
     }

@@ -257,6 +257,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             // Flash notices (SweetAlert2 popups for ?error / ?success / ?warning / etc).
             new CW_Flash_Notices();
             $this->shop       = new CW_Shop();
+            new CW_Design_Submission();
             new CW_Checkout();
             $this->shortcodes = new CW_Shortcodes();
             new CW_Organizer_Profile();

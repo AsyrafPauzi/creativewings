@@ -1,0 +1,197 @@
+/* =================================================================
+ * Design Submission styles.
+ *
+ * Loaded only when:
+ *   - viewing a single product page on a campaign with cw_enable_design = yes
+ *   - viewing the WooCommerce checkout with at least one design item in cart
+ * ================================================================= */
+
+/* ────────────── Campaign product page: upload form ────────────── */
+
+.cw-design-upload {
+    margin: 16px 0 24px;
+    padding: 18px 20px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #ffffff;
+}
+
+.cw-design-upload__title {
+    margin: 0 0 4px;
+    font-size: 17px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.cw-design-upload__intro {
+    margin: 0 0 14px;
+    font-size: 13px;
+    color: #475569;
+}
+
+.cw-design-upload__row {
+    margin: 12px 0;
+}
+
+.cw-design-upload__label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f172a;
+    margin-bottom: 6px;
+}
+
+.cw-design-required {
+    color: #dc2626;
+    margin-left: 2px;
+}
+
+.cw-design-file {
+    display: block;
+    width: 100%;
+    max-width: 480px;
+    font-size: 13px;
+}
+
+.cw-design-hint {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.cw-design-feedback {
+    margin-top: 6px;
+    font-size: 13px;
+    min-height: 18px;
+}
+
+.cw-design-feedback.is-pending {
+    color: #475569;
+}
+.cw-design-feedback.is-ok,
+.cw-design-feedback__ok {
+    color: #15803d;
+}
+.cw-design-feedback.is-error {
+    color: #b91c1c;
+}
+
+.cw-design-feedback a {
+    color: inherit;
+    text-decoration: underline;
+}
+
+/* ────────────── Checkout: variant picker + canvas preview ────────────── */
+
+.cw-design-checkout-pickers {
+    margin-top: 24px;
+}
+
+.cw-design-picker {
+    margin: 18px 0;
+    padding: 18px 20px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #ffffff;
+}
+
+.cw-design-picker__heading {
+    margin: 0 0 12px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.cw-design-picker__swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.cw-design-swatch {
+    appearance: none;
+    background: #ffffff;
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 6px 8px 4px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 72px;
+    transition: border-color 120ms ease, transform 80ms ease, box-shadow 120ms ease;
+}
+
+.cw-design-swatch:hover {
+    border-color: #cbd5e1;
+}
+
+.cw-design-swatch.is-selected {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .15);
+}
+
+.cw-design-swatch img {
+    width: 56px;
+    height: 36px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: #f1f5f9;
+}
+
+.cw-design-swatch__name {
+    font-size: 11px;
+    color: #334155;
+    font-weight: 600;
+    max-width: 90px;
+    text-align: center;
+    line-height: 1.2;
+    word-wrap: break-word;
+}
+
+.cw-design-picker__preview-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    background: #f8fafc;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+}
+
+.cw-design-picker__canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.cw-design-picker__loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+    font-size: 13px;
+    pointer-events: none;
+}
+
+/* ────────────── Responsiveness ────────────── */
+
+@media (max-width: 640px) {
+    .cw-design-upload,
+    .cw-design-picker {
+        padding: 14px 14px;
+    }
+
+    .cw-design-swatch {
+        min-width: 64px;
+    }
+
+    .cw-design-swatch img {
+        width: 48px;
+        height: 32px;
+    }
+}
