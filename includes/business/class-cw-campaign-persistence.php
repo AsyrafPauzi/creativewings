@@ -30,24 +30,38 @@ class CW_Campaign_Persistence {
             return new WP_Error( 'cw_missing_title', 'Campaign title is required.' );
         }
 
-        $args = [
-            'post_title'   => $title,
-            'post_content' => $content,
-            'post_type'    => 'product',
-            'post_author'  => (int) $author_id,
-        ];
-
         $is_new          = ( (int) $product_id === 0 );
         $can_publish     = current_user_can( 'manage_woocommerce' );
         $incoming_status = isset( $data['post_status'] ) ? sanitize_text_field( $data['post_status'] ) : '';
 
+        $args = [
+            'post_title'   => $title,
+            'post_content' => $content,
+            'post_type'    => 'product',
+        ];
+
         if ( $is_new ) {
+            // New campaign — the creator becomes the owner.
+            $args['post_author'] = (int) $author_id;
             // New campaigns: business users always go to pending review; admins keep whatever
             // they pass (or fall back to pending so nothing accidentally publishes silently).
             $args['post_status'] = $can_publish ? ( $incoming_status ?: 'pending' ) : 'pending';
             $product_id          = wp_insert_post( $args, true );
         } else {
+            // EXISTING campaign — preserve whoever currently owns it. If an
+            // admin previously reassigned ownership to another business via
+            // the WP admin "Campaign Owner" metabox, that transfer must NOT
+            // be silently undone just because the new owner (or even the
+            // original admin) re-saves the campaign through the front-end
+            // business form. The only way to change post_author once a
+            // campaign exists is the admin metabox.
             $args['ID'] = (int) $product_id;
+            $existing_author = (int) get_post_field( 'post_author', (int) $product_id );
+            if ( $existing_author > 0 ) {
+                $args['post_author'] = $existing_author;
+            } else {
+                $args['post_author'] = (int) $author_id;
+            }
             // Existing campaign: if a non-admin edits a live ("publish") campaign, kick it back
             // to pending for re-review. Otherwise (admin, or already-non-publish) leave the
             // status alone so admins can keep editing publish posts.
@@ -108,18 +122,46 @@ class CW_Campaign_Persistence {
         $scalar_keys = [
             'submission_deadline', 'cw_total_prize_value', 'cw_min_participants', 'cw_max_participants',
             'cw_submission_start', 'cw_review_start', 'cw_final_event_date', 'cw_location_details',
-            'cw_enable_certificate', 'cw_judging_criteria', 'cw_talk_speaker', 'cw_talk_type',
+            'cw_enable_certificate', 'cw_talk_speaker', 'cw_talk_type',
             'cw_cert_x', 'cw_cert_y', 'cw_cert_font_size', 'cw_cert_font_color', 'cw_cert_max_width', 'cw_cert_align',
             'cw_event_mode', 'cw_online_link', 'cw_multi_min', 'cw_multi_max',
             'cw_campaign_serial', 'cw_checkout_message_label',
             'cw_enable_addons', 'cw_enable_age_brackets', 'cw_enable_school_sponsors',
             'cw_allow_multiple_participants', 'cw_use_account_fullname',
             'cw_design_picker_label', 'cw_design_artwork_w', 'cw_design_artwork_h',
+            'cw_template_label',
         ];
         foreach ( $scalar_keys as $k ) {
             if ( array_key_exists( $k, $data ) ) {
                 update_post_meta( $product_id, $k, sanitize_text_field( $data[ $k ] ) );
             }
+        }
+
+        // Rich-text fields. `sanitize_text_field()` would strip every tag —
+        // including the `<ul>/<ol>/<li>` an organiser pastes in for bullet
+        // lists — so these go through `wp_kses_post()` which keeps the post-
+        // content whitelist (lists, paragraphs, links, headings, emphasis).
+        // We `wp_unslash` first because $_POST is magic-quote-slashed by
+        // WordPress, otherwise saved HTML would contain literal `\"` etc.
+        $rich_keys = [
+            'cw_judging_criteria',   // "Judges & Criteria / Who Can Join" box
+        ];
+        foreach ( $rich_keys as $k ) {
+            if ( array_key_exists( $k, $data ) ) {
+                update_post_meta( $product_id, $k, wp_kses_post( wp_unslash( (string) $data[ $k ] ) ) );
+            }
+        }
+
+        // Numeric prize amount — drives the site-wide [total_prize_money] sum.
+        // Stored as a clean float (no symbols / commas) so SUM() works reliably.
+        if ( array_key_exists( 'cw_total_prize_amount', $data ) ) {
+            $amt_raw = (string) $data['cw_total_prize_amount'];
+            // Strip everything except digits, decimal point, and leading minus.
+            $amt_clean = preg_replace( '/[^0-9.\-]/', '', $amt_raw );
+            $amt_val   = ( $amt_clean === '' || ! is_numeric( $amt_clean ) ) ? '' : (string) (float) $amt_clean;
+            update_post_meta( $product_id, 'cw_total_prize_amount', $amt_val );
+            // Invalidate the cached site-wide total so the header reflects the change.
+            delete_transient( 'cw_total_prize_money_v4' );
         }
 
         if ( ! get_post_meta( $product_id, 'cw_campaign_serial', true ) ) {
@@ -308,6 +350,7 @@ class CW_Campaign_Persistence {
             'organizer_id'                  => get_current_user_id(),
             'submission_deadline'           => $_POST['submission_deadline'] ?? '',
             'cw_total_prize_value'          => $_POST['cw_total_prize_value'] ?? '',
+            'cw_total_prize_amount'         => $_POST['cw_total_prize_amount'] ?? '',
             'cw_min_participants'           => $_POST['cw_min_participants'] ?? '',
             'cw_max_participants'           => $_POST['cw_max_participants'] ?? '',
             'cw_submission_start'           => $_POST['cw_submission_start'] ?? '',
@@ -339,6 +382,7 @@ class CW_Campaign_Persistence {
             'cw_design_artwork_w'           => $_POST['cw_design_artwork_w'] ?? '',
             'cw_design_artwork_h'           => $_POST['cw_design_artwork_h'] ?? '',
             'cw_design_default_variant'     => $_POST['cw_design_default_variant'] ?? '',
+            'cw_template_label'             => $_POST['cw_template_label'] ?? '',
             'cw_kpi_show_progress'          => isset( $_POST['cw_kpi_show_progress'] ) ? 'yes' : 'no',
             'cw_kpi_target'                 => $_POST['cw_kpi_target'] ?? '',
             'cw_kpi_label'                  => $_POST['cw_kpi_label'] ?? '',

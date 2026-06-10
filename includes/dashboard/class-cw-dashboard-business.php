@@ -2925,22 +2925,74 @@ class CW_Dashboard_Business {
 
             <!-- Entries Grid -->
             <div class="cw-entry-management-grid">
-                <?php foreach($entries as $entry): 
+                <?php foreach($entries as $entry):
                     $name = get_post_meta($entry->ID, 'cw_participant_name', true);
                     $file_url = get_post_meta($entry->ID, 'upload_document', true);
                     $score = get_post_meta($entry->ID, 'judge_score', true) ?: '0';
                     $comment = get_post_meta($entry->ID, 'judge_comment', true) ?: '';
                     $entry_data = get_post_meta($entry->ID, 'participant_details', true);
-                    $is_winner = get_post_meta($entry->ID, 'winner_status', true) === 'yes'; // CRITICAL: Retrieve winner 
-                    
+                    $is_winner = get_post_meta($entry->ID, 'winner_status', true) === 'yes'; // CRITICAL: Retrieve winner
+
+                    // Design-submission mockup data (artwork composited onto its
+                    // chosen casing variant) — null when this entry isn't a
+                    // design submission, in which case we fall back to the
+                    // legacy plain image / icon preview.
+                    $mockup = class_exists('CW_Design_Submission') ? CW_Design_Submission::entry_mockup_data((int) $entry->ID) : null;
+
                     $img_display = '';
                     $file_class = 'file-icon';
                     $download_link = '';
 
-                    if($file_url) {
+                    if ($mockup) {
+                        // Canvas-based composite preview. Inline styles are
+                        // duplicated alongside class hooks so the mockup
+                        // renders correctly even if cw-style-design.css is
+                        // delayed by an aggressive CDN/cache (otherwise the
+                        // canvas collapses to 0×0 inside its flex parent and
+                        // judges see an empty card).
+                        $download_link = $mockup['artwork_url'];
+                        $cfg_json = wp_json_encode( [
+                            'artwork'      => $mockup['artwork_url'],
+                            'variantUrl'   => $mockup['variant_url'],
+                            'variantName'  => $mockup['variant_name'],
+                            'width'        => $mockup['width'],
+                            'height'       => $mockup['height'],
+                            'artFilename'  => $mockup['art_filename'],
+                            'title'        => $entry->post_title,
+                        ] );
+                        $wrap_style = 'position:relative;display:flex;align-items:center;justify-content:center;width:100%;height:100%;min-height:180px;background:#f8fafc;overflow:hidden;cursor:zoom-in;box-sizing:border-box;';
+                        $canv_style = 'display:block;width:100%;height:100%;max-width:100%;object-fit:contain;background:#f8fafc;';
+                        $load_style = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:24px;color:#94a3b8;pointer-events:none;background:rgba(255,255,255,.35);';
+                        $zoom_style = 'position:absolute;bottom:8px;right:8px;padding:4px 8px;border-radius:999px;background:rgba(15,23,42,.78);color:#fff;font-size:11px;line-height:1;pointer-events:none;';
+                        $img_display = sprintf(
+                            '<div class="cw-design-entry-mockup cw-entry-mockup-card" role="button" tabindex="0" data-config=\'%s\' aria-label="%s" style="%s">'
+                              . '<canvas class="cw-design-entry-mockup__canvas" width="%d" height="%d" style="%s"></canvas>'
+                              . '<div class="cw-design-entry-mockup__loading" style="%s"><i class="fas fa-spinner fa-spin"></i></div>'
+                              . '<div class="cw-design-entry-mockup__zoom" aria-hidden="true" style="%s"><i class="fas fa-search-plus"></i></div>'
+                            . '</div>',
+                            esc_attr( $cfg_json ),
+                            esc_attr( sprintf( __( 'Preview %s — click to enlarge', 'creativewings-core' ), $entry->post_title ) ),
+                            esc_attr( $wrap_style ),
+                            (int) $mockup['width'],
+                            (int) $mockup['height'],
+                            esc_attr( $canv_style ),
+                            esc_attr( $load_style ),
+                            esc_attr( $zoom_style )
+                        );
+                        $file_class = 'image-preview is-design-mockup';
+                    } elseif ($file_url) {
                         $download_link = $file_url;
-                        if(preg_match('/\.(jpg|jpeg|png|gif)$/i', $file_url)) {
-                            $img_display = '<img src="'.esc_url($file_url).'" alt="Artwork Preview" loading="lazy" decoding="async">';
+                        if (preg_match('/\.(jpg|jpeg|png|gif)$/i', $file_url)) {
+                            // Plain image preview — click opens the same
+                            // lightbox so judges still get the zoom affordance
+                            // even on non-design campaigns.
+                            $img_display = sprintf(
+                                '<img src="%s" alt="Artwork Preview" loading="lazy" decoding="async" class="cw-entry-plain-img" data-full="%s" data-title="%s">'
+                                . '<div class="cw-design-entry-mockup__zoom" aria-hidden="true"><i class="fas fa-search-plus"></i></div>',
+                                esc_url($file_url),
+                                esc_url($file_url),
+                                esc_attr($entry->post_title)
+                            );
                             $file_class = 'image-preview';
                         } else {
                             $img_display = '<i class="fas fa-file-alt file-icon"></i>';
@@ -2950,7 +3002,7 @@ class CW_Dashboard_Business {
                         $img_display = '<i class="fas fa-times-circle file-icon"></i>';
                         $file_class = 'no-file';
                     }
-                    
+
                     $vote_count_val = (int) get_post_meta($entry->ID, 'vote_count', true);
                     $winner_rank_val = get_post_meta($entry->ID, 'winner_rank', true) ?: '';
                     $entry_staged_id = (int) get_post_meta($entry->ID, 'cw_staged_id', true);
@@ -2967,13 +3019,17 @@ class CW_Dashboard_Business {
                         'is_winner'    => $is_winner,
                         'winner_rank'  => $winner_rank_val,
                         'vote_count'   => $vote_count_val,
+                        // When present, the eval modal swaps its <img> for a
+                        // composite canvas + a "Zoom" affordance opening the
+                        // shared lightbox.
+                        'mockup'       => $mockup,
                     ]);
                 ?>
                 <div class="cw-evaluation-card" data-entry-id="<?php echo $entry->ID; ?>" data-entry-json='<?php echo esc_attr($entry_json); ?>'>
                     <div class="cw-entry-preview <?php echo $file_class; ?>">
                         <?php echo $img_display; ?>
                         <?php if($download_link): ?>
-                            <a href="<?php echo esc_url($download_link); ?>" target="_blank" class="cw-download-overlay" style="position:absolute; top:10px; right:10px; color:#fff; background:rgba(0,0,0,0.5); padding:5px 10px; border-radius:4px; font-size:12px;"><i class="fas fa-download"></i></a>
+                            <a href="<?php echo esc_url($download_link); ?>" target="_blank" class="cw-download-overlay" style="position:absolute; top:10px; right:10px; color:#fff; background:rgba(0,0,0,0.5); padding:5px 10px; border-radius:4px; font-size:12px;" onclick="event.stopPropagation();"><i class="fas fa-download"></i></a>
                         <?php endif; ?>
                     </div>
                     <div class="cw-entry-content">
@@ -3029,20 +3085,30 @@ class CW_Dashboard_Business {
             <!-- Pagination -->
             <?php if ($total_pages > 1): ?>
             <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:24px;flex-wrap:wrap;">
+                <?php
+                // Pagination circles. `aspect-ratio:1/1` + `flex-shrink:0`
+                // keep them as perfect circles even when the surrounding
+                // flex row stretches its children, which used to produce
+                // visible ovals.
+                $pg_base = 'display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;min-width:36px;min-height:36px;aspect-ratio:1/1;flex-shrink:0;border-radius:50%;text-decoration:none;font-size:13px;transition:all .15s;box-sizing:border-box;';
+                ?>
                 <?php if ($paged > 1): ?>
                 <a href="<?php echo esc_url(add_query_arg(['sort'=>$sort_by,'order'=>$sort_order,'entries_page'=>$paged-1],$base_url)); ?>"
-                   style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:var(--cw-bg);border:1.5px solid var(--cw-border);color:var(--cw-text);text-decoration:none;font-size:13px;transition:all .15s;"
+                   class="cw-pagination-circle"
+                   style="<?php echo $pg_base; ?>background:var(--cw-bg);border:1.5px solid var(--cw-border);color:var(--cw-text);"
                    onmouseover="this.style.background='var(--cw-primary-light)'" onmouseout="this.style.background='var(--cw-bg)'">
                    <i class="fas fa-chevron-left"></i></a>
                 <?php endif; ?>
                 <?php for ($pi = 1; $pi <= $total_pages; $pi++): ?>
                 <a href="<?php echo esc_url(add_query_arg(['sort'=>$sort_by,'order'=>$sort_order,'entries_page'=>$pi],$base_url)); ?>"
-                   style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;border:1.5px solid <?php echo $pi===$paged?'var(--cw-primary)':'var(--cw-border)'; ?>;background:<?php echo $pi===$paged?'var(--cw-primary)':'var(--cw-bg)'; ?>;color:<?php echo $pi===$paged?'#fff':'var(--cw-text)'; ?>;text-decoration:none;font-size:13px;font-weight:600;transition:all .15s;">
+                   class="cw-pagination-circle"
+                   style="<?php echo $pg_base; ?>border:1.5px solid <?php echo $pi===$paged?'var(--cw-primary)':'var(--cw-border)'; ?>;background:<?php echo $pi===$paged?'var(--cw-primary)':'var(--cw-bg)'; ?>;color:<?php echo $pi===$paged?'#fff':'var(--cw-text)'; ?>;font-weight:600;">
                    <?php echo $pi; ?></a>
                 <?php endfor; ?>
                 <?php if ($paged < $total_pages): ?>
                 <a href="<?php echo esc_url(add_query_arg(['sort'=>$sort_by,'order'=>$sort_order,'entries_page'=>$paged+1],$base_url)); ?>"
-                   style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:var(--cw-bg);border:1.5px solid var(--cw-border);color:var(--cw-text);text-decoration:none;font-size:13px;transition:all .15s;"
+                   class="cw-pagination-circle"
+                   style="<?php echo $pg_base; ?>background:var(--cw-bg);border:1.5px solid var(--cw-border);color:var(--cw-text);"
                    onmouseover="this.style.background='var(--cw-primary-light)'" onmouseout="this.style.background='var(--cw-bg)'">
                    <i class="fas fa-chevron-right"></i></a>
                 <?php endif; ?>
@@ -3156,7 +3222,41 @@ class CW_Dashboard_Business {
             </div><!-- .cw-eval-box -->
         </div><!-- #cw-evaluation-modal -->
 
-
+        <!-- ============================================================ -->
+        <!--  ENTRY MOCKUP LIGHTBOX                                       -->
+        <!--  Shared overlay opened when a judge clicks an entry card     -->
+        <!--  preview or the eval-modal canvas. Renders the artwork on    -->
+        <!--  the chosen casing variant at maximum viewport size so they  -->
+        <!--  can spot detail. Driven entirely by cw-design-preview.js.   -->
+        <!--  Inline styles act as a hard fallback — themes that wrap the -->
+        <!--  My Account content in a `transform`-containing block break  -->
+        <!--  position:fixed, so the JS reparents the modal to <body>;    -->
+        <!--  these styles still make the overlay visible even if our CSS -->
+        <!--  is delayed by a CDN.                                        -->
+        <!-- ============================================================ -->
+        <div id="cw-entry-mockup-lightbox" class="cw-entry-mockup-lightbox" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Entry preview"
+             style="position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;z-index:100000;background:rgba(2,6,23,.92);display:none;align-items:center;justify-content:center;padding:24px;overflow:auto;box-sizing:border-box;margin:0;">
+            <button type="button" class="cw-entry-mockup-lightbox__close" aria-label="Close preview"
+                    style="position:absolute;top:14px;right:14px;width:42px;height:42px;min-width:42px;min-height:42px;aspect-ratio:1/1;flex-shrink:0;border-radius:50%;border:0;background:#fff;color:#0f172a;font-size:18px;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:2;box-sizing:border-box;padding:0;">
+                <i class="fas fa-times"></i>
+            </button>
+            <div class="cw-entry-mockup-lightbox__inner" style="position:relative;width:100%;max-width:1280px;display:flex;flex-direction:column;align-items:center;gap:14px;">
+                <div class="cw-entry-mockup-lightbox__caption" id="cw-entry-mockup-lightbox-caption"
+                     style="color:#f8fafc;font-size:14px;line-height:1.5;text-align:center;max-width:100%;padding:0 8px;word-break:break-word;"></div>
+                <div class="cw-entry-mockup-lightbox__stage"
+                     style="position:relative;width:100%;max-height:calc(100vh - 200px);display:flex;align-items:center;justify-content:center;background:#0f172a;border-radius:12px;box-shadow:0 24px 48px rgba(0,0,0,.5);overflow:hidden;min-height:280px;">
+                    <canvas id="cw-entry-mockup-lightbox-canvas" class="cw-entry-mockup-lightbox__canvas" style="display:block;max-width:100%;max-height:calc(100vh - 200px);width:auto;height:auto;object-fit:contain;"></canvas>
+                    <img id="cw-entry-mockup-lightbox-img" class="cw-entry-mockup-lightbox__img" alt="" style="display:none;max-width:100%;max-height:calc(100vh - 200px);width:auto;height:auto;object-fit:contain;" />
+                    <div class="cw-entry-mockup-lightbox__loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#cbd5f5;font-size:16px;background:rgba(15,23,42,.35);pointer-events:none;"><i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i> Loading…</div>
+                </div>
+                <div class="cw-entry-mockup-lightbox__footer" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+                    <a id="cw-entry-mockup-lightbox-download" class="cw-entry-mockup-lightbox__download" href="#" target="_blank" rel="noopener" download
+                       style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;background:#2563eb;color:#fff;font-size:13px;font-weight:700;text-decoration:none;">
+                        <i class="fas fa-download"></i> Download artwork (PNG)
+                    </a>
+                </div>
+            </div>
+        </div>
 
 
 
@@ -3173,14 +3273,63 @@ class CW_Dashboard_Business {
                 `Submitted by: <strong>${data.submitter}</strong>&nbsp;·&nbsp;Entry #${data.id}`
             );
 
-            // Media preview
+            // Media preview — prefers the artwork-on-variant composite so
+            // judges grade the design as it'll look on the casing. Click to
+            // enlarge in the shared lightbox. Falls back to plain image / icon
+            // when the entry isn't a design submission.
+            //
+            // CRITICAL: every layout-affecting style is inlined as well as
+            // class-based, because cw-style-design.css gets enqueued at the
+            // page level and any cache / theme override that delays its load
+            // would otherwise collapse the mockup container to 0 height
+            // (canvas with width="2400" + parent height:0 = empty modal).
             const mediaWrap = jQuery('#eval-media-wrap');
-            if (data.file_url && /\.(jpg|jpeg|png|gif|webp)$/i.test(data.file_url)) {
-                mediaWrap.html(`<img src="${data.file_url}" class="cwb-eval-img" alt="Entry Preview">`);
+            if (data.mockup && data.mockup.artwork_url && data.mockup.variant_url) {
+                const cfg = {
+                    artwork:     data.mockup.artwork_url,
+                    variantUrl:  data.mockup.variant_url,
+                    variantName: data.mockup.variant_name,
+                    width:       data.mockup.width  || 2400,
+                    height:      data.mockup.height || 600,
+                    artFilename: data.mockup.art_filename || '',
+                    title:       data.title
+                };
+                const cfgAttr = JSON.stringify(cfg).replace(/'/g, '&#39;');
+                const wrapStyle  = 'position:relative;display:block;width:100%;min-height:200px;background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:12px;overflow:hidden;cursor:zoom-in;box-sizing:border-box;';
+                const canvStyle  = 'display:block;width:100%;height:auto;max-width:100%;background:#f8fafc;';
+                const loadStyle  = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:28px;color:#94a3b8;pointer-events:none;background:rgba(255,255,255,.35);';
+                const zoomStyle  = 'position:absolute;bottom:8px;right:8px;padding:5px 10px;border-radius:999px;background:rgba(15,23,42,.85);color:#fff;font-size:11px;font-weight:600;line-height:1;letter-spacing:.3px;pointer-events:none;';
+                const capStyle   = 'margin-top:10px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;color:#475569;line-height:1.5;';
+                mediaWrap.html(
+                    '<div class="cw-design-entry-mockup cw-entry-mockup-eval" role="button" tabindex="0" '
+                    + 'data-config=\'' + cfgAttr + '\' '
+                    + 'style="' + wrapStyle + '" '
+                    + 'aria-label="Click to view full size">'
+                    +   '<canvas class="cw-design-entry-mockup__canvas" width="' + cfg.width + '" height="' + cfg.height + '" style="' + canvStyle + '"></canvas>'
+                    +   '<div class="cw-design-entry-mockup__loading" style="' + loadStyle + '"><i class="fas fa-spinner fa-spin"></i></div>'
+                    +   '<div class="cw-design-entry-mockup__zoom" aria-hidden="true" style="' + zoomStyle + '"><i class="fas fa-search-plus"></i> Click to zoom</div>'
+                    + '</div>'
+                    + '<div class="cw-design-entry-mockup__caption" style="' + capStyle + '">'
+                    +   '<i class="fas fa-palette" style="color:#2563eb;margin-right:4px;"></i> <strong style="color:#0f172a;font-weight:700;">' + (cfg.variantName || 'Variant') + '</strong>'
+                    +   (cfg.artFilename ? ' &middot; <span class="cwb-eval-art-name" style="color:#64748b;font-size:11px;">' + cfg.artFilename + '</span>' : '')
+                    + '</div>'
+                );
+                if (window.CwDesign && typeof window.CwDesign.initEntryMockups === 'function') {
+                    window.CwDesign.initEntryMockups(mediaWrap[0]);
+                }
+            } else if (data.file_url && /\.(jpg|jpeg|png|gif|webp)$/i.test(data.file_url)) {
+                mediaWrap.html(
+                    '<img src="' + data.file_url + '" class="cwb-eval-img cw-entry-plain-img" alt="Entry Preview" '
+                    + 'style="display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px;border:1.5px solid #e2e8f0;background:#e2e8f0;cursor:zoom-in;" '
+                    + 'data-full="' + data.file_url + '" data-title="' + (data.title || '') + '">'
+                );
+                if (window.CwDesign && typeof window.CwDesign.initPlainEntryImages === 'function') {
+                    window.CwDesign.initPlainEntryImages(mediaWrap[0]);
+                }
             } else if (data.file_url) {
-                mediaWrap.html(`<div class="cwb-eval-img-placeholder"><i class="fas fa-file-alt"></i><span>Document attached</span></div>`);
+                mediaWrap.html('<div class="cwb-eval-img-placeholder" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;width:100%;aspect-ratio:4/3;background:#f1f5f9;border-radius:12px;border:1.5px dashed #e2e8f0;color:#64748b;"><i class="fas fa-file-alt" style="font-size:32px;"></i><span>Document attached</span></div>');
             } else {
-                mediaWrap.html(`<div class="cwb-eval-img-placeholder"><i class="fas fa-image"></i><span>No file submitted</span></div>`);
+                mediaWrap.html('<div class="cwb-eval-img-placeholder" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;width:100%;aspect-ratio:4/3;background:#f1f5f9;border-radius:12px;border:1.5px dashed #e2e8f0;color:#64748b;"><i class="fas fa-image" style="font-size:32px;"></i><span>No file submitted</span></div>');
             }
 
             // Download link

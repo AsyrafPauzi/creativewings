@@ -937,7 +937,10 @@ class CW_Shop {
 
                         // Lets feature modules (Design Submission, etc.) stamp extra meta
                         // onto the freshly-created entry from the corresponding order line.
-                        do_action( 'cw_entry_created_from_order', (int) $entry_id, $item, $order );
+                        // `$p_num` is the 1-based participant index inside this line
+                        // and lets modules look up per-row arrays (artworks, variants,
+                        // etc.) by slot rather than relying on call-order heuristics.
+                        do_action( 'cw_entry_created_from_order', (int) $entry_id, $item, $order, (int) $p_num );
                     }
                 }
             } 

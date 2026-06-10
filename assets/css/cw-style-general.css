@@ -1358,6 +1358,129 @@ input.cw-input-text-v2 { padding-left: 42px !important; }
 .cwd-hero-img-btn:hover .cwd-hero-img-zoom,
 .cwd-hero-img-btn:focus-visible .cwd-hero-img-zoom { opacity: 1; transform: translateY(0); }
 
+/* ── Hero carousel (multi-image slider — arrows + swipe) ────────── */
+.cwd-hero-carousel {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    outline: none;
+}
+.cwd-hero-carousel:focus-visible { outline: 3px solid rgba(15, 103, 150, .45); outline-offset: -3px; }
+
+.cwd-hero-carousel-track {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    transform: translate3d(0, 0, 0);
+    transition: transform .4s cubic-bezier(.22, .61, .36, 1);
+    will-change: transform;
+    backface-visibility: hidden;
+    touch-action: pan-y;
+}
+
+.cwd-hero-slide {
+    flex: 0 0 100%;
+    width: 100%;
+    height: 100%;
+    position: relative;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    cursor: zoom-in;
+    overflow: hidden;
+    display: block;
+    appearance: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.cwd-hero-slide:focus-visible { outline: 3px solid rgba(15, 103, 150, .45); outline-offset: -3px; }
+.cwd-hero-slide-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+    transition: transform .35s ease;
+    pointer-events: none;
+}
+.cwd-hero-slide:hover .cwd-hero-slide-img,
+.cwd-hero-slide:focus-visible .cwd-hero-slide-img { transform: scale(1.04); }
+.cwd-hero-slide .cwd-hero-img-zoom { pointer-events: none; }
+.cwd-hero-slide:hover .cwd-hero-img-zoom,
+.cwd-hero-slide:focus-visible .cwd-hero-img-zoom { opacity: 1; transform: translateY(0); }
+
+/* Arrow navigation (only rendered when multiple slides exist).
+   Always visible (semi-opaque) so users discover the carousel; brighter
+   on hover / focus. */
+.cwd-hero-carousel-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 42px;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(15, 23, 42, .55);
+    color: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    opacity: .85;
+    transition: opacity .2s ease, background .2s ease, transform .2s ease;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    z-index: 3;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, .25);
+}
+.cwd-hero-carousel-nav:hover,
+.cwd-hero-carousel-nav:focus-visible {
+    background: rgba(15, 23, 42, .9);
+    opacity: 1;
+}
+.cwd-hero-carousel-nav:focus-visible { outline: 3px solid rgba(255, 255, 255, .65); outline-offset: 2px; }
+.cwd-hero-carousel-nav:active { transform: translateY(-50%) scale(.94); }
+.cwd-hero-carousel-prev { left: 12px; }
+.cwd-hero-carousel-next { right: 12px; }
+
+/* Counter pill */
+.cwd-hero-carousel-counter {
+    position: absolute;
+    right: 14px;
+    top: 14px;
+    background: rgba(15, 23, 42, .55);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    letter-spacing: .02em;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    z-index: 3;
+    pointer-events: none;
+    user-select: none;
+}
+.cwd-hero-carousel-counter-sep { opacity: .65; margin: 0 4px; }
+
+/* Touch devices (no hover) — keep arrows fully visible. */
+@media (hover: none) {
+    .cwd-hero-carousel-nav { opacity: 1; }
+}
+
+/* Mobile fine-tuning — slightly smaller arrows, tighter to the edges. */
+@media (max-width: 480px) {
+    .cwd-hero-carousel-nav { width: 36px; height: 36px; font-size: 12px; }
+    .cwd-hero-carousel-prev { left: 8px; }
+    .cwd-hero-carousel-next { right: 8px; }
+    .cwd-hero-carousel-counter { right: 10px; top: 10px; font-size: 11px; padding: 3px 8px; }
+}
+
 /* ─────────────────────────────────────────────────────────────────
    Public Submissions gallery (anonymous, opt-in)
    Inherits the entire .cwd-gallery-section / .cwd-gallery-grid /
@@ -1521,9 +1644,9 @@ input.cw-input-text-v2 { padding-left: 42px !important; }
     margin-top: 2px;
 }
 .cwd-hero-sdg-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 8px;
+    width: 66px;
+    height: 66px;
+    border-radius: 10px;
     object-fit: cover;
     border: 1.5px solid var(--cwd-border);
     box-shadow: 0 1px 4px rgba(0,0,0,.1);
@@ -1868,27 +1991,102 @@ input.cw-input-text-v2 { padding-left: 42px !important; }
 }
 .cwd-total-prize-banner i { color: #d97706; font-size: 16px; }
 
+/* ── Prize groups (grouped by category, brand-coloured) ── */
+.cwd-prize-group {
+    margin-top: 18px;
+    padding: 16px 16px 18px;
+    border: 1px solid var(--cwd-border);
+    border-left: 4px solid var(--cwd-cat-main, #94A3B8);
+    border-radius: 12px;
+    background: linear-gradient(180deg, var(--cwd-cat-soft, #f8fafc) 0%, #ffffff 70%);
+}
+.cwd-prize-group:first-of-type { margin-top: 0; }
+.cwd-prize-group-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.cwd-prize-group-chip {
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: var(--cwd-cat-main, #94A3B8);
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    line-height: 1.2;
+}
+.cwd-prize-group-count {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--cwd-cat-main, #94A3B8);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    opacity: .85;
+}
+
 /* ── Prize grid ── */
 .cwd-prize-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 16px;
+    gap: 14px;
 }
 .cwd-prize-card {
-    background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+    position: relative;
+    background: #fff;
     border: 1px solid var(--cwd-border);
     border-radius: 12px;
-    padding: 20px 16px;
+    padding: 18px 14px 16px;
     text-align: center;
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.cwd-prize-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .08);
+    border-color: var(--cwd-cat-main, #cbd5e1);
 }
 .cwd-prize-icon {
-    width: 44px; height: 44px;
+    position: relative;
+    width: 48px; height: 48px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #f59e0b, #fbbf24);
+    background: linear-gradient(135deg, #94a3b8, #cbd5e1);
     color: #fff;
     display: flex; align-items: center; justify-content: center;
-    font-size: 18px;
+    font-size: 20px;
     margin: 0 auto 10px;
+    box-shadow: 0 3px 8px rgba(15, 23, 42, .12);
+}
+/* Numeric ribbon overlay (used by 1st/2nd runner-up) — small badge top-right */
+.cwd-prize-icon-num {
+    position: absolute;
+    top: -5px;
+    right: -6px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #fff;
+    color: #1A1A1A;
+    border: 2px solid currentColor;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(15, 23, 42, .15);
+}
+.cwd-prize-pos-label {
+    display: inline-block;
+    margin-bottom: 4px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--cwd-cat-main, #64748b);
+    text-transform: uppercase;
+    letter-spacing: .06em;
 }
 .cwd-prize-title {
     font-size: 14px;
@@ -1897,9 +2095,139 @@ input.cw-input-text-v2 { padding-left: 42px !important; }
     margin: 0 0 4px;
 }
 .cwd-prize-desc {
-    font-size: 13px;
+    font-size: 12.5px;
     color: var(--cwd-muted);
     margin: 0;
+    line-height: 1.45;
+}
+
+/* Position-specific icon colours (badge background + number overlay border) */
+.cwd-prize-card.is-champion .cwd-prize-icon {
+    background: linear-gradient(135deg, #F59E0B, #FBBF24);   /* gold */
+    color: #fff;
+}
+.cwd-prize-card.is-champion .cwd-prize-icon-num { color: #B45309; }
+.cwd-prize-card.is-runnerup-1 .cwd-prize-icon {
+    background: linear-gradient(135deg, #94A3B8, #CBD5E1);   /* silver */
+    color: #fff;
+}
+.cwd-prize-card.is-runnerup-1 .cwd-prize-icon-num { color: #475569; }
+.cwd-prize-card.is-runnerup-2 .cwd-prize-icon {
+    background: linear-gradient(135deg, #CD7F32, #E8A87C);   /* bronze */
+    color: #fff;
+}
+.cwd-prize-card.is-runnerup-2 .cwd-prize-icon-num { color: #92400E; }
+.cwd-prize-card.is-honorable .cwd-prize-icon {
+    background: linear-gradient(135deg, #F05A7E, #CC4D6B);   /* CW coral */
+}
+.cwd-prize-card.is-participation .cwd-prize-icon {
+    background: linear-gradient(135deg, #125B9A, #2D7BC7);   /* CW blue */
+}
+
+/* ── Participant Template download card (sidebar) ──
+   Sits below the Judging Criteria card. The download anchor is the whole
+   card surface so it stays tap-friendly on mobile (>=44px hit area). */
+.cwd-template-card {
+    padding: 16px 16px 14px;
+}
+.cwd-template-download {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--cwd-border, #e2e8f0);
+    border-radius: 10px;
+    background: linear-gradient(135deg, #E3EEF7 0%, #F4F8FB 100%);
+    color: var(--cwd-text, #0f172a);
+    text-decoration: none;
+    transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+    min-height: 56px;
+}
+.cwd-template-download:hover,
+.cwd-template-download:focus-visible {
+    transform: translateY(-1px);
+    border-color: #125B9A;
+    box-shadow: 0 6px 18px rgba(18, 91, 154, .15);
+    color: var(--cwd-text, #0f172a);
+    text-decoration: none;
+}
+.cwd-template-download:focus-visible {
+    outline: 2px solid #125B9A;
+    outline-offset: 2px;
+}
+.cwd-template-icon {
+    flex: 0 0 auto;
+    width: 38px;
+    height: 38px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #125B9A, #2D7BC7);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    box-shadow: 0 3px 8px rgba(18, 91, 154, .25);
+}
+.cwd-template-text {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.cwd-template-label {
+    font-weight: 700;
+    font-size: 14px;
+    color: #0f172a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.cwd-template-meta {
+    font-size: 11px;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.cwd-template-ext {
+    display: inline-block;
+    padding: 1px 6px;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    color: #1e3a8a;
+}
+.cwd-template-sep { color: #94a3b8; }
+.cwd-template-cta {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #fff;
+    border: 1px solid #c7d6e6;
+    color: #125B9A;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: background .15s ease, color .15s ease;
+}
+.cwd-template-download:hover .cwd-template-cta {
+    background: #125B9A;
+    color: #fff;
+    border-color: #125B9A;
+}
+.cwd-template-filename {
+    margin: 8px 2px 0;
+    font-size: 11.5px;
+    color: var(--cwd-muted, #64748b);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* ── Speaker Card ── */
@@ -2359,7 +2687,7 @@ button#cwd-reg-submit.cwd-reg-submit-primary i {
     .cwd-main, .cwd-sidebar { gap: 14px; }
     .cwd-mobile-cta { display: flex; }
     .cwd-prize-grid { grid-template-columns: repeat(2, 1fr); }
-    .cwd-hero-sdg-icon { width: 36px; height: 36px; border-radius: 7px; }
+    .cwd-hero-sdg-icon { width: 54px; height: 54px; border-radius: 9px; }
 }
 @media (max-width: 480px) {
     .cwd-hero-stat     { font-size: 12px; }
@@ -2368,7 +2696,7 @@ button#cwd-reg-submit.cwd-reg-submit-primary i {
     .cwd-prize-grid    { grid-template-columns: 1fr; }
     .cwd-pbox-num      { font-size: 20px; }
     .cwd-pbox-label    { font-size: 10px; }
-    .cwd-hero-sdg-icon { width: 32px; height: 32px; border-radius: 6px; }
+    .cwd-hero-sdg-icon { width: 48px; height: 48px; border-radius: 8px; }
     .cwd-section       { padding: 16px 14px; }
     .cwd-body          { padding-left: 0; padding-right: 0; }
     .cwd-mobile-cta .cwd-cta-btn { padding: 12px 10px; font-size: 13.5px; }
@@ -3299,3 +3627,77 @@ button#cwd-reg-submit.cwd-reg-submit-primary i {
     .cw-pdpa-consent { padding: 10px 12px; }
     .cw-pdpa-consent-text { font-size: 12.5px; }
 }
+
+/* =================================================================
+ * Perfect-circle guarantee
+ *
+ * Every CSS rule across the plugin defines circular UI elements with
+ * `width: Npx; height: Npx; border-radius: 50%;`. That works in
+ * isolation but breaks in two common situations:
+ *
+ *   1. The circle sits inside a flex container where the default
+ *      `align-items: stretch` stretches it on the cross axis (so a
+ *      36×36 button rendered inside a 44px-tall flex row becomes
+ *      36×44 — visually an oval).
+ *   2. The circle sits next to long text in the same flex/grid line,
+ *      which lets the browser flex-shrink the width while leaving
+ *      height alone — same oval result.
+ *
+ * The fix is two universal properties: `flex-shrink: 0` so the width
+ * never collapses, and `aspect-ratio: 1 / 1` so even if a parent does
+ * misbehave, the height follows the width. Applied to every known
+ * circular class instead of touching every individual rule.
+ * ================================================================= */
+.cw-avatar-circle,
+.cw-sidebar-avatar,
+.cw-close-eval,
+.cwb-eval-close,
+.cwd-modal-close,
+.cwv-modal-close,
+.cwd-share-btn,
+.cwd-tl-dot,
+.cwd-prize-icon,
+.cwd-template-cta,
+.cwd-speaker-avatar,
+.cwd-reg-row-del,
+.cwd-status-dot,
+.cwd-timeline-item .dot,
+.cwd-hero-nav,
+.cwv-modal-action-circle,
+.cw-design-mockup__download-btn .fa,
+.cw-dir-nudge-icon,
+.cw-stat-card-icon,
+.cwb-stat-icon,
+.cw-entry-mockup-lightbox__close,
+.cw-pagination-link,
+.cw-pagination-circle,
+.cw-icon-circle,
+.cwb-edit-pencil,
+.cwb-icon-circle,
+.cwcd-tool-ico,
+.cwd-rep-row-del,
+.dot,
+.cw-dot {
+    aspect-ratio: 1 / 1 !important;
+    flex-shrink: 0 !important;
+    flex-grow: 0 !important;
+    box-sizing: border-box !important;
+}
+
+/* Some circle classes use min-width:0 elsewhere; pin both width *and*
+ * height through min-* properties for environments where aspect-ratio
+ * isn't honoured (older Safari, embedded webviews). */
+.cw-avatar-circle,
+.cwb-eval-close,
+.cwd-modal-close,
+.cwv-modal-close,
+.cwd-share-btn,
+.cwd-tl-dot,
+.cwd-prize-icon,
+.cwd-template-cta,
+.cwd-speaker-avatar,
+.cwd-reg-row-del,
+.cw-entry-mockup-lightbox__close {
+    min-width: 0;
+}
+

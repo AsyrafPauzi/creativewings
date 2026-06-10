@@ -251,9 +251,20 @@ class CW_Business_Form {
                                         <input type="number" name="regular_price" step="0.01" min="0" required class="cw-input-dark" value="<?php echo $val('_regular_price') ?: '0'; ?>" placeholder="0">
                                     </div>
                                     <div class="cw-field">
-                                        <label>Total Prize Value</label>
+                                        <label>Total Prize Value (display text)</label>
                                         <input type="text" name="cw_total_prize_value" class="cw-input-dark" value="<?php echo $val('cw_total_prize_value'); ?>" placeholder="e.g. RM 5,000 Pool">
                                     </div>
+                                </div>
+
+                                <div class="cw-field">
+                                    <label>Total Prize Amount (RM, numeric &mdash; used by site-wide totals)</label>
+                                    <input type="number" name="cw_total_prize_amount" step="0.01" min="0"
+                                        class="cw-input-dark"
+                                        value="<?php echo esc_attr( $val('cw_total_prize_amount') ); ?>"
+                                        placeholder="e.g. 5000 or 3500.50">
+                                    <small style="display:block;margin-top:4px;font-size:11px;color:var(--cw-text-soft);">
+                                        Numbers only, no symbols. This is summed across all published campaigns by the <code>[total_prize_money]</code> shortcode in the site header.
+                                    </small>
                                 </div>
 
                                 <?php
@@ -494,22 +505,168 @@ class CW_Business_Form {
                                 </div>
 
                                 <p class="cw-mini-head">Judges &amp; Criteria / Who Can Join</p>
-                                <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 8px;">Describe how entries will be judged, who can participate, or what attendees should expect.</p>
+                                <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 8px;">
+                                    Describe how entries will be judged, who can participate, or what attendees should expect.
+                                    <strong>Bullet lists, bold, italic and links are kept</strong> — click the list icons in the toolbar.
+                                </p>
                                 <div class="cw-field cw-field-rich-text" id="cw-judges-box">
-                                    <?php wp_editor($val('cw_judging_criteria'), 'cw_judging_criteria_editor', ['textarea_name'=>'cw_judging_criteria','media_buttons'=>false,'textarea_rows'=>3,'teeny'=>true,'quicktags'=>false,'editor_class'=>'cw-slim-editor-dark']); ?>
+                                    <?php wp_editor(
+                                        $val('cw_judging_criteria'),
+                                        'cw_judging_criteria_editor',
+                                        [
+                                            'textarea_name' => 'cw_judging_criteria',
+                                            'media_buttons' => false,
+                                            'textarea_rows' => 6,
+                                            // Teeny keeps the toolbar minimal but still includes bullist /
+                                            // numlist / bold / italic / link, which is exactly what the
+                                            // organiser asked for. We re-enable quicktags so they can
+                                            // switch to the Text tab and paste/clean HTML if a copy-paste
+                                            // from Word brings in junk markup.
+                                            'teeny'         => true,
+                                            'quicktags'     => true,
+                                            'tinymce'       => [
+                                                'toolbar1'         => 'formatselect,bold,italic,underline,bullist,numlist,blockquote,link,unlink,removeformat,undo,redo',
+                                                'block_formats'    => 'Paragraph=p;Heading=h4',
+                                                'paste_as_text'    => false,
+                                                'paste_auto_cleanup_on_paste' => true,
+                                            ],
+                                            'editor_class'  => 'cw-slim-editor-dark',
+                                        ]
+                                    ); ?>
                                 </div>
 
                                 <p class="cw-mini-head">Prizes</p>
+                                <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 8px;">
+                                    Group prizes by <strong>Category</strong> (e.g. age bracket) so they render together on the public page in coloured sections.
+                                    Pick a <strong>Position</strong> to control the badge icon — Champion gets a trophy, 1st Runner-Up gets ribbon "2", 2nd Runner-Up gets ribbon "3".
+                                </p>
+                                <?php
+                                // Prize-category autocomplete suggestions — drawn from any age brackets
+                                // the organiser has defined, plus a few common defaults so the dropdown
+                                // is never empty.
+                                $cw_prize_cat_suggestions = [];
+                                foreach ( (array) $existing_age_brackets as $b ) {
+                                    if ( is_array( $b ) && ! empty( $b['label'] ) ) {
+                                        $cw_prize_cat_suggestions[] = (string) $b['label'];
+                                    }
+                                }
+                                $cw_prize_cat_suggestions = array_values( array_unique( array_filter( array_merge(
+                                    $cw_prize_cat_suggestions,
+                                    [ 'Primary', 'Secondary', 'Open', 'Grand Prize', 'People\'s Choice' ]
+                                ) ) ) );
+                                ?>
+                                <datalist id="cw-prize-categories-dl">
+                                    <?php foreach ( $cw_prize_cat_suggestions as $cw_sug ): ?>
+                                    <option value="<?php echo esc_attr( $cw_sug ); ?>"></option>
+                                    <?php endforeach; ?>
+                                </datalist>
                                 <div id="cw-prize-container">
                                     <?php $idx=0; if($existing_prizes) foreach($existing_prizes as $p){ if(!is_array($p))continue; ?>
-                                    <div class="cww-rep-row">
-                                        <input type="text" name="cw_prizes[<?php echo $idx; ?>][prize_title]" value="<?php echo esc_attr($p['prize_title']??''); ?>" placeholder="Prize Title (e.g. 1st Place)">
+                                    <div class="cww-rep-row cww-rep-row-prize">
+                                        <input type="text" name="cw_prizes[<?php echo $idx; ?>][prize_title]" value="<?php echo esc_attr($p['prize_title']??''); ?>" placeholder="Prize Title (e.g. Champion)">
+                                        <input type="text" name="cw_prizes[<?php echo $idx; ?>][prize_category]" value="<?php echo esc_attr($p['prize_category']??''); ?>" placeholder="Category (e.g. Primary)" list="cw-prize-categories-dl">
+                                        <select name="cw_prizes[<?php echo $idx; ?>][prize_position]" class="cww-rep-pos">
+                                            <?php
+                                                $cw_pos_val = (string) ( $p['prize_position'] ?? '' );
+                                                $cw_pos_opts = [
+                                                    ''             => '— Position —',
+                                                    'champion'     => 'Champion (Trophy)',
+                                                    'runner_up_1'  => '1st Runner-Up (Ribbon 2)',
+                                                    'runner_up_2'  => '2nd Runner-Up (Ribbon 3)',
+                                                    'honorable'    => 'Honorable Mention',
+                                                    'participation'=> 'Participation',
+                                                    'custom'       => 'Other / Custom',
+                                                ];
+                                                foreach ( $cw_pos_opts as $cw_pk => $cw_pl ) {
+                                                    printf(
+                                                        '<option value="%s"%s>%s</option>',
+                                                        esc_attr( $cw_pk ),
+                                                        selected( $cw_pos_val, $cw_pk, false ),
+                                                        esc_html( $cw_pl )
+                                                    );
+                                                }
+                                            ?>
+                                        </select>
                                         <input type="text" name="cw_prizes[<?php echo $idx; ?>][prize_description]" value="<?php echo esc_attr($p['prize_description']??''); ?>" placeholder="Description (e.g. RM 1,000 cash)">
                                         <button type="button" class="cww-rep-del" onclick="this.closest('.cww-rep-row').remove()"><i class="fas fa-times"></i></button>
                                     </div>
                                     <?php $idx++; } ?>
                                 </div>
                                 <button type="button" class="cww-rep-add" onclick="addPrizeRow()"><i class="fas fa-plus"></i> Add Prize</button>
+
+                                <!-- ── Downloadable participant template ──────────────
+                                     Lets organisers attach ONE source file (PSD / AI /
+                                     PDF / ZIP / PNG / SVG / etc.) that participants
+                                     download from the campaign page before submitting.
+                                     Stored as a single attachment id under
+                                     `cw_template_file_id`; the display label and the
+                                     direct URL surface on the public detail page. -->
+                                <?php
+                                    $cw_tpl_id    = (int) $val('cw_template_file_id');
+                                    $cw_tpl_label = $val('cw_template_label');
+                                    if ( $cw_tpl_label === '' ) {
+                                        $cw_tpl_label = 'Download Template';
+                                    }
+                                    $cw_tpl_url   = $cw_tpl_id ? (string) wp_get_attachment_url( $cw_tpl_id ) : '';
+                                    $cw_tpl_name  = $cw_tpl_id ? basename( (string) get_attached_file( $cw_tpl_id ) ) : '';
+                                    $cw_tpl_size  = '';
+                                    if ( $cw_tpl_id ) {
+                                        $cw_tpl_path = (string) get_attached_file( $cw_tpl_id );
+                                        if ( $cw_tpl_path && file_exists( $cw_tpl_path ) ) {
+                                            $cw_tpl_size = size_format( (int) filesize( $cw_tpl_path ), 2 );
+                                        }
+                                    }
+                                ?>
+                                <p class="cw-mini-head" style="margin-top:28px;">Participant Template <small style="font-weight:400;color:var(--cw-text-soft);">(optional)</small></p>
+                                <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 8px;">
+                                    Attach a downloadable template participants can use before submitting their entry &mdash; e.g. a print-ready <strong>PSD / AI / EPS / PDF / SVG</strong> or a <strong>ZIP</strong> bundle of assets. Only one file per campaign.
+                                </p>
+                                <div class="cw-field cw-template-field" id="cw-template-upload-box">
+                                    <div class="cw-form-row-2" style="gap:12px;align-items:end;">
+                                        <div class="cw-field" style="margin:0;">
+                                            <label>Download button label</label>
+                                            <input type="text" name="cw_template_label" class="cw-input-dark"
+                                                value="<?php echo esc_attr( $cw_tpl_label ); ?>"
+                                                placeholder="Download Template" maxlength="80">
+                                        </div>
+                                        <div class="cw-field" style="margin:0;">
+                                            <label>Upload file (ZIP / PNG / JPG / PDF / AI / EPS / PSD / SVG)</label>
+                                            <input type="file" name="cw_template_file"
+                                                accept=".zip,.png,.jpg,.jpeg,.pdf,.ai,.eps,.psd,.svg,application/zip,application/x-zip-compressed,application/pdf,image/png,image/jpeg,image/svg+xml,application/postscript,application/illustrator,image/vnd.adobe.photoshop">
+                                        </div>
+                                    </div>
+
+                                    <!-- Hidden ids let the save handler tell apart
+                                         "nothing changed" from "user pressed Remove" -->
+                                    <input type="hidden" name="cw_template_file_id_current" value="<?php echo (int) $cw_tpl_id; ?>">
+                                    <input type="hidden" name="cw_template_remove" id="cw_template_remove_flag" value="0">
+
+                                    <?php if ( $cw_tpl_id && $cw_tpl_url ): ?>
+                                    <div class="cw-template-current" style="margin-top:10px;padding:10px 12px;border:1px solid var(--cw-border);border-radius:8px;background:var(--cw-bg);display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;">
+                                        <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+                                            <i class="fas fa-paperclip" style="color:var(--cw-primary);"></i>
+                                            <a href="<?php echo esc_url( $cw_tpl_url ); ?>" target="_blank" rel="noopener" style="font-weight:600;color:var(--cw-text);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42ch;" title="<?php echo esc_attr( $cw_tpl_name ); ?>">
+                                                <?php echo esc_html( $cw_tpl_name ?: 'Current template' ); ?>
+                                            </a>
+                                            <?php if ( $cw_tpl_size ): ?>
+                                            <small style="color:var(--cw-text-soft);font-size:11px;">(<?php echo esc_html( $cw_tpl_size ); ?>)</small>
+                                            <?php endif; ?>
+                                        </div>
+                                        <button type="button" class="cw-template-remove-btn"
+                                            onclick="document.getElementById('cw_template_remove_flag').value='1';this.closest('.cw-template-current').remove();"
+                                            style="background:#fff;border:1px solid var(--cw-border);border-radius:6px;padding:6px 10px;font-size:12px;color:#94a3b8;cursor:pointer;">
+                                            <i class="fas fa-trash"></i> Remove
+                                        </button>
+                                    </div>
+                                    <small style="display:block;margin-top:6px;font-size:11px;color:var(--cw-text-soft);">
+                                        Tip: upload a new file above to replace this one, or hit Remove to delete it entirely.
+                                    </small>
+                                    <?php else: ?>
+                                    <small style="display:block;margin-top:6px;font-size:11px;color:var(--cw-text-soft);">
+                                        Max ~25&nbsp;MB. The file is hosted in the WordPress media library and exposed as a direct download link on the campaign page.
+                                    </small>
+                                    <?php endif; ?>
+                                </div>
                             </div>
 
                             <!-- ════════════ STEP 4: SDG & EXTRAS ════════════ -->
@@ -1152,8 +1309,18 @@ class CW_Business_Form {
             window.addPrizeRow = function() {
                 const id = Date.now();
                 document.getElementById('cw-prize-container').insertAdjacentHTML('beforeend',
-                    `<div class="cww-rep-row">
-                        <input type="text" name="cw_prizes[${id}][prize_title]" placeholder="Prize Title (e.g. 1st Place)">
+                    `<div class="cww-rep-row cww-rep-row-prize">
+                        <input type="text" name="cw_prizes[${id}][prize_title]" placeholder="Prize Title (e.g. Champion)">
+                        <input type="text" name="cw_prizes[${id}][prize_category]" placeholder="Category (e.g. Primary)" list="cw-prize-categories-dl">
+                        <select name="cw_prizes[${id}][prize_position]" class="cww-rep-pos">
+                            <option value="">— Position —</option>
+                            <option value="champion">Champion (Trophy)</option>
+                            <option value="runner_up_1">1st Runner-Up (Ribbon 2)</option>
+                            <option value="runner_up_2">2nd Runner-Up (Ribbon 3)</option>
+                            <option value="honorable">Honorable Mention</option>
+                            <option value="participation">Participation</option>
+                            <option value="custom">Other / Custom</option>
+                        </select>
                         <input type="text" name="cw_prizes[${id}][prize_description]" placeholder="Description (e.g. RM 1,000 cash)">
                         <button type="button" class="cww-rep-del" onclick="this.closest('.cww-rep-row').remove()"><i class="fas fa-times"></i></button>
                     </div>`

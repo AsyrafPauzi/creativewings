@@ -28,10 +28,13 @@ class CW_Design_Submission {
     const META_VARIANTS        = 'cw_design_variants';
     const META_DEFAULT_VARIANT = 'cw_design_default_variant';
 
-    const CART_FLAG       = 'cw_design_enabled';
-    const CART_ARTWORK_ID = 'cw_design_artwork_id';
-    const CART_SOURCE_ID  = 'cw_design_source_id';
-    const CART_VARIANT    = 'cw_design_variant';
+    const CART_FLAG        = 'cw_design_enabled';
+    const CART_ARTWORK_ID  = 'cw_design_artwork_id';   // legacy singular (kept = artwork at slot 1)
+    const CART_SOURCE_ID   = 'cw_design_source_id';    // legacy singular
+    const CART_VARIANT     = 'cw_design_variant';      // legacy singular
+    const CART_ARTWORK_IDS = 'cw_design_artwork_ids';  // NEW: array keyed by row num (1, 2, …)
+    const CART_SOURCE_IDS  = 'cw_design_source_ids';   // NEW: array keyed by row num
+    const CART_VARIANTS    = 'cw_design_variants_per'; // NEW: array of variant slugs keyed by row num
 
     const ENTRY_ARTWORK = 'cw_design_artwork_id';
     const ENTRY_SOURCE  = 'cw_design_source_id';
@@ -82,8 +85,14 @@ class CW_Design_Submission {
             add_action( 'woocommerce_after_order_notes', [ $this, 'render_checkout_picker' ] );
             add_action( 'woocommerce_checkout_process', [ $this, 'validate_checkout' ] );
 
+            // Post-payment mockup: shows the locked-in artwork-on-casing
+            // preview with a per-slot "Download mockup PNG" button on
+            // both the order-received (thank-you) page AND the My-Account
+            // → Orders → View Order page (same hook fires on both).
+            add_action( 'woocommerce_order_details_after_order_table', [ $this, 'render_order_mockups' ], 30, 1 );
+
             // Copy from order line to entry CPT after CW_Shop creates entries.
-            add_action( 'cw_entry_created_from_order', [ $this, 'copy_to_entry' ], 10, 3 );
+            add_action( 'cw_entry_created_from_order', [ $this, 'copy_to_entry' ], 10, 4 );
         }
 
         // Assets — campaign page (upload) + checkout (picker).
@@ -99,6 +108,26 @@ class CW_Design_Submission {
      */
     public static function is_enabled( $product_id ) {
         return 'yes' === get_post_meta( (int) $product_id, self::META_ENABLE, true );
+    }
+
+    /**
+     * Multi-design = Design Submission enabled AND the campaign allows multiple
+     * entries per cart line (competition `multiple_submissions=true` OR
+     * activity `cw_allow_multiple_participants=yes`). In that case each
+     * participant row uploads its own PNG + picks its own variant.
+     */
+    public static function is_multi_design( $product_id ) {
+        $product_id = (int) $product_id;
+        if ( ! self::is_enabled( $product_id ) ) {
+            return false;
+        }
+        if ( get_post_meta( $product_id, 'multiple_submissions', true ) === 'true' ) {
+            return true;
+        }
+        if ( get_post_meta( $product_id, 'cw_allow_multiple_participants', true ) === 'yes' ) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -128,6 +157,71 @@ class CW_Design_Submission {
             'height'   => max( 1, (int) get_post_meta( $product_id, self::META_HEIGHT, true ) ),
             'variants' => $variants,
             'default'  => $default,
+        ];
+    }
+
+    /**
+     * Build a "mockup config" describing how to composite a competition
+     * entry's PNG onto the casing variant it was submitted with. Used by
+     * the business judging dashboard (entry cards, evaluation modal, and
+     * a shared lightbox) so judges see the participant's design exactly
+     * as it'll be printed on the product.
+     *
+     * Returns null when the entry isn't a design-submission entry (no
+     * artwork id, missing variant config, or the source campaign has no
+     * variants). In that case the dashboard falls back to its existing
+     * plain image preview.
+     *
+     * @param int $entry_id  cw_competition_entry post id
+     * @return array|null    [ artwork_url, variant_url, variant_name,
+     *                        variant_slug, width, height, art_filename ]
+     */
+    public static function entry_mockup_data( $entry_id ) {
+        $entry_id = (int) $entry_id;
+        if ( ! $entry_id ) return null;
+
+        $art_id = (int) get_post_meta( $entry_id, self::ENTRY_ARTWORK, true );
+        if ( $art_id <= 0 ) {
+            return null;
+        }
+
+        $product_id = (int) get_post_meta( $entry_id, 'product_id', true );
+        if ( ! $product_id || ! self::is_enabled( $product_id ) ) {
+            return null;
+        }
+
+        $cfg = self::get_config( $product_id );
+        if ( empty( $cfg['variants'] ) ) {
+            return null;
+        }
+
+        $slug = (string) get_post_meta( $entry_id, self::ENTRY_VARIANT, true );
+        if ( $slug === '' ) {
+            $slug = (string) $cfg['default'];
+        }
+        $variant = self::get_variant( $product_id, $slug );
+        if ( ! $variant ) {
+            // Fall back to the first variant so we still produce a mockup
+            // rather than silently degrading to plain artwork.
+            $variant = $cfg['variants'][0];
+            $variant['image_url'] = isset( $variant['attachment_id'] ) ? (string) wp_get_attachment_url( (int) $variant['attachment_id'] ) : '';
+            $slug = (string) ( $variant['slug'] ?? $slug );
+        }
+
+        $art_url = (string) wp_get_attachment_url( $art_id );
+        if ( $art_url === '' ) {
+            return null;
+        }
+        $art_path = (string) get_attached_file( $art_id );
+
+        return [
+            'artwork_url'  => $art_url,
+            'art_filename' => $art_path ? basename( $art_path ) : '',
+            'variant_url'  => (string) ( $variant['image_url'] ?? '' ),
+            'variant_name' => (string) ( $variant['name'] ?? $slug ),
+            'variant_slug' => $slug,
+            'width'        => max( 1, (int) $cfg['width'] ),
+            'height'       => max( 1, (int) $cfg['height'] ),
         ];
     }
 
@@ -518,6 +612,9 @@ class CW_Design_Submission {
 
         $product_id = isset( $_POST['product_id'] ) ? (int) $_POST['product_id'] : 0;
         $role       = isset( $_POST['role'] ) ? sanitize_key( wp_unslash( $_POST['role'] ) ) : 'artwork';
+        // `slot` lets a multi-design campaign upload one PNG per participant row.
+        // 0 (or missing) keeps the legacy single-design behaviour intact.
+        $slot       = isset( $_POST['slot'] ) ? max( 0, (int) $_POST['slot'] ) : 0;
 
         if ( $product_id <= 0 || ! self::is_enabled( $product_id ) ) {
             wp_send_json_error( [ 'message' => __( 'This campaign does not accept design submissions.', 'creativewings-core' ) ] );
@@ -622,9 +719,10 @@ class CW_Design_Submission {
 
         // Track in WC session so we can pull it into cart-item-data on
         // add-to-cart. Mirrors the pattern CW_Ajax::handle_dynamic_file_upload
-        // uses for the existing custom-fields uploader.
+        // uses for the existing custom-fields uploader. For multi-design the
+        // slot suffix lets us stash one attachment per participant row.
         if ( function_exists( 'WC' ) && WC()->session ) {
-            $session_key = self::session_key( $product_id, $role );
+            $session_key = self::session_key( $product_id, $role, $slot );
             WC()->session->set( $session_key, (int) $attachment_id );
         }
 
@@ -632,11 +730,22 @@ class CW_Design_Submission {
             'attach_id' => (int) $attachment_id,
             'url'       => wp_get_attachment_url( $attachment_id ),
             'role'      => $role,
+            'slot'      => $slot,
         ] );
     }
 
-    private static function session_key( $product_id, $role ) {
-        return 'cw_design_' . sanitize_key( $role ) . '_' . (int) $product_id;
+    /**
+     * Session key for a per-product, per-role, optionally per-slot upload stash.
+     * Slot 0 (or omitted) preserves the legacy single-design key so existing
+     * sessions stay valid.
+     */
+    private static function session_key( $product_id, $role, $slot = 0 ) {
+        $key = 'cw_design_' . sanitize_key( $role ) . '_' . (int) $product_id;
+        $slot = (int) $slot;
+        if ( $slot > 0 ) {
+            $key .= '_s' . $slot;
+        }
+        return $key;
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -647,13 +756,39 @@ class CW_Design_Submission {
      * Modal-context entrypoint: receives the product id explicitly because the
      * `[cw_event_detail]` shortcode invokes us outside a WC product template
      * (no `global $product`).
+     *
+     * For multi-design campaigns we render NOTHING here — the modal JS injects
+     * a per-row uploader inside each participant row using the template
+     * returned by `widget_template_for_slot()`.
      */
     public function render_upload_fields_for_product( $product_id ) {
         $product_id = (int) $product_id;
         if ( ! $product_id || ! self::is_enabled( $product_id ) ) {
             return;
         }
-        $this->print_upload_html( $product_id );
+        if ( self::is_multi_design( $product_id ) ) {
+            $cfg = self::get_config( $product_id );
+            ?>
+            <div class="cw-design-multi-banner">
+                <p class="cw-design-multi-banner__title">
+                    <i class="fas fa-image" aria-hidden="true"></i>
+                    <?php esc_html_e( 'Each participant uploads their own design', 'creativewings-core' ); ?>
+                </p>
+                <p class="cw-design-multi-banner__hint">
+                    <?php
+                    printf(
+                        /* translators: 1: width, 2: height */
+                        esc_html__( 'Use the upload field inside each participant row below. PNG only, exactly %1$d x %2$d pixels per design.', 'creativewings-core' ),
+                        (int) $cfg['width'],
+                        (int) $cfg['height']
+                    );
+                    ?>
+                </p>
+            </div>
+            <?php
+            return;
+        }
+        self::print_upload_html( $product_id, 0 );
     }
 
     public function render_upload_fields() {
@@ -665,23 +800,67 @@ class CW_Design_Submission {
         if ( ! self::is_enabled( $product_id ) ) {
             return;
         }
-        $this->print_upload_html( (int) $product_id );
+        self::print_upload_html( (int) $product_id, 0 );
     }
 
-    private function print_upload_html( $product_id ) {
-        $cfg = self::get_config( $product_id );
-        $art_session    = self::session_key( $product_id, 'artwork' );
-        $source_session = self::session_key( $product_id, 'source' );
-        $art_id    = ( function_exists( 'WC' ) && WC()->session ) ? (int) WC()->session->get( $art_session ) : 0;
-        $source_id = ( function_exists( 'WC' ) && WC()->session ) ? (int) WC()->session->get( $source_session ) : 0;
-        ?>
-        <div class="cw-design-upload" data-product-id="<?php echo (int) $product_id; ?>"
-             data-width="<?php echo (int) $cfg['width']; ?>"
-             data-height="<?php echo (int) $cfg['height']; ?>">
+    /**
+     * Builds an HTML template string for ONE per-row upload widget, with the
+     * literal `{SLOT}` placeholder where the row number should be substituted
+     * at JS injection time. Returned to PHP (then JSON-encoded into the modal
+     * config) so the modal's `cwdBuildRow(num)` can plug it into every row.
+     */
+    public static function widget_template_for_slot( $product_id ) {
+        $product_id = (int) $product_id;
+        if ( ! $product_id || ! self::is_enabled( $product_id ) ) {
+            return '';
+        }
+        ob_start();
+        self::print_upload_html( $product_id, '__SLOT__' );
+        return ob_get_clean();
+    }
 
-            <h3 class="cw-design-upload__title">
-                <?php esc_html_e( 'Submit your design', 'creativewings-core' ); ?>
-            </h3>
+    /**
+     * @param int            $product_id
+     * @param int|string|0   $slot   0 = legacy single (uses singular field names)
+     *                               int >= 1 = multi (uses cw_design_artwork_ids[N])
+     *                               '__SLOT__' = template-string placeholder (replaced
+     *                               in JS); treated as multi-mode for markup purposes.
+     */
+    private static function print_upload_html( $product_id, $slot = 0 ) {
+        $cfg          = self::get_config( $product_id );
+        $is_template  = ( $slot === '__SLOT__' );
+        $is_multi     = $is_template || ( is_int( $slot ) && $slot >= 1 );
+
+        // Session-stored attachments — only meaningful for the legacy (non-multi)
+        // path; the multi-flow always starts fresh per row because slots aren't
+        // known until the modal opens.
+        $art_id = $source_id = 0;
+        if ( ! $is_multi && function_exists( 'WC' ) && WC()->session ) {
+            $art_id    = (int) WC()->session->get( self::session_key( $product_id, 'artwork' ) );
+            $source_id = (int) WC()->session->get( self::session_key( $product_id, 'source' ) );
+        }
+
+        // Field naming: arrays for multi, singular for legacy single-design.
+        $artwork_name = $is_multi
+            ? self::CART_ARTWORK_IDS . '[' . ( $is_template ? '{SLOT}' : (int) $slot ) . ']'
+            : self::CART_ARTWORK_ID;
+        $source_name  = $is_multi
+            ? self::CART_SOURCE_IDS . '[' . ( $is_template ? '{SLOT}' : (int) $slot ) . ']'
+            : self::CART_SOURCE_ID;
+        $slot_attr    = $is_template ? '{SLOT}' : (int) $slot;
+
+        $title = $is_multi
+            ? sprintf( __( 'Submit design for Participant %s', 'creativewings-core' ), $is_template ? '{SLOT}' : (string) $slot )
+            : __( 'Submit your design', 'creativewings-core' );
+        ?>
+        <div class="cw-design-upload<?php echo $is_multi ? ' is-per-row' : ''; ?>"
+             data-product-id="<?php echo (int) $product_id; ?>"
+             data-width="<?php echo (int) $cfg['width']; ?>"
+             data-height="<?php echo (int) $cfg['height']; ?>"
+             data-slot="<?php echo esc_attr( $slot_attr ); ?>">
+
+            <?php if ( ! $is_multi ) : ?>
+            <h3 class="cw-design-upload__title"><?php echo esc_html( $title ); ?></h3>
             <p class="cw-design-upload__intro">
                 <?php
                 printf(
@@ -692,6 +871,9 @@ class CW_Design_Submission {
                 );
                 ?>
             </p>
+            <?php else : ?>
+            <h4 class="cw-design-upload__title cw-design-upload__title--row"><?php echo esc_html( $title ); ?></h4>
+            <?php endif; ?>
 
             <div class="cw-design-upload__row">
                 <label class="cw-design-upload__label">
@@ -699,7 +881,7 @@ class CW_Design_Submission {
                     <span class="cw-design-required">*</span>
                 </label>
                 <input type="file" accept="image/png" class="cw-design-file" data-role="artwork">
-                <input type="hidden" name="<?php echo esc_attr( self::CART_ARTWORK_ID ); ?>" value="<?php echo esc_attr( $art_id ); ?>" class="cw-design-aid" data-role="artwork">
+                <input type="hidden" name="<?php echo esc_attr( $artwork_name ); ?>" value="<?php echo esc_attr( $art_id ); ?>" class="cw-design-aid" data-role="artwork">
                 <div class="cw-design-feedback" data-role="artwork" aria-live="polite">
                     <?php if ( $art_id ) : ?>
                         <span class="cw-design-feedback__ok">
@@ -708,6 +890,13 @@ class CW_Design_Submission {
                         </span>
                     <?php endif; ?>
                 </div>
+                <?php if ( $is_multi && ! $is_template ) : /* row >= 2: offer prefill from row 1 */ ?>
+                <?php if ( (int) $slot >= 2 ) : ?>
+                <button type="button" class="cw-design-prefill-btn" data-fill-from-slot="1">
+                    <i class="fas fa-clone" aria-hidden="true"></i> <?php esc_html_e( 'Use same artwork as participant 1', 'creativewings-core' ); ?>
+                </button>
+                <?php endif; ?>
+                <?php endif; ?>
             </div>
 
             <div class="cw-design-upload__row">
@@ -715,7 +904,7 @@ class CW_Design_Submission {
                     <?php esc_html_e( 'Source file (AI / PDF / SVG / EPS) — optional', 'creativewings-core' ); ?>
                 </label>
                 <input type="file" accept=".ai,.pdf,.svg,.eps,application/postscript,application/illustrator,application/pdf,image/svg+xml" class="cw-design-file" data-role="source">
-                <input type="hidden" name="<?php echo esc_attr( self::CART_SOURCE_ID ); ?>" value="<?php echo esc_attr( $source_id ); ?>" class="cw-design-aid" data-role="source">
+                <input type="hidden" name="<?php echo esc_attr( $source_name ); ?>" value="<?php echo esc_attr( $source_id ); ?>" class="cw-design-aid" data-role="source">
                 <div class="cw-design-feedback" data-role="source" aria-live="polite">
                     <?php if ( $source_id ) : ?>
                         <span class="cw-design-feedback__ok">
@@ -724,10 +913,21 @@ class CW_Design_Submission {
                         </span>
                     <?php endif; ?>
                 </div>
+                <?php if ( ! $is_multi ) : ?>
                 <p class="cw-design-hint">
                     <?php esc_html_e( 'Optional but recommended. Helps the printer reproduce your design at the highest quality.', 'creativewings-core' ); ?>
                 </p>
+                <?php endif; ?>
             </div>
+
+            <?php
+            // For the JS template version, add prefill button as a one-off that
+            // appears only on rows >= 2 (the JS branches on slot at injection).
+            if ( $is_template ) : ?>
+            <button type="button" class="cw-design-prefill-btn cw-design-prefill-btn--template" data-fill-from-slot="1" style="display:none;">
+                <i class="fas fa-clone" aria-hidden="true"></i> <?php esc_html_e( 'Use same artwork as participant 1', 'creativewings-core' ); ?>
+            </button>
+            <?php endif; ?>
         </div>
         <?php
     }
@@ -737,7 +937,86 @@ class CW_Design_Submission {
     // ─────────────────────────────────────────────────────────────────────
 
     /**
-     * Block add-to-cart if the participant hasn't uploaded a PNG yet.
+     * Read the artwork/source attachment IDs the participant POSTed (or stashed
+     * in session) for the given product. Returns slot-keyed arrays:
+     *
+     *   [
+     *     'artworks' => [ 1 => 123, 2 => 456, … ],
+     *     'sources'  => [ 1 => 789, 2 => 0,   … ],
+     *   ]
+     *
+     * For multi-design campaigns the modal sends `cw_design_artwork_ids[N]`.
+     * For legacy single-design (standard WC product page) it sends the
+     * singular `cw_design_artwork_id` — that gets remapped to slot 1.
+     */
+    private static function collect_posted_uploads( $product_id ) {
+        $product_id = (int) $product_id;
+        $artworks   = [];
+        $sources    = [];
+
+        // ── Multi: indexed arrays
+        if ( isset( $_POST[ self::CART_ARTWORK_IDS ] ) && is_array( $_POST[ self::CART_ARTWORK_IDS ] ) ) {
+            foreach ( wp_unslash( $_POST[ self::CART_ARTWORK_IDS ] ) as $slot => $aid ) {
+                $slot = (int) $slot;
+                $aid  = (int) $aid;
+                if ( $slot >= 1 && $aid > 0 ) {
+                    $artworks[ $slot ] = $aid;
+                }
+            }
+        }
+        if ( isset( $_POST[ self::CART_SOURCE_IDS ] ) && is_array( $_POST[ self::CART_SOURCE_IDS ] ) ) {
+            foreach ( wp_unslash( $_POST[ self::CART_SOURCE_IDS ] ) as $slot => $sid ) {
+                $slot = (int) $slot;
+                $sid  = (int) $sid;
+                if ( $slot >= 1 && $sid > 0 ) {
+                    $sources[ $slot ] = $sid;
+                }
+            }
+        }
+
+        // ── Session fallback for slots the POST might have missed (e.g. JS
+        //    didn't rehydrate the hidden field after AJAX). Walk slots 1..50.
+        if ( function_exists( 'WC' ) && WC()->session ) {
+            for ( $slot = 1; $slot <= 50; $slot++ ) {
+                if ( empty( $artworks[ $slot ] ) ) {
+                    $sid = (int) WC()->session->get( self::session_key( $product_id, 'artwork', $slot ) );
+                    if ( $sid > 0 ) $artworks[ $slot ] = $sid;
+                }
+                if ( empty( $sources[ $slot ] ) ) {
+                    $sid2 = (int) WC()->session->get( self::session_key( $product_id, 'source', $slot ) );
+                    if ( $sid2 > 0 ) $sources[ $slot ] = $sid2;
+                }
+            }
+        }
+
+        // ── Legacy single-design fallback
+        if ( empty( $artworks ) ) {
+            $single = isset( $_POST[ self::CART_ARTWORK_ID ] ) ? (int) $_POST[ self::CART_ARTWORK_ID ] : 0;
+            if ( ! $single && function_exists( 'WC' ) && WC()->session ) {
+                $single = (int) WC()->session->get( self::session_key( $product_id, 'artwork' ) );
+            }
+            if ( $single > 0 ) {
+                $artworks[1] = $single;
+            }
+        }
+        if ( empty( $sources ) ) {
+            $single_src = isset( $_POST[ self::CART_SOURCE_ID ] ) ? (int) $_POST[ self::CART_SOURCE_ID ] : 0;
+            if ( ! $single_src && function_exists( 'WC' ) && WC()->session ) {
+                $single_src = (int) WC()->session->get( self::session_key( $product_id, 'source' ) );
+            }
+            if ( $single_src > 0 ) {
+                $sources[1] = $single_src;
+            }
+        }
+
+        ksort( $artworks );
+        ksort( $sources );
+        return [ 'artworks' => $artworks, 'sources' => $sources ];
+    }
+
+    /**
+     * Block add-to-cart if any required PNG slot is missing.
+     * For multi-design: every participant row must have a PNG.
      */
     public function validate_cart_addition( $passed, $product_id, $qty, $variation_id = 0, $variations = [], $cart_item_data = [] ) {
         if ( ! self::is_enabled( $product_id ) ) {
@@ -748,15 +1027,33 @@ class CW_Design_Submission {
             return $passed;
         }
 
-        $art_id    = isset( $_POST[ self::CART_ARTWORK_ID ] ) ? (int) $_POST[ self::CART_ARTWORK_ID ] : 0;
-        $session_k = self::session_key( (int) $product_id, 'artwork' );
-        if ( ! $art_id && function_exists( 'WC' ) && WC()->session ) {
-            $art_id = (int) WC()->session->get( $session_k );
-        }
+        $uploads  = self::collect_posted_uploads( (int) $product_id );
+        $artworks = $uploads['artworks'];
 
-        if ( $art_id <= 0 ) {
+        if ( empty( $artworks ) ) {
             wc_add_notice( __( 'Please upload your artwork PNG before joining.', 'creativewings-core' ), 'error' );
             return false;
+        }
+
+        // Multi-design: every participant row must have its own PNG.
+        if ( self::is_multi_design( (int) $product_id ) ) {
+            $names = isset( $_POST['cw_names'] ) && is_array( $_POST['cw_names'] ) ? wp_unslash( $_POST['cw_names'] ) : [];
+            $count = count( $names );
+            if ( $count > 1 ) {
+                for ( $slot = 1; $slot <= $count; $slot++ ) {
+                    if ( empty( $artworks[ $slot ] ) ) {
+                        wc_add_notice(
+                            sprintf(
+                                /* translators: %d row number */
+                                __( 'Please upload an artwork PNG for participant %d.', 'creativewings-core' ),
+                                $slot
+                            ),
+                            'error'
+                        );
+                        return false;
+                    }
+                }
+            }
         }
         return $passed;
     }
@@ -769,37 +1066,45 @@ class CW_Design_Submission {
             return $cart_item_data; // School / claim path doesn't go through the upload form.
         }
 
-        $art_id    = isset( $_POST[ self::CART_ARTWORK_ID ] ) ? (int) $_POST[ self::CART_ARTWORK_ID ] : 0;
-        $source_id = isset( $_POST[ self::CART_SOURCE_ID ] ) ? (int) $_POST[ self::CART_SOURCE_ID ] : 0;
+        $uploads  = self::collect_posted_uploads( (int) $product_id );
+        $artworks = $uploads['artworks'];
+        $sources  = $uploads['sources'];
 
-        if ( ! $art_id && function_exists( 'WC' ) && WC()->session ) {
-            $art_id = (int) WC()->session->get( self::session_key( (int) $product_id, 'artwork' ) );
-        }
-        if ( ! $source_id && function_exists( 'WC' ) && WC()->session ) {
-            $source_id = (int) WC()->session->get( self::session_key( (int) $product_id, 'source' ) );
-        }
-
-        if ( $art_id <= 0 ) {
+        if ( empty( $artworks ) ) {
             return $cart_item_data;
         }
 
-        $cart_item_data[ self::CART_FLAG ]       = 'yes';
-        $cart_item_data[ self::CART_ARTWORK_ID ] = $art_id;
-        $cart_item_data[ self::CART_SOURCE_ID ]  = $source_id;
+        $first_art = (int) reset( $artworks );
+        $first_src = ! empty( $sources ) ? (int) reset( $sources ) : 0;
+
+        $cart_item_data[ self::CART_FLAG ]        = 'yes';
+        $cart_item_data[ self::CART_ARTWORK_IDS ] = $artworks;
+        $cart_item_data[ self::CART_SOURCE_IDS ]  = $sources;
+        // Keep the singular keys populated with slot 1 so any third-party code /
+        // legacy display rendering that reads them keeps working.
+        $cart_item_data[ self::CART_ARTWORK_ID ]  = $first_art;
+        $cart_item_data[ self::CART_SOURCE_ID ]   = $first_src;
 
         // Clear the session keys so a subsequent visit doesn't pre-fill the
-        // form with this submission's attachment (mirrors the existing
-        // CW_Shop file-upload pattern).
+        // form with this submission's attachments.
         if ( function_exists( 'WC' ) && WC()->session ) {
             WC()->session->__unset( self::session_key( (int) $product_id, 'artwork' ) );
             WC()->session->__unset( self::session_key( (int) $product_id, 'source' ) );
+            for ( $slot = 1; $slot <= 50; $slot++ ) {
+                WC()->session->__unset( self::session_key( (int) $product_id, 'artwork', $slot ) );
+                WC()->session->__unset( self::session_key( (int) $product_id, 'source', $slot ) );
+            }
         }
 
         return $cart_item_data;
     }
 
     public function restore_cart_item_session( $cart_item, $values ) {
-        foreach ( [ self::CART_FLAG, self::CART_ARTWORK_ID, self::CART_SOURCE_ID, self::CART_VARIANT ] as $k ) {
+        foreach ( [
+            self::CART_FLAG,
+            self::CART_ARTWORK_ID, self::CART_SOURCE_ID, self::CART_VARIANT,
+            self::CART_ARTWORK_IDS, self::CART_SOURCE_IDS, self::CART_VARIANTS,
+        ] as $k ) {
             if ( isset( $values[ $k ] ) ) {
                 $cart_item[ $k ] = $values[ $k ];
             }
@@ -811,31 +1116,63 @@ class CW_Design_Submission {
         if ( empty( $cart_item[ self::CART_FLAG ] ) ) {
             return $item_data;
         }
-        if ( ! empty( $cart_item[ self::CART_ARTWORK_ID ] ) ) {
-            $url = (string) wp_get_attachment_url( (int) $cart_item[ self::CART_ARTWORK_ID ] );
+        $product_id = (int) ( $cart_item['product_id'] ?? 0 );
+
+        // Multi-design rendering: list each participant's artwork / variant
+        // on its own row. Falls back to the legacy singular display when only
+        // one slot exists (or for old cart items predating the array keys).
+        $artworks  = isset( $cart_item[ self::CART_ARTWORK_IDS ] ) && is_array( $cart_item[ self::CART_ARTWORK_IDS ] )
+            ? $cart_item[ self::CART_ARTWORK_IDS ]
+            : [];
+        $sources   = isset( $cart_item[ self::CART_SOURCE_IDS ] ) && is_array( $cart_item[ self::CART_SOURCE_IDS ] )
+            ? $cart_item[ self::CART_SOURCE_IDS ]
+            : [];
+        $variants  = isset( $cart_item[ self::CART_VARIANTS ] ) && is_array( $cart_item[ self::CART_VARIANTS ] )
+            ? $cart_item[ self::CART_VARIANTS ]
+            : [];
+        if ( empty( $artworks ) && ! empty( $cart_item[ self::CART_ARTWORK_ID ] ) ) {
+            $artworks = [ 1 => (int) $cart_item[ self::CART_ARTWORK_ID ] ];
+        }
+        if ( empty( $sources ) && ! empty( $cart_item[ self::CART_SOURCE_ID ] ) ) {
+            $sources = [ 1 => (int) $cart_item[ self::CART_SOURCE_ID ] ];
+        }
+        if ( empty( $variants ) && ! empty( $cart_item[ self::CART_VARIANT ] ) ) {
+            $variants = [ 1 => (string) $cart_item[ self::CART_VARIANT ] ];
+        }
+
+        $cfg       = self::get_config( $product_id );
+        $is_multi  = count( $artworks ) > 1;
+
+        foreach ( $artworks as $slot => $aid ) {
+            $url = (string) wp_get_attachment_url( (int) $aid );
             if ( $url ) {
                 $item_data[] = [
-                    'key'   => __( 'Artwork', 'creativewings-core' ),
+                    'key'   => $is_multi
+                        ? sprintf( __( 'Artwork #%d', 'creativewings-core' ), (int) $slot )
+                        : __( 'Artwork', 'creativewings-core' ),
                     'value' => '<a href="' . esc_url( $url ) . '" target="_blank" rel="noopener">' . esc_html__( 'View uploaded PNG', 'creativewings-core' ) . '</a>',
                 ];
             }
         }
-        if ( ! empty( $cart_item[ self::CART_SOURCE_ID ] ) ) {
-            $url = (string) wp_get_attachment_url( (int) $cart_item[ self::CART_SOURCE_ID ] );
+        foreach ( $sources as $slot => $sid ) {
+            $url = (string) wp_get_attachment_url( (int) $sid );
             if ( $url ) {
                 $item_data[] = [
-                    'key'   => __( 'Source file', 'creativewings-core' ),
+                    'key'   => $is_multi
+                        ? sprintf( __( 'Source file #%d', 'creativewings-core' ), (int) $slot )
+                        : __( 'Source file', 'creativewings-core' ),
                     'value' => '<a href="' . esc_url( $url ) . '" target="_blank" rel="noopener">' . esc_html__( 'View source file', 'creativewings-core' ) . '</a>',
                 ];
             }
         }
-        if ( ! empty( $cart_item[ self::CART_VARIANT ] ) ) {
-            $product_id = (int) ( $cart_item['product_id'] ?? 0 );
-            $variant    = self::get_variant( $product_id, (string) $cart_item[ self::CART_VARIANT ] );
+        foreach ( $variants as $slot => $vslug ) {
+            if ( $vslug === '' ) continue;
+            $variant = self::get_variant( $product_id, (string) $vslug );
             if ( $variant && ! empty( $variant['name'] ) ) {
-                $cfg = self::get_config( $product_id );
                 $item_data[] = [
-                    'key'   => $cfg['label'],
+                    'key'   => $is_multi
+                        ? sprintf( '%s #%d', $cfg['label'], (int) $slot )
+                        : $cfg['label'],
                     'value' => $variant['name'],
                 ];
             }
@@ -848,39 +1185,103 @@ class CW_Design_Submission {
             return;
         }
 
-        if ( ! empty( $values[ self::CART_ARTWORK_ID ] ) ) {
-            $item->add_meta_data( '_' . self::CART_ARTWORK_ID, (int) $values[ self::CART_ARTWORK_ID ] );
+        $product_id = (int) ( $values['product_id'] ?? 0 );
+        $cfg        = self::get_config( $product_id );
+
+        // ── Normalise to arrays so we always handle the multi-design shape.
+        $artworks = isset( $values[ self::CART_ARTWORK_IDS ] ) && is_array( $values[ self::CART_ARTWORK_IDS ] )
+            ? array_map( 'intval', $values[ self::CART_ARTWORK_IDS ] )
+            : [];
+        $sources  = isset( $values[ self::CART_SOURCE_IDS ] ) && is_array( $values[ self::CART_SOURCE_IDS ] )
+            ? array_map( 'intval', $values[ self::CART_SOURCE_IDS ] )
+            : [];
+        if ( empty( $artworks ) && ! empty( $values[ self::CART_ARTWORK_ID ] ) ) {
+            $artworks = [ 1 => (int) $values[ self::CART_ARTWORK_ID ] ];
         }
-        if ( ! empty( $values[ self::CART_SOURCE_ID ] ) ) {
-            $item->add_meta_data( '_' . self::CART_SOURCE_ID, (int) $values[ self::CART_SOURCE_ID ] );
+        if ( empty( $sources ) && ! empty( $values[ self::CART_SOURCE_ID ] ) ) {
+            $sources = [ 1 => (int) $values[ self::CART_SOURCE_ID ] ];
+        }
+        ksort( $artworks );
+        ksort( $sources );
+
+        // Singular keys = slot 1 for backwards compatibility with any tooling
+        // that reads them; array keys = full list (new entry copy path uses it).
+        if ( ! empty( $artworks ) ) {
+            $item->add_meta_data( '_' . self::CART_ARTWORK_ID,  (int) reset( $artworks ) );
+            $item->add_meta_data( '_' . self::CART_ARTWORK_IDS, wp_json_encode( $artworks ) );
+        }
+        if ( ! empty( $sources ) ) {
+            $item->add_meta_data( '_' . self::CART_SOURCE_ID,  (int) reset( $sources ) );
+            $item->add_meta_data( '_' . self::CART_SOURCE_IDS, wp_json_encode( $sources ) );
         }
 
-        // Variant is posted at checkout, keyed by cart_item_key so multi-line
-        // carts with different design campaigns work side-by-side.
-        $posted   = isset( $_POST[ self::CART_VARIANT ] ) ? wp_unslash( $_POST[ self::CART_VARIANT ] ) : null;
-        $chosen   = '';
-        if ( is_array( $posted ) ) {
-            $chosen = isset( $posted[ $cart_item_key ] ) ? sanitize_title( $posted[ $cart_item_key ] ) : '';
-        } elseif ( is_string( $posted ) && '' !== $posted ) {
-            // Fallback for single-line carts where the field renders without a key suffix.
-            $chosen = sanitize_title( $posted );
-        }
-        if ( '' === $chosen && ! empty( $values[ self::CART_VARIANT ] ) ) {
-            $chosen = sanitize_title( (string) $values[ self::CART_VARIANT ] );
-        }
-        if ( '' === $chosen ) {
-            $cfg = self::get_config( (int) ( $values['product_id'] ?? 0 ) );
-            $chosen = $cfg['default'];
+        // ── Variants: posted from checkout, keyed by cart_item_key. Each
+        //    cart line can be either:
+        //        $_POST['cw_design_variant'][cart_key]            = 'slug'         (single)
+        //        $_POST['cw_design_variant'][cart_key][slot]      = 'slug'         (multi)
+        $posted_root = isset( $_POST[ self::CART_VARIANT ] ) ? wp_unslash( $_POST[ self::CART_VARIANT ] ) : null;
+        $posted_for_line = null;
+        if ( is_array( $posted_root ) && isset( $posted_root[ $cart_item_key ] ) ) {
+            $posted_for_line = $posted_root[ $cart_item_key ];
+        } elseif ( is_string( $posted_root ) && '' !== $posted_root ) {
+            // Single-line legacy fallback.
+            $posted_for_line = $posted_root;
         }
 
-        if ( '' !== $chosen ) {
-            $item->add_meta_data( '_' . self::CART_VARIANT, $chosen );
-            $variant = self::get_variant( (int) ( $values['product_id'] ?? 0 ), $chosen );
-            if ( $variant && ! empty( $variant['name'] ) ) {
-                // Human-readable label on the order item (visible to admin in
-                // WooCommerce → Orders without needing custom rendering).
-                $cfg = self::get_config( (int) ( $values['product_id'] ?? 0 ) );
-                $item->add_meta_data( $cfg['label'], (string) $variant['name'] );
+        $variants_arr = []; // [ slot => slug ]
+        if ( is_array( $posted_for_line ) ) {
+            foreach ( $posted_for_line as $slot => $slug ) {
+                $slot = (int) $slot;
+                $slug = sanitize_title( (string) $slug );
+                if ( $slot >= 1 && $slug !== '' ) {
+                    $variants_arr[ $slot ] = $slug;
+                }
+            }
+        } elseif ( is_string( $posted_for_line ) && $posted_for_line !== '' ) {
+            $variants_arr[1] = sanitize_title( $posted_for_line );
+        }
+
+        // Fall back to whatever was already on the cart line (kept across page loads).
+        if ( empty( $variants_arr ) && isset( $values[ self::CART_VARIANTS ] ) && is_array( $values[ self::CART_VARIANTS ] ) ) {
+            foreach ( $values[ self::CART_VARIANTS ] as $slot => $slug ) {
+                $slot = (int) $slot;
+                $slug = sanitize_title( (string) $slug );
+                if ( $slot >= 1 && $slug !== '' ) {
+                    $variants_arr[ $slot ] = $slug;
+                }
+            }
+        }
+        if ( empty( $variants_arr ) && ! empty( $values[ self::CART_VARIANT ] ) ) {
+            $variants_arr[1] = sanitize_title( (string) $values[ self::CART_VARIANT ] );
+        }
+
+        // Last-resort: default variant for every artwork slot we collected.
+        if ( empty( $variants_arr ) && $cfg['default'] !== '' ) {
+            foreach ( $artworks as $slot => $_aid ) {
+                $variants_arr[ $slot ] = $cfg['default'];
+            }
+        }
+        ksort( $variants_arr );
+
+        if ( ! empty( $variants_arr ) ) {
+            $first_slug = (string) reset( $variants_arr );
+            $item->add_meta_data( '_' . self::CART_VARIANT,  $first_slug );
+            $item->add_meta_data( '_' . self::CART_VARIANTS, wp_json_encode( $variants_arr ) );
+
+            // Human-readable label for the order admin UI.
+            if ( count( $variants_arr ) === 1 ) {
+                $v = self::get_variant( $product_id, $first_slug );
+                if ( $v && ! empty( $v['name'] ) ) {
+                    $item->add_meta_data( $cfg['label'], (string) $v['name'] );
+                }
+            } else {
+                $parts = [];
+                foreach ( $variants_arr as $slot => $slug ) {
+                    $v = self::get_variant( $product_id, $slug );
+                    $name = ( $v && ! empty( $v['name'] ) ) ? (string) $v['name'] : $slug;
+                    $parts[] = '#' . (int) $slot . ' ' . $name;
+                }
+                $item->add_meta_data( $cfg['label'], implode( ' · ', $parts ) );
             }
         }
     }
@@ -919,80 +1320,180 @@ class CW_Design_Submission {
                 continue;
             }
 
-            $artwork_url = ! empty( $item[ self::CART_ARTWORK_ID ] )
-                ? (string) wp_get_attachment_url( (int) $item[ self::CART_ARTWORK_ID ] )
-                : '';
-            $chosen = ! empty( $item[ self::CART_VARIANT ] )
-                ? (string) $item[ self::CART_VARIANT ]
-                : $cfg['default'];
-
-            $picker_data = [
-                'cartKey'   => $key,
-                'productId' => $product_id,
-                'width'     => $cfg['width'],
-                'height'    => $cfg['height'],
-                'artwork'   => $artwork_url,
-                'default'   => $chosen,
-                'variants'  => [],
-            ];
-            foreach ( $cfg['variants'] as $v ) {
-                $picker_data['variants'][] = [
-                    'slug' => (string) ( $v['slug'] ?? '' ),
-                    'name' => (string) ( $v['name'] ?? '' ),
-                    'url'  => (string) wp_get_attachment_url( (int) ( $v['attachment_id'] ?? 0 ) ),
-                ];
+            // ── Normalise this cart item into slot-keyed artwork + variant arrays.
+            $artworks = isset( $item[ self::CART_ARTWORK_IDS ] ) && is_array( $item[ self::CART_ARTWORK_IDS ] )
+                ? $item[ self::CART_ARTWORK_IDS ]
+                : [];
+            if ( empty( $artworks ) && ! empty( $item[ self::CART_ARTWORK_ID ] ) ) {
+                $artworks = [ 1 => (int) $item[ self::CART_ARTWORK_ID ] ];
             }
+            if ( empty( $artworks ) ) {
+                continue; // Nothing to preview without an artwork.
+            }
+            ksort( $artworks );
+
+            $chosen_per_slot = [];
+            if ( isset( $item[ self::CART_VARIANTS ] ) && is_array( $item[ self::CART_VARIANTS ] ) ) {
+                foreach ( $item[ self::CART_VARIANTS ] as $slot => $slug ) {
+                    $chosen_per_slot[ (int) $slot ] = (string) $slug;
+                }
+            }
+            if ( empty( $chosen_per_slot ) && ! empty( $item[ self::CART_VARIANT ] ) ) {
+                $chosen_per_slot[1] = (string) $item[ self::CART_VARIANT ];
+            }
+
+            // Participant labels — try to surface the typed-in name beside the
+            // picker so users can tell which design they're configuring. Falls
+            // back to "Participant N".
+            $participant_names = [];
+            if ( isset( $item['cw_participants'] ) && is_array( $item['cw_participants'] ) ) {
+                foreach ( $item['cw_participants'] as $idx => $fields ) {
+                    $slot = (int) $idx;
+                    if ( $slot < 1 ) $slot = 1;
+                    if ( is_array( $fields ) ) {
+                        foreach ( $fields as $f ) {
+                            if ( isset( $f['label'], $f['value'] ) && strcasecmp( (string) $f['label'], 'Name' ) === 0 ) {
+                                $nm = trim( (string) $f['value'] );
+                                if ( $nm !== '' && strcasecmp( $nm, 'Self' ) !== 0 ) {
+                                    $participant_names[ $slot ] = $nm;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            $is_multi_line = count( $artworks ) > 1;
+
+            // One outer container per cart line; one .cw-design-picker per slot
+            // so the JS picker initialiser keeps working unchanged per-picker.
             ?>
-            <div class="cw-design-picker form-row form-row-wide"
-                 data-cart-key="<?php echo esc_attr( $key ); ?>"
-                 data-config="<?php echo esc_attr( wp_json_encode( $picker_data ) ); ?>">
-                <h3 class="cw-design-picker__heading">
-                    <?php echo esc_html( $cfg['label'] ); ?>
-                </h3>
-
-                <div class="cw-design-picker__swatches" role="radiogroup" aria-label="<?php echo esc_attr( $cfg['label'] ); ?>">
-                    <?php foreach ( $cfg['variants'] as $v ) :
-                        $vslug = (string) ( $v['slug'] ?? '' );
-                        $vname = (string) ( $v['name'] ?? '' );
-                        $vimg  = (string) wp_get_attachment_image_url( (int) ( $v['attachment_id'] ?? 0 ), 'thumbnail' );
-                        $is_on = ( $vslug === $chosen );
-                    ?>
-                        <button type="button"
-                                class="cw-design-swatch <?php echo $is_on ? 'is-selected' : ''; ?>"
-                                data-variant="<?php echo esc_attr( $vslug ); ?>"
-                                role="radio"
-                                aria-checked="<?php echo $is_on ? 'true' : 'false'; ?>"
-                                title="<?php echo esc_attr( $vname ); ?>">
-                            <?php if ( $vimg ) : ?>
-                                <img src="<?php echo esc_url( $vimg ); ?>" alt="<?php echo esc_attr( $vname ); ?>">
-                            <?php endif; ?>
-                            <span class="cw-design-swatch__name"><?php echo esc_html( $vname ); ?></span>
-                        </button>
-                    <?php endforeach; ?>
-                </div>
-
+            <div class="cw-design-checkout-line<?php echo $is_multi_line ? ' is-multi' : ''; ?>"
+                 data-cart-key="<?php echo esc_attr( $key ); ?>">
                 <?php
-                // Compute the display size server-side so the canvas always renders at
-                // a phone-sized portrait regardless of aspect ratio. The drawing buffer
-                // (the `width`/`height` attributes) stays at the full artwork dimensions
-                // so the composited image is still crisp; only the CSS pixels shrink.
-                $buf_w = max( 1, (int) $cfg['width'] );
-                $buf_h = max( 1, (int) $cfg['height'] );
-                $max_w = 220; // portrait-friendly cap
-                $max_h = 420; // landscape-friendly cap
-                $scale = min( $max_w / $buf_w, $max_h / $buf_h, 1 );
-                $disp_w = (int) round( $buf_w * $scale );
-                $disp_h = (int) round( $buf_h * $scale );
-                ?>
-                <div class="cw-design-picker__preview-wrap">
-                    <canvas class="cw-design-picker__canvas"
-                            width="<?php echo $buf_w; ?>"
-                            height="<?php echo $buf_h; ?>"
-                            style="width:<?php echo $disp_w; ?>px;height:<?php echo $disp_h; ?>px;"></canvas>
-                    <div class="cw-design-picker__loading"><?php esc_html_e( 'Loading preview…', 'creativewings-core' ); ?></div>
-                </div>
+                if ( $is_multi_line ) {
+                    echo '<h3 class="cw-design-checkout-line__heading">' . esc_html( $cfg['label'] ) . '</h3>';
+                    echo '<p class="cw-design-checkout-line__hint">' . esc_html__( 'Pick a variant for each participant\'s artwork.', 'creativewings-core' ) . '</p>';
+                }
 
-                <input type="hidden" name="<?php echo esc_attr( self::CART_VARIANT ); ?>[<?php echo esc_attr( $key ); ?>]" value="<?php echo esc_attr( $chosen ); ?>" class="cw-design-picker__field">
+                foreach ( $artworks as $slot => $aid ) :
+                    $slot        = (int) $slot;
+                    $artwork_url = (string) wp_get_attachment_url( $aid );
+                    $chosen      = isset( $chosen_per_slot[ $slot ] ) && $chosen_per_slot[ $slot ] !== ''
+                        ? $chosen_per_slot[ $slot ]
+                        : $cfg['default'];
+                    $picker_data = [
+                        'cartKey'   => $key,
+                        'productId' => $product_id,
+                        'slot'      => $slot,
+                        'width'     => $cfg['width'],
+                        'height'    => $cfg['height'],
+                        'artwork'   => $artwork_url,
+                        'default'   => $chosen,
+                        'variants'  => [],
+                    ];
+                    foreach ( $cfg['variants'] as $v ) {
+                        $picker_data['variants'][] = [
+                            'slug' => (string) ( $v['slug'] ?? '' ),
+                            'name' => (string) ( $v['name'] ?? '' ),
+                            'url'  => (string) wp_get_attachment_url( (int) ( $v['attachment_id'] ?? 0 ) ),
+                        ];
+                    }
+
+                    $heading_label = $is_multi_line
+                        ? ( isset( $participant_names[ $slot ] )
+                            ? sprintf( __( 'Design for %s', 'creativewings-core' ), $participant_names[ $slot ] )
+                            : sprintf( __( 'Participant %d design', 'creativewings-core' ), $slot ) )
+                        : $cfg['label'];
+
+                    // Field name: cw_design_variant[cart_key][slot] for multi,
+                    //            cw_design_variant[cart_key]        for single.
+                    $field_name = $is_multi_line
+                        ? sprintf( '%s[%s][%d]', self::CART_VARIANT, $key, $slot )
+                        : sprintf( '%s[%s]',     self::CART_VARIANT, $key );
+
+                    // Server-side display sizing — same logic as before, cached per loop.
+                    $buf_w = max( 1, (int) $cfg['width'] );
+                    $buf_h = max( 1, (int) $cfg['height'] );
+                    $max_w = $is_multi_line ? 180 : 220;
+                    $max_h = $is_multi_line ? 340 : 420;
+                    $scale = min( $max_w / $buf_w, $max_h / $buf_h, 1 );
+                    $disp_w = (int) round( $buf_w * $scale );
+                    $disp_h = (int) round( $buf_h * $scale );
+                ?>
+                <div class="cw-design-picker form-row form-row-wide"
+                     data-cart-key="<?php echo esc_attr( $key ); ?>"
+                     data-slot="<?php echo (int) $slot; ?>"
+                     data-config="<?php echo esc_attr( wp_json_encode( $picker_data ) ); ?>">
+                    <h3 class="cw-design-picker__heading">
+                        <?php echo esc_html( $heading_label ); ?>
+                    </h3>
+
+                    <?php
+                        // "Your uploaded artwork" verification strip — gives the
+                        // participant a quick way to confirm the bare PNG (and
+                        // its filename) before they pay. The picker's compose
+                        // canvas underneath then shows the same artwork on the
+                        // chosen casing for visual sanity.
+                        $art_path = (string) get_attached_file( (int) $aid );
+                        $art_name = $art_path ? basename( $art_path ) : '';
+                        $art_size = ( $art_path && file_exists( $art_path ) ) ? size_format( (int) filesize( $art_path ), 1 ) : '';
+                    ?>
+                    <div class="cw-design-picker__artwork">
+                        <div class="cw-design-picker__artwork-thumb">
+                            <?php if ( $artwork_url ): ?>
+                            <img src="<?php echo esc_url( $artwork_url ); ?>" alt="<?php esc_attr_e( 'Uploaded artwork preview', 'creativewings-core' ); ?>" loading="lazy">
+                            <?php endif; ?>
+                        </div>
+                        <div class="cw-design-picker__artwork-info">
+                            <span class="cw-design-picker__artwork-label"><?php esc_html_e( 'Your uploaded artwork', 'creativewings-core' ); ?></span>
+                            <?php if ( $art_name ): ?>
+                            <span class="cw-design-picker__artwork-file" title="<?php echo esc_attr( $art_name ); ?>"><?php echo esc_html( $art_name ); ?></span>
+                            <?php endif; ?>
+                            <?php if ( $art_size ): ?>
+                            <span class="cw-design-picker__artwork-meta"><?php echo esc_html( $art_size ); ?></span>
+                            <?php endif; ?>
+                            <?php if ( $artwork_url ): ?>
+                            <a class="cw-design-picker__artwork-view" href="<?php echo esc_url( $artwork_url ); ?>" target="_blank" rel="noopener">
+                                <i class="fas fa-external-link-alt" aria-hidden="true"></i> <?php esc_html_e( 'View full PNG', 'creativewings-core' ); ?>
+                            </a>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <div class="cw-design-picker__swatches" role="radiogroup" aria-label="<?php echo esc_attr( $heading_label ); ?>">
+                        <?php foreach ( $cfg['variants'] as $v ) :
+                            $vslug = (string) ( $v['slug'] ?? '' );
+                            $vname = (string) ( $v['name'] ?? '' );
+                            $vimg  = (string) wp_get_attachment_image_url( (int) ( $v['attachment_id'] ?? 0 ), 'thumbnail' );
+                            $is_on = ( $vslug === $chosen );
+                        ?>
+                            <button type="button"
+                                    class="cw-design-swatch <?php echo $is_on ? 'is-selected' : ''; ?>"
+                                    data-variant="<?php echo esc_attr( $vslug ); ?>"
+                                    role="radio"
+                                    aria-checked="<?php echo $is_on ? 'true' : 'false'; ?>"
+                                    title="<?php echo esc_attr( $vname ); ?>">
+                                <?php if ( $vimg ) : ?>
+                                    <img src="<?php echo esc_url( $vimg ); ?>" alt="<?php echo esc_attr( $vname ); ?>">
+                                <?php endif; ?>
+                                <span class="cw-design-swatch__name"><?php echo esc_html( $vname ); ?></span>
+                            </button>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <div class="cw-design-picker__preview-wrap">
+                        <canvas class="cw-design-picker__canvas"
+                                width="<?php echo $buf_w; ?>"
+                                height="<?php echo $buf_h; ?>"
+                                style="width:<?php echo $disp_w; ?>px;height:<?php echo $disp_h; ?>px;"></canvas>
+                        <div class="cw-design-picker__loading"><?php esc_html_e( 'Loading preview…', 'creativewings-core' ); ?></div>
+                    </div>
+
+                    <input type="hidden" name="<?php echo esc_attr( $field_name ); ?>" value="<?php echo esc_attr( $chosen ); ?>" class="cw-design-picker__field">
+                </div>
+                <?php endforeach; ?>
             </div>
             <?php
         }
@@ -1006,32 +1507,248 @@ class CW_Design_Submission {
             return;
         }
 
-        $posted = isset( $_POST[ self::CART_VARIANT ] ) ? wp_unslash( $_POST[ self::CART_VARIANT ] ) : [];
+        $posted_root = isset( $_POST[ self::CART_VARIANT ] ) ? wp_unslash( $_POST[ self::CART_VARIANT ] ) : [];
         foreach ( $items as $key => $item ) {
             $product_id = (int) $item['product_id'];
             $cfg        = self::get_config( $product_id );
             if ( empty( $cfg['variants'] ) ) {
                 continue;
             }
-            $chosen = is_array( $posted ) ? sanitize_title( $posted[ $key ] ?? '' ) : sanitize_title( (string) $posted );
-            $valid = false;
+
+            // Build a slug → true lookup for fast validation.
+            $valid_slugs = [];
             foreach ( $cfg['variants'] as $v ) {
-                if ( isset( $v['slug'] ) && $v['slug'] === $chosen ) {
-                    $valid = true;
+                if ( isset( $v['slug'] ) ) $valid_slugs[ (string) $v['slug'] ] = true;
+            }
+
+            // Resolve how many slots this cart line has (= artworks).
+            $artworks = isset( $item[ self::CART_ARTWORK_IDS ] ) && is_array( $item[ self::CART_ARTWORK_IDS ] )
+                ? $item[ self::CART_ARTWORK_IDS ]
+                : [];
+            if ( empty( $artworks ) && ! empty( $item[ self::CART_ARTWORK_ID ] ) ) {
+                $artworks = [ 1 => (int) $item[ self::CART_ARTWORK_ID ] ];
+            }
+            $expected_slots = ! empty( $artworks ) ? array_keys( $artworks ) : [ 1 ];
+
+            // Extract the posted variant(s) for this cart line.
+            $posted_for_line = null;
+            if ( is_array( $posted_root ) && isset( $posted_root[ $key ] ) ) {
+                $posted_for_line = $posted_root[ $key ];
+            } elseif ( is_string( $posted_root ) ) {
+                $posted_for_line = $posted_root;
+            }
+
+            $all_ok = true;
+            $bad_slot = 0;
+            foreach ( $expected_slots as $slot ) {
+                $slot = (int) $slot;
+                if ( is_array( $posted_for_line ) ) {
+                    $slug = sanitize_title( (string) ( $posted_for_line[ $slot ] ?? '' ) );
+                } else {
+                    $slug = sanitize_title( (string) ( $posted_for_line ?? '' ) );
+                }
+                if ( ! isset( $valid_slugs[ $slug ] ) ) {
+                    $all_ok = false;
+                    $bad_slot = $slot;
                     break;
                 }
             }
-            if ( ! $valid ) {
-                wc_add_notice(
-                    sprintf(
-                        /* translators: %s picker label */
-                        __( 'Please select an option for "%s" before placing your order.', 'creativewings-core' ),
-                        $cfg['label']
-                    ),
-                    'error'
-                );
+            if ( ! $all_ok ) {
+                if ( count( $expected_slots ) > 1 ) {
+                    wc_add_notice(
+                        sprintf(
+                            /* translators: 1: picker label, 2: participant slot */
+                            __( 'Please select an option for "%1$s" (participant %2$d) before placing your order.', 'creativewings-core' ),
+                            $cfg['label'],
+                            $bad_slot
+                        ),
+                        'error'
+                    );
+                } else {
+                    wc_add_notice(
+                        sprintf(
+                            /* translators: %s picker label */
+                            __( 'Please select an option for "%s" before placing your order.', 'creativewings-core' ),
+                            $cfg['label']
+                        ),
+                        'error'
+                    );
+                }
             }
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // POST-PAYMENT MOCKUPS (order-received + view-order)
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Render the locked-in artwork-on-casing mockup for every design-enabled
+     * line item on an order, with a per-slot "Download mockup PNG" button.
+     *
+     * Hooked on `woocommerce_order_details_after_order_table` so it appears
+     * on BOTH the order-received (thank-you) page AND the My-Account →
+     * View Order page without duplicate registration.
+     *
+     * Same-origin uploads + variant images mean the <canvas> stays untainted
+     * and `canvas.toBlob()` works for the client-side download — no server-
+     * side composite (GD/Imagick) needed.
+     *
+     * @param WC_Order $order
+     */
+    public function render_order_mockups( $order ) {
+        if ( ! $order || ! is_a( $order, 'WC_Order' ) ) {
+            return;
+        }
+
+        // Collect renderable lines first so we can short-circuit cleanly if
+        // the order has none (avoids printing an empty section header).
+        $blocks = [];
+        foreach ( $order->get_items() as $item_id => $item ) {
+            if ( ! is_a( $item, 'WC_Order_Item_Product' ) ) {
+                continue;
+            }
+            $product_id = (int) $item->get_product_id();
+            if ( ! self::is_enabled( $product_id ) ) {
+                continue;
+            }
+            $cfg = self::get_config( $product_id );
+            if ( empty( $cfg['variants'] ) ) {
+                continue;
+            }
+
+            $artworks = self::decode_indexed_meta( (string) $item->get_meta( '_' . self::CART_ARTWORK_IDS ) );
+            $variants = self::decode_indexed_meta( (string) $item->get_meta( '_' . self::CART_VARIANTS ) );
+
+            if ( empty( $artworks ) ) {
+                $legacy_art = (int) $item->get_meta( '_' . self::CART_ARTWORK_ID );
+                if ( $legacy_art > 0 ) {
+                    $artworks = [ 1 => $legacy_art ];
+                }
+            }
+            if ( empty( $variants ) ) {
+                $legacy_var = (string) $item->get_meta( '_' . self::CART_VARIANT );
+                if ( $legacy_var !== '' ) {
+                    $variants = [ 1 => $legacy_var ];
+                }
+            }
+            if ( empty( $artworks ) ) {
+                continue;
+            }
+            ksort( $artworks );
+
+            $line_mockups = [];
+            foreach ( $artworks as $slot => $aid ) {
+                $slot     = (int) $slot;
+                $aid      = (int) $aid;
+                $art_url  = (string) wp_get_attachment_url( $aid );
+                if ( $art_url === '' ) {
+                    continue;
+                }
+                $chosen   = isset( $variants[ $slot ] ) && $variants[ $slot ] !== '' ? (string) $variants[ $slot ] : $cfg['default'];
+                $variant  = self::get_variant( $product_id, $chosen );
+                $vname    = ( $variant && ! empty( $variant['name'] ) ) ? (string) $variant['name'] : $chosen;
+                $vurl     = ( $variant && ! empty( $variant['image_url'] ) ) ? (string) $variant['image_url'] : '';
+
+                $line_mockups[] = [
+                    'slot'      => $slot,
+                    'art_url'   => $art_url,
+                    'art_name'  => basename( (string) get_attached_file( $aid ) ),
+                    'variant'   => $chosen,
+                    'v_name'    => $vname,
+                    'v_url'     => $vurl,
+                    'config'    => [
+                        'orderId'    => (int) $order->get_id(),
+                        'itemId'     => (int) $item_id,
+                        'productId'  => $product_id,
+                        'slot'       => $slot,
+                        'width'      => (int) $cfg['width'],
+                        'height'     => (int) $cfg['height'],
+                        'artwork'    => $art_url,
+                        'variant'    => $chosen,
+                        'variantUrl' => $vurl,
+                        'variantName'=> $vname,
+                        'filename'   => sprintf( 'mockup-order-%d-item-%d-slot-%d.png', (int) $order->get_id(), (int) $item_id, $slot ),
+                    ],
+                ];
+            }
+            if ( empty( $line_mockups ) ) {
+                continue;
+            }
+            $blocks[] = [
+                'product_id' => $product_id,
+                'product'    => $item->get_name(),
+                'cfg'        => $cfg,
+                'mockups'    => $line_mockups,
+            ];
+        }
+
+        if ( empty( $blocks ) ) {
+            return;
+        }
+        ?>
+        <section class="cw-design-mockups">
+            <h2 class="cw-design-mockups__title">
+                <i class="fas fa-image" aria-hidden="true"></i>
+                <?php esc_html_e( 'Your mockups', 'creativewings-core' ); ?>
+            </h2>
+            <p class="cw-design-mockups__hint">
+                <?php esc_html_e( 'A preview of each artwork on its chosen casing. Click "Download mockup" to save a high-resolution PNG.', 'creativewings-core' ); ?>
+            </p>
+
+            <?php foreach ( $blocks as $block ):
+                $is_multi = count( $block['mockups'] ) > 1;
+            ?>
+            <div class="cw-design-mockups__line<?php echo $is_multi ? ' is-multi' : ''; ?>">
+                <h3 class="cw-design-mockups__line-title"><?php echo esc_html( $block['product'] ); ?></h3>
+
+                <div class="cw-design-mockups__grid">
+                    <?php foreach ( $block['mockups'] as $m ):
+                        $buf_w = max( 1, (int) $block['cfg']['width'] );
+                        $buf_h = max( 1, (int) $block['cfg']['height'] );
+                        $max_w = 260; $max_h = 360;
+                        $scale = min( $max_w / $buf_w, $max_h / $buf_h, 1 );
+                        $disp_w = (int) round( $buf_w * $scale );
+                        $disp_h = (int) round( $buf_h * $scale );
+                    ?>
+                    <div class="cw-design-mockup"
+                         data-config="<?php echo esc_attr( wp_json_encode( $m['config'] ) ); ?>">
+                        <?php if ( $is_multi ): ?>
+                        <div class="cw-design-mockup__slot"><?php printf( esc_html__( 'Participant %d', 'creativewings-core' ), (int) $m['slot'] ); ?></div>
+                        <?php endif; ?>
+
+                        <div class="cw-design-mockup__canvas-wrap">
+                            <canvas class="cw-design-mockup__canvas"
+                                width="<?php echo $buf_w; ?>"
+                                height="<?php echo $buf_h; ?>"
+                                style="width:<?php echo $disp_w; ?>px;height:<?php echo $disp_h; ?>px;"></canvas>
+                            <div class="cw-design-mockup__loading"><?php esc_html_e( 'Building preview…', 'creativewings-core' ); ?></div>
+                        </div>
+
+                        <div class="cw-design-mockup__meta">
+                            <div class="cw-design-mockup__variant"><i class="fas fa-palette" aria-hidden="true"></i> <?php echo esc_html( $m['v_name'] ); ?></div>
+                            <?php if ( $m['art_name'] ): ?>
+                            <div class="cw-design-mockup__file" title="<?php echo esc_attr( $m['art_name'] ); ?>"><i class="fas fa-file-image" aria-hidden="true"></i> <?php echo esc_html( $m['art_name'] ); ?></div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="cw-design-mockup__actions">
+                            <button type="button" class="cw-design-mockup__download-btn">
+                                <i class="fas fa-download" aria-hidden="true"></i>
+                                <?php esc_html_e( 'Download mockup (PNG)', 'creativewings-core' ); ?>
+                            </button>
+                            <a href="<?php echo esc_url( $m['art_url'] ); ?>" class="cw-design-mockup__artwork-link" target="_blank" rel="noopener" download>
+                                <i class="fas fa-file-export" aria-hidden="true"></i>
+                                <?php esc_html_e( 'Download original artwork', 'creativewings-core' ); ?>
+                            </a>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </section>
+        <?php
     }
 
     /**
@@ -1044,14 +1761,44 @@ class CW_Design_Submission {
      * @param WC_Order_Item_Product $item
      * @param WC_Order             $order
      */
-    public function copy_to_entry( $entry_id, $item, $order ) {
+    public function copy_to_entry( $entry_id, $item, $order, $participant_num = 0 ) {
         if ( ! $entry_id || ! $item ) {
             return;
         }
 
-        $art_id    = (int) $item->get_meta( '_' . self::CART_ARTWORK_ID );
-        $source_id = (int) $item->get_meta( '_' . self::CART_SOURCE_ID );
-        $variant   = (string) $item->get_meta( '_' . self::CART_VARIANT );
+        // CW_Shop now passes the 1-based participant index as the 4th argument
+        // so we can map artwork[i] → entry[i] reliably. For older callers that
+        // still emit the 3-arg signature, fall back to a static (order, item)
+        // counter that increments per call.
+        $slot = (int) $participant_num;
+        if ( $slot <= 0 ) {
+            static $line_counter = [];
+            $order_id  = $order ? (int) $order->get_id() : 0;
+            $item_id   = method_exists( $item, 'get_id' ) ? (int) $item->get_id() : 0;
+            $line_key  = $order_id . ':' . $item_id;
+            $line_counter[ $line_key ] = isset( $line_counter[ $line_key ] ) ? $line_counter[ $line_key ] + 1 : 1;
+            $slot      = $line_counter[ $line_key ];
+        }
+
+        $artworks  = self::decode_indexed_meta( (string) $item->get_meta( '_' . self::CART_ARTWORK_IDS ) );
+        $sources   = self::decode_indexed_meta( (string) $item->get_meta( '_' . self::CART_SOURCE_IDS ) );
+        $variants  = self::decode_indexed_meta( (string) $item->get_meta( '_' . self::CART_VARIANTS ) );
+
+        // Slot → attachment id / variant slug. Fall back to legacy singular meta
+        // (which is always slot 1) when the arrays are missing entirely.
+        $art_id    = isset( $artworks[ $slot ] ) ? (int) $artworks[ $slot ] : 0;
+        $source_id = isset( $sources[ $slot ] )  ? (int) $sources[ $slot ]  : 0;
+        $variant   = isset( $variants[ $slot ] ) ? (string) $variants[ $slot ] : '';
+
+        if ( ! $art_id ) {
+            $art_id = (int) $item->get_meta( '_' . self::CART_ARTWORK_ID );
+        }
+        if ( ! $source_id ) {
+            $source_id = (int) $item->get_meta( '_' . self::CART_SOURCE_ID );
+        }
+        if ( $variant === '' ) {
+            $variant = (string) $item->get_meta( '_' . self::CART_VARIANT );
+        }
 
         if ( $art_id > 0 ) {
             update_post_meta( $entry_id, self::ENTRY_ARTWORK, $art_id );
@@ -1071,6 +1818,21 @@ class CW_Design_Submission {
         }
     }
 
+    /**
+     * Decode an order-item JSON meta back into a slot-keyed array of ints/strings.
+     * Returns [] on any decode failure.
+     */
+    private static function decode_indexed_meta( $raw ) {
+        if ( $raw === '' ) return [];
+        $decoded = json_decode( $raw, true );
+        if ( ! is_array( $decoded ) ) return [];
+        $out = [];
+        foreach ( $decoded as $slot => $val ) {
+            $out[ (int) $slot ] = $val;
+        }
+        return $out;
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // ASSET ENQUEUE
     // ─────────────────────────────────────────────────────────────────────
@@ -1079,35 +1841,75 @@ class CW_Design_Submission {
         $is_design_product  = is_singular( 'product' ) && self::is_enabled( (int) get_the_ID() );
         $is_design_checkout = function_exists( 'is_checkout' ) && is_checkout() && ! is_order_received_page() && ! empty( $this->design_cart_items() );
 
-        if ( ! $is_design_product && ! $is_design_checkout ) {
+        // Order-received (thank-you) page + My-Account → Orders → View Order
+        // — both run the standard `wc_get_template( 'order/order-details.php' )`
+        // which we hook for the mockup download. Quick heuristic: any time
+        // we're inside an order context, gate based on whether *any* item on
+        // the order belongs to a design-enabled campaign.
+        $is_design_order = false;
+        if ( function_exists( 'is_order_received_page' ) && function_exists( 'is_view_order_page' )
+             && ( is_order_received_page() || is_view_order_page() ) ) {
+            $order_id = 0;
+            if ( is_order_received_page() ) {
+                $order_id = (int) ( get_query_var( 'order-received' ) ?: 0 );
+            } elseif ( is_view_order_page() ) {
+                $order_id = (int) ( get_query_var( 'view-order' ) ?: 0 );
+            }
+            if ( $order_id ) {
+                $o = wc_get_order( $order_id );
+                if ( $o ) {
+                    foreach ( $o->get_items() as $item ) {
+                        if ( is_a( $item, 'WC_Order_Item_Product' ) && self::is_enabled( (int) $item->get_product_id() ) ) {
+                            $is_design_order = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Business dashboard → "Manage Entries" tab: judges need the
+        // canvas compositing JS + CSS to render the artwork-on-variant
+        // mockups inside entry cards, the evaluation modal, and the
+        // shared zoom lightbox. We can't cheaply detect "this campaign
+        // is design-enabled" from the URL alone, so we load the assets
+        // whenever the judging UI may be visible — the JS is a few kb
+        // and bails out cleanly when no mockup elements exist.
+        $is_judge_view = false;
+        if ( function_exists( 'is_account_page' ) && is_account_page()
+             && isset( $_GET['tab'] ) && $_GET['tab'] === 'manage_entries' ) {
+            $is_judge_view = true;
+        }
+
+        if ( ! $is_design_product && ! $is_design_checkout && ! $is_design_order && ! $is_judge_view ) {
             return;
         }
 
         // CSS — shared across product page + checkout.
-        if ( method_exists( 'CW_Core_Platform', 'asset' ) ) {
-            $css = CW_Core_Platform::asset( 'assets/css/cw-style-design.css' );
-            wp_enqueue_style(
-                'cw-style-design',
-                $css['url'],
-                [],
-                $css['version']
-            );
-        } else {
-            wp_enqueue_style(
-                'cw-style-design',
-                CW_URL . 'assets/css/cw-style-design.css',
-                [],
-                defined( 'CW_VERSION' ) ? CW_VERSION : null
-            );
-        }
+        //
+        // Version with filemtime() so each edit busts the browser cache
+        // automatically. The static CW_VERSION constant doesn't change
+        // between feature drops, so without this judges and customers
+        // see stale styles (most visibly: the mockup-zoom lightbox
+        // rendering inline instead of as a fixed overlay).
+        $css_path = CW_PATH . 'assets/css/cw-style-design.css';
+        $css_ver  = file_exists( $css_path ) ? (string) filemtime( $css_path ) : ( defined( 'CW_VERSION' ) ? CW_VERSION : null );
+        wp_enqueue_style(
+            'cw-style-design',
+            CW_URL . 'assets/css/cw-style-design.css',
+            [],
+            $css_ver
+        );
 
         // JS — handles client-side PNG dimension validation, AJAX upload,
         // and canvas mockup compositing. Vanilla, no jQuery dependency.
+        $js_path = CW_PATH . 'assets/js/cw-design-preview.js';
+        $js_ver  = file_exists( $js_path ) ? (string) filemtime( $js_path ) : ( defined( 'CW_VERSION' ) ? CW_VERSION : null );
         wp_enqueue_script(
             'cw-design-preview',
             CW_URL . 'assets/js/cw-design-preview.js',
             [],
-            defined( 'CW_VERSION' ) ? CW_VERSION : null,
+            $js_ver,
             true
         );
         wp_localize_script( 'cw-design-preview', 'cwDesignVars', [
@@ -1115,12 +1917,14 @@ class CW_Design_Submission {
             'nonce'      => wp_create_nonce( self::NONCE_AJAX ),
             'action'     => self::AJAX_ACTION,
             'messages'   => [
-                'wrongExtension' => __( 'Please choose a PNG file.', 'creativewings-core' ),
+                'wrongExtension'  => __( 'Please choose a PNG file.', 'creativewings-core' ),
                 'wrongDimensions' => __( 'Artwork must be exactly %dpx × %dpx.', 'creativewings-core' ),
-                'uploading'      => __( 'Uploading…', 'creativewings-core' ),
-                'uploaded'       => __( 'Uploaded ✓', 'creativewings-core' ),
-                'sourceUploaded' => __( 'Source file uploaded ✓', 'creativewings-core' ),
-                'genericError'   => __( 'Upload failed. Please try again.', 'creativewings-core' ),
+                'uploading'       => __( 'Uploading…', 'creativewings-core' ),
+                'uploaded'        => __( 'Uploaded ✓', 'creativewings-core' ),
+                'sourceUploaded'  => __( 'Source file uploaded ✓', 'creativewings-core' ),
+                'genericError'    => __( 'Upload failed. Please try again.', 'creativewings-core' ),
+                'prefilled'       => __( 'Using participant 1\'s artwork ✓', 'creativewings-core' ),
+                'prefillMissing'  => __( 'Participant 1 hasn\'t uploaded an artwork yet.', 'creativewings-core' ),
             ],
         ] );
     }

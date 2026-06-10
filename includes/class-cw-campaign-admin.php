@@ -11,9 +11,14 @@ class CW_Campaign_Admin {
         add_action( 'admin_post_cw_bulk_qr', [ $this, 'render_bulk_qr' ] );
         add_action( 'save_post_product', [ $this, 'ensure_woocommerce_product_defaults' ], 5, 2 );
         add_action( 'save_post_product', [ $this, 'save_product_flags' ], 20, 2 );
+        // Ownership transfer — admin-only sidebar metabox on the product edit
+        // screen. Runs *after* save_product_flags so any meta migration tied
+        // to the old owner is still written before the post_author swap.
+        add_action( 'save_post_product', [ $this, 'save_campaign_owner' ], 25, 2 );
         add_filter( 'redirect_post_location', [ $this, 'fix_product_save_redirect' ], 99, 2 );
         add_action( 'admin_notices', [ $this, 'product_save_admin_notice' ] );
         add_action( 'admin_notices', [ $this, 'pending_queue_admin_notice' ] );
+        add_action( 'admin_notices', [ $this, 'owner_transfer_admin_notice' ] );
         add_action( 'edit_form_top', [ $this, 'warn_if_not_product_campaign' ] );
 
         add_action( 'init', [ $this, 'seed_default_subcategories' ] );
@@ -393,6 +398,41 @@ class CW_Campaign_Admin {
     }
 
     /**
+     * Show a one-shot success notice after an admin transfers a campaign's
+     * ownership. Backed by a per-user transient set in save_campaign_owner()
+     * so the notice always appears on the very next admin screen the user
+     * loads — including the post-save redirect to the edit screen itself.
+     */
+    public function owner_transfer_admin_notice() {
+        if ( ! is_admin() || ! current_user_can( 'manage_options' ) ) {
+            return;
+        }
+        $key  = 'cw_owner_transfer_notice_' . get_current_user_id();
+        $data = get_transient( $key );
+        if ( ! is_array( $data ) || empty( $data['campaign_id'] ) ) {
+            return;
+        }
+        delete_transient( $key );
+
+        $campaign = get_post( (int) $data['campaign_id'] );
+        $to_user  = get_user_by( 'id', (int) $data['to'] );
+        $from_user = ! empty( $data['from'] ) ? get_user_by( 'id', (int) $data['from'] ) : null;
+        if ( ! $campaign || ! $to_user ) {
+            return;
+        }
+
+        $msg = sprintf(
+            /* translators: 1: campaign title, 2: previous owner label, 3: new owner display name */
+            __( 'Campaign "%1$s" transferred%2$s to %3$s.', 'creativewings-core' ),
+            esc_html( $campaign->post_title ),
+            $from_user ? ' ' . sprintf( __( 'from %s', 'creativewings-core' ), esc_html( $from_user->display_name ) ) : '',
+            esc_html( $to_user->display_name )
+        );
+
+        echo '<div class="notice notice-success is-dismissible"><p><strong>' . esc_html__( 'Creative Wings:', 'creativewings-core' ) . '</strong> ' . $msg . '</p></div>';
+    }
+
+    /**
      * After saving a campaign product, stay on the product editor or WooCommerce product list.
      *
      * @param string $location
@@ -476,6 +516,169 @@ class CW_Campaign_Admin {
     public function metaboxes() {
         add_meta_box( 'cw_campaign_kpis', __( 'Campaign KPIs', 'creativewings-core' ), [ $this, 'render_kpis' ], 'product', 'side', 'high' );
         add_meta_box( 'cw_campaign_tools', __( 'Campaign tools', 'creativewings-core' ), [ $this, 'render_tools' ], 'product', 'normal', 'default' );
+
+        // Ownership transfer — admins only. Lets a site admin reassign a
+        // campaign to a different business account (changes post_author so
+        // the campaign appears in that business's "My Campaigns" dashboard
+        // and all permissions / "manage entries" / payouts follow).
+        if ( current_user_can( 'manage_options' ) ) {
+            add_meta_box(
+                'cw_campaign_owner',
+                __( 'Campaign Owner', 'creativewings-core' ),
+                [ $this, 'render_owner_box' ],
+                'product',
+                'side',
+                'high'
+            );
+        }
+    }
+
+    /**
+     * Render the "Campaign Owner" metabox. Lists every business user plus a
+     * fallback "any user" picker for edge cases (e.g. admin reassigning to a
+     * creator who's been promoted). Shows the current owner + a "view profile"
+     * link so admins can quickly check who they're transferring to/from.
+     */
+    public function render_owner_box( $post ) {
+        if ( ! $post || $post->post_type !== 'product' ) {
+            return;
+        }
+
+        $current_id   = (int) $post->post_author;
+        $current_user = $current_id ? get_user_by( 'id', $current_id ) : null;
+
+        // Business users first (the intended owners). Limit isn't applied —
+        // realistically a single installation has ≪ a few hundred business
+        // accounts, and a native <select> handles that comfortably.
+        $business_users = get_users( [
+            'role__in' => [ 'business_role', 'administrator' ],
+            'orderby'  => 'display_name',
+            'order'    => 'ASC',
+            'fields'   => [ 'ID', 'display_name', 'user_login', 'user_email' ],
+        ] );
+
+        wp_nonce_field( 'cw_campaign_owner_save', 'cw_campaign_owner_nonce' );
+        ?>
+        <p style="margin:0 0 8px;color:#555;font-size:12px;line-height:1.5;">
+            <?php esc_html_e( 'Reassign this campaign to a different business account. The new owner will see it in their My Account → Campaigns dashboard and inherit all judging / payout permissions.', 'creativewings-core' ); ?>
+        </p>
+
+        <?php if ( $current_user ): ?>
+        <div style="margin:0 0 12px;padding:8px 10px;background:#f6f7f7;border:1px solid #e0e0e0;border-radius:4px;">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:#777;margin-bottom:2px;">
+                <?php esc_html_e( 'Current owner', 'creativewings-core' ); ?>
+            </div>
+            <strong style="display:block;font-size:13px;color:#23282d;">
+                <?php echo esc_html( $current_user->display_name ); ?>
+            </strong>
+            <span style="font-size:11px;color:#666;word-break:break-all;">
+                <?php echo esc_html( $current_user->user_email ); ?>
+            </span>
+            <div style="margin-top:6px;">
+                <a href="<?php echo esc_url( get_edit_user_link( $current_id ) ); ?>" target="_blank" style="font-size:11px;text-decoration:none;">
+                    <?php esc_html_e( 'View profile →', 'creativewings-core' ); ?>
+                </a>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <label for="cw_campaign_owner_id" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">
+            <?php esc_html_e( 'Transfer to', 'creativewings-core' ); ?>
+        </label>
+        <select name="cw_campaign_owner_id" id="cw_campaign_owner_id" style="width:100%;">
+            <option value="<?php echo (int) $current_id; ?>">
+                <?php esc_html_e( '— Keep current owner —', 'creativewings-core' ); ?>
+            </option>
+            <?php foreach ( $business_users as $u ):
+                if ( (int) $u->ID === $current_id ) continue;
+                $is_admin_user = user_can( $u->ID, 'manage_options' );
+            ?>
+            <option value="<?php echo (int) $u->ID; ?>">
+                <?php echo esc_html( $u->display_name . ' (' . $u->user_email . ')' . ( $is_admin_user ? ' [admin]' : '' ) ); ?>
+            </option>
+            <?php endforeach; ?>
+        </select>
+
+        <p style="margin:8px 0 0;font-size:11px;color:#888;line-height:1.4;">
+            <?php esc_html_e( 'Tip: changes only apply when you click Update on this campaign.', 'creativewings-core' ); ?>
+        </p>
+        <?php
+    }
+
+    /**
+     * Persist the new owner when the campaign is saved. Hooked from the
+     * constructor below; the constructor's existing `save_post_product`
+     * hook fires `save_product_flags` already so we attach there.
+     */
+    public function save_campaign_owner( $post_id, $post ) {
+        if ( ! $post || $post->post_type !== 'product' ) {
+            return;
+        }
+        if ( wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) ) {
+            return;
+        }
+        if ( ! current_user_can( 'manage_options' ) ) {
+            return;
+        }
+        if ( empty( $_POST['cw_campaign_owner_nonce'] )
+             || ! wp_verify_nonce( wp_unslash( $_POST['cw_campaign_owner_nonce'] ), 'cw_campaign_owner_save' ) ) {
+            return;
+        }
+        if ( ! isset( $_POST['cw_campaign_owner_id'] ) ) {
+            return;
+        }
+
+        $new_id = (int) $_POST['cw_campaign_owner_id'];
+        if ( $new_id <= 0 || $new_id === (int) $post->post_author ) {
+            return;
+        }
+
+        // Confirm target exists. Allow administrators and business_role
+        // accounts — admins sometimes own campaigns themselves and we don't
+        // want to block that case.
+        $target = get_user_by( 'id', $new_id );
+        if ( ! $target ) {
+            return;
+        }
+        $can_own = in_array( 'business_role', (array) $target->roles, true )
+                   || user_can( $target->ID, 'manage_options' );
+        if ( ! $can_own ) {
+            return;
+        }
+
+        $previous_id = (int) $post->post_author;
+
+        // Update post_author. wp_update_post would re-trigger save_post hooks
+        // and risk infinite loops; the direct DB write is safer here.
+        global $wpdb;
+        $wpdb->update(
+            $wpdb->posts,
+            [ 'post_author' => $new_id ],
+            [ 'ID' => $post_id ],
+            [ '%d' ],
+            [ '%d' ]
+        );
+        clean_post_cache( $post_id );
+
+        // Bust the homepage / dashboard prize-total cache so the new owner
+        // sees their inherited stats immediately.
+        delete_transient( 'cw_total_prize_money_v4' );
+
+        // Let other modules react (wallet rebalancing, badge re-evaluation,
+        // notification emails, etc.) without us having to hard-code them here.
+        do_action( 'cw_campaign_owner_transferred', $post_id, $previous_id, $new_id );
+
+        // Surface a notice on the next admin page load so the user gets
+        // visible confirmation that the transfer succeeded.
+        set_transient(
+            'cw_owner_transfer_notice_' . get_current_user_id(),
+            [
+                'campaign_id' => (int) $post_id,
+                'from'        => $previous_id,
+                'to'          => $new_id,
+            ],
+            30
+        );
     }
 
     public static function get_kpis( $campaign_id ) {

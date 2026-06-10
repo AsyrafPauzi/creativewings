@@ -253,19 +253,36 @@ class CW_Shortcodes {
 
     public function count_products() { $c = wp_count_posts('product'); return $c->publish; }
     
+    /**
+     * Site-wide prize pool — sums `cw_total_prize_amount` (numeric, RM) across
+     * every published campaign product. The legacy free-text field
+     * `cw_total_prize_value` is intentionally NOT used here because it stores
+     * descriptions like "RM 3,500 cash + toothbrush set" which can't be summed.
+     *
+     * Cached for 1 hour; cache busts when any campaign saves the numeric field
+     * (see CW_Campaign_Persistence).
+     *
+     * Output format: `100,002.00` (no "RM" prefix — the surrounding template /
+     * Elementor block is expected to add the currency symbol).
+     */
     public function total_prize_money() {
-        if ( false === ( $total = get_transient( 'cw_total_prize_money_v3' ) ) ) {
+        $total = get_transient( 'cw_total_prize_money_v4' );
+        if ( false === $total ) {
             global $wpdb;
-            $hpos_table = $wpdb->prefix . 'wc_orders';
-            if($wpdb->get_var("SHOW TABLES LIKE '$hpos_table'") === $hpos_table) {
-                $sql = "SELECT SUM(total_amount) FROM $hpos_table WHERE status IN ('completed', 'processing', 'wc-completed', 'wc-processing') AND type = 'shop_order'";
-            } else {
-                $sql = "SELECT SUM(pm.meta_value) FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id WHERE p.post_type = 'shop_order' AND p.post_status IN ('wc-completed', 'wc-processing') AND pm.meta_key = '_order_total'";
-            }
-            $total = $wpdb->get_var($sql) ?: 0;
-            set_transient( 'cw_total_prize_money_v3', $total, HOUR_IN_SECONDS );
+            $sql = "
+                SELECT SUM( CAST( pm.meta_value AS DECIMAL(14,2) ) )
+                FROM {$wpdb->postmeta} pm
+                INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+                WHERE p.post_type   = 'product'
+                  AND p.post_status = 'publish'
+                  AND pm.meta_key   = 'cw_total_prize_amount'
+                  AND pm.meta_value <> ''
+            ";
+            $total = $wpdb->get_var( $sql );
+            $total = $total !== null ? (float) $total : 0.0;
+            set_transient( 'cw_total_prize_money_v4', $total, HOUR_IN_SECONDS );
         }
-        return number_format( floatval($total), 2 );
+        return number_format( (float) $total, 2 );
     }
 
     /* ==========================================================================
@@ -578,6 +595,27 @@ class CW_Shortcodes {
             ];
         }
 
+        // ── Hero carousel slides ──────────────────────────────────────────────
+        // Combine the WooCommerce featured image with the product gallery so
+        // the hero card can slide through every image. The order matches the
+        // lightbox list ( hero featured at index 0, gallery items after ), so
+        // clicking any slide opens the lightbox at the correct position.
+        $hero_slides = [];
+        if ( $thumb ) {
+            $hero_slides[] = [
+                'full' => $thumb,
+                'alt'  => get_the_title( $pid ),
+            ];
+        }
+        foreach ( $gallery_images as $gi ) {
+            $hero_slides[] = [
+                'full' => $gi['full'],
+                'alt'  => $gi['alt'] !== '' ? $gi['alt'] : get_the_title( $pid ),
+            ];
+        }
+        $hero_slide_count = count( $hero_slides );
+        $hero_has_multi   = $hero_slide_count > 1;
+
         // ── KPI progress (admin toggle + target) ──────────────────────────────
         $kpi_show     = ( $g('cw_kpi_show_progress') === 'yes' );
         $kpi_target   = (int) $g('cw_kpi_target');
@@ -663,6 +701,12 @@ class CW_Shortcodes {
             'calcMode'          => $is_competition ? 'entry' : 'team',
             'action'            => get_permalink( $pid ),
             'nonce'             => wp_create_nonce( 'cw_reg_' . $pid ),
+            // Per-row design upload template — only present for multi-design
+            // campaigns. The modal JS substitutes {SLOT} with the row number
+            // when injecting the widget into each participant row.
+            'designUploadTpl'   => ( class_exists( 'CW_Design_Submission' ) && CW_Design_Submission::is_multi_design( $pid ) )
+                ? CW_Design_Submission::widget_template_for_slot( $pid )
+                : '',
         ];
 
         ob_start();
@@ -672,16 +716,58 @@ class CW_Shortcodes {
             <!-- ═══════════════════════ HERO CARD (contained) ════════════════════ -->
             <div class="cwd-hero-card">
 
-                <!-- Left: event image -->
+                <!-- Left: event image (carousel when multiple images exist) -->
                 <div class="cwd-hero-img-col">
-                    <?php if ( $thumb ): ?>
-                    <button type="button"
-                            class="cwd-hero-img-btn"
-                            onclick="if(window.cwdGalleryOpen)window.cwdGalleryOpen(0);"
-                            aria-label="<?php echo esc_attr( sprintf( __( 'Enlarge image for %s', 'creativewings-core' ), get_the_title() ) ); ?>">
-                        <img src="<?php echo esc_url($thumb); ?>" alt="<?php the_title_attribute(); ?>" class="cwd-hero-img" loading="eager" decoding="async">
-                        <span class="cwd-hero-img-zoom" aria-hidden="true"><i class="fas fa-search-plus"></i></span>
-                    </button>
+                    <?php if ( ! empty( $hero_slides ) ): ?>
+                    <div class="cwd-hero-carousel<?php echo $hero_has_multi ? ' has-multi' : ''; ?>"
+                         data-cwd-hero-carousel
+                         role="region"
+                         aria-roledescription="carousel"
+                         aria-label="<?php echo esc_attr( sprintf( __( 'Images for %s', 'creativewings-core' ), get_the_title() ) ); ?>"
+                         tabindex="0">
+                        <div class="cwd-hero-carousel-track" data-cwd-hero-track>
+                            <?php foreach ( $hero_slides as $idx => $slide ):
+                                $is_first = ( $idx === 0 ); ?>
+                            <button type="button"
+                                    class="cwd-hero-slide<?php echo $is_first ? ' is-active' : ''; ?>"
+                                    data-cwd-hero-slide
+                                    data-cwd-hero-index="<?php echo (int) $idx; ?>"
+                                    aria-hidden="<?php echo $is_first ? 'false' : 'true'; ?>"
+                                    tabindex="<?php echo $is_first ? '0' : '-1'; ?>"
+                                    onclick="if(window.cwdGalleryOpen)window.cwdGalleryOpen(<?php echo (int) $idx; ?>);"
+                                    aria-label="<?php echo esc_attr( $hero_has_multi
+                                        ? sprintf( __( 'Enlarge image %1$d of %2$d', 'creativewings-core' ), $idx + 1, $hero_slide_count )
+                                        : sprintf( __( 'Enlarge image for %s', 'creativewings-core' ), get_the_title() ) ); ?>">
+                                <img src="<?php echo esc_url( $slide['full'] ); ?>"
+                                     alt="<?php echo esc_attr( $slide['alt'] ); ?>"
+                                     class="cwd-hero-slide-img"
+                                     loading="<?php echo $is_first ? 'eager' : 'lazy'; ?>"
+                                     decoding="async">
+                                <span class="cwd-hero-img-zoom" aria-hidden="true"><i class="fas fa-search-plus"></i></span>
+                            </button>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php if ( $hero_has_multi ): ?>
+                        <button type="button"
+                                class="cwd-hero-carousel-nav cwd-hero-carousel-prev"
+                                data-cwd-hero-prev
+                                aria-label="<?php esc_attr_e( 'Previous image', 'creativewings-core' ); ?>">
+                            <i class="fas fa-chevron-left" aria-hidden="true"></i>
+                        </button>
+                        <button type="button"
+                                class="cwd-hero-carousel-nav cwd-hero-carousel-next"
+                                data-cwd-hero-next
+                                aria-label="<?php esc_attr_e( 'Next image', 'creativewings-core' ); ?>">
+                            <i class="fas fa-chevron-right" aria-hidden="true"></i>
+                        </button>
+                        <div class="cwd-hero-carousel-counter" aria-hidden="true">
+                            <span data-cwd-hero-curr>1</span>
+                            <span class="cwd-hero-carousel-counter-sep">/</span>
+                            <span data-cwd-hero-total><?php echo (int) $hero_slide_count; ?></span>
+                        </div>
+                        <span class="screen-reader-text" aria-live="polite" data-cwd-hero-live></span>
+                        <?php endif; ?>
+                    </div>
                     <?php else: ?>
                     <div class="cwd-hero-img-placeholder">
                         <i class="fas fa-image"></i>
@@ -879,21 +965,57 @@ class CW_Shortcodes {
                     </div>
                     <?php endif; ?>
 
-                    <!-- Participants Card (sidebar) -->
-                    <?php if ( $min_p || $max_p ): ?>
+                    <!-- Participants / Entries Card (sidebar) ───────────────
+                         The capacity card is context-aware so it never lies
+                         to visitors:
+                           • Competition + multiple_submissions ON →
+                             show cw_multi_min / cw_multi_max with the label
+                             "Min / Max entries per user" (matches the JOIN
+                             modal which uses the same source-of-truth).
+                           • Activity + cw_allow_multiple_participants ON →
+                             show cw_min_participants / cw_max_participants
+                             with the legacy "per team" label.
+                           • Anything else (single participant / single entry)
+                             → suppress the card; "1 / 1" was just visual
+                             noise that confused organisers (see screenshot
+                             from 2026-06-10 where max=3 was set but card
+                             still showed 1/1 because it read the wrong meta).
+                    -->
+                    <?php
+                        $cap_show   = false;
+                        $cap_min    = 0;
+                        $cap_max    = 0;
+                        $cap_min_lbl = '';
+                        $cap_max_lbl = '';
+
+                        if ( $is_competition && $is_multi_sub ) {
+                            $cap_min     = (int) get_post_meta( $pid, 'cw_multi_min', true ) ?: 1;
+                            $cap_max     = (int) get_post_meta( $pid, 'cw_multi_max', true ) ?: 0;
+                            $cap_min_lbl = 'Min entries per user';
+                            $cap_max_lbl = 'Max entries per user';
+                            $cap_show    = ( $cap_min > 0 || $cap_max > 0 );
+                        } elseif ( ! $is_competition && $allow_multi_p ) {
+                            $cap_min     = $min_p;
+                            $cap_max     = $max_p;
+                            $cap_min_lbl = 'Min per team';
+                            $cap_max_lbl = 'Max per team';
+                            $cap_show    = ( $cap_min > 0 || $cap_max > 0 );
+                        }
+                    ?>
+                    <?php if ( $cap_show ): ?>
                     <div class="cwd-card">
-                        <h4 class="cwd-card-heading"><i class="fas fa-users"></i> Participants</h4>
+                        <h4 class="cwd-card-heading"><i class="fas fa-users"></i> <?php echo $is_competition ? 'Entries' : 'Participants'; ?></h4>
                         <div class="cwd-participant-row">
-                            <?php if ($min_p): ?>
+                            <?php if ( $cap_min ): ?>
                             <div class="cwd-participant-box">
-                                <span class="cwd-pbox-num"><?php echo $min_p; ?></span>
-                                <span class="cwd-pbox-label">Min per team</span>
+                                <span class="cwd-pbox-num"><?php echo (int) $cap_min; ?></span>
+                                <span class="cwd-pbox-label"><?php echo esc_html( $cap_min_lbl ); ?></span>
                             </div>
                             <?php endif; ?>
-                            <?php if ($max_p): ?>
+                            <?php if ( $cap_max ): ?>
                             <div class="cwd-participant-box">
-                                <span class="cwd-pbox-num"><?php echo $max_p; ?></span>
-                                <span class="cwd-pbox-label">Max per team</span>
+                                <span class="cwd-pbox-num"><?php echo (int) $cap_max; ?></span>
+                                <span class="cwd-pbox-label"><?php echo esc_html( $cap_max_lbl ); ?></span>
                             </div>
                             <?php endif; ?>
                         </div>
@@ -968,6 +1090,51 @@ class CW_Shortcodes {
                         <div class="cwd-prose cwd-prose-sm"><?php echo wp_kses_post(wpautop($judging)); ?></div>
                     </div>
                     <?php endif; ?>
+
+                    <!-- Download Template Card (sidebar, only when organiser
+                         attached a participant template — PSD / AI / EPS / PDF
+                         / ZIP / PNG / SVG). Resolves the attachment id to a
+                         fresh URL each render so swapped files don't 404. -->
+                    <?php
+                        $cwd_tpl_id = (int) get_post_meta( $pid, 'cw_template_file_id', true );
+                        if ( $cwd_tpl_id ) :
+                            $cwd_tpl_url   = (string) wp_get_attachment_url( $cwd_tpl_id );
+                            $cwd_tpl_label = trim( (string) get_post_meta( $pid, 'cw_template_label', true ) );
+                            if ( $cwd_tpl_label === '' ) {
+                                $cwd_tpl_label = __( 'Download Template', 'creativewings-core' );
+                            }
+                            $cwd_tpl_path = (string) get_attached_file( $cwd_tpl_id );
+                            $cwd_tpl_name = $cwd_tpl_path ? basename( $cwd_tpl_path ) : '';
+                            $cwd_tpl_ext  = $cwd_tpl_name ? strtoupper( pathinfo( $cwd_tpl_name, PATHINFO_EXTENSION ) ) : '';
+                            $cwd_tpl_size = ( $cwd_tpl_path && file_exists( $cwd_tpl_path ) ) ? size_format( (int) filesize( $cwd_tpl_path ), 1 ) : '';
+                            if ( $cwd_tpl_url ) :
+                    ?>
+                    <div class="cwd-card cwd-template-card">
+                        <h4 class="cwd-card-heading"><i class="fas fa-cloud-download-alt"></i> Resources</h4>
+                        <a href="<?php echo esc_url( $cwd_tpl_url ); ?>"
+                           class="cwd-template-download"
+                           download
+                           target="_blank"
+                           rel="noopener"
+                           aria-label="<?php echo esc_attr( sprintf( __( '%s (download)', 'creativewings-core' ), $cwd_tpl_label ) ); ?>">
+                            <span class="cwd-template-icon"><i class="fas fa-file-download"></i></span>
+                            <span class="cwd-template-text">
+                                <span class="cwd-template-label"><?php echo esc_html( $cwd_tpl_label ); ?></span>
+                                <?php if ( $cwd_tpl_ext || $cwd_tpl_size ): ?>
+                                <span class="cwd-template-meta">
+                                    <?php if ( $cwd_tpl_ext ): ?><span class="cwd-template-ext"><?php echo esc_html( $cwd_tpl_ext ); ?></span><?php endif; ?>
+                                    <?php if ( $cwd_tpl_ext && $cwd_tpl_size ): ?><span class="cwd-template-sep">·</span><?php endif; ?>
+                                    <?php if ( $cwd_tpl_size ): ?><span class="cwd-template-size"><?php echo esc_html( $cwd_tpl_size ); ?></span><?php endif; ?>
+                                </span>
+                                <?php endif; ?>
+                            </span>
+                            <span class="cwd-template-cta" aria-hidden="true"><i class="fas fa-arrow-down"></i></span>
+                        </a>
+                        <?php if ( $cwd_tpl_name ): ?>
+                        <p class="cwd-template-filename" title="<?php echo esc_attr( $cwd_tpl_name ); ?>"><?php echo esc_html( $cwd_tpl_name ); ?></p>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; endif; ?>
 
                     <!-- Organiser Card -->
                     <div class="cwd-card cwd-org-card">
@@ -1205,7 +1372,54 @@ class CW_Shortcodes {
                     <?php endif; ?>
 
                     <!-- PRIZES (Competition only) -->
-                    <?php if ( $is_competition && ( ! empty($prizes) || $total_prize ) ): ?>
+                    <?php if ( $is_competition && ( ! empty($prizes) || $total_prize ) ):
+                        // Group prizes by category, preserving insertion order. Empty
+                        // category falls into a neutral "Other" bucket at the end.
+                        $cwd_prize_groups = [];
+                        $cwd_prize_other  = [];
+                        foreach ( (array) $prizes as $pr ) {
+                            if ( empty( $pr['prize_title'] ) ) {
+                                continue;
+                            }
+                            $cat = isset( $pr['prize_category'] ) ? trim( (string) $pr['prize_category'] ) : '';
+                            if ( $cat === '' ) {
+                                $cwd_prize_other[] = $pr;
+                                continue;
+                            }
+                            if ( ! isset( $cwd_prize_groups[ $cat ] ) ) {
+                                $cwd_prize_groups[ $cat ] = [];
+                            }
+                            $cwd_prize_groups[ $cat ][] = $pr;
+                        }
+
+                        // CreativeWings brand palette, cycled through categories in order.
+                        $cwd_cat_palette = [
+                            [ 'main' => '#125B9A', 'soft' => '#E3EEF7', 'name' => 'blue'    ], // CW Blue
+                            [ 'main' => '#F05A7E', 'soft' => '#FCE6EC', 'name' => 'coral'   ], // CW Coral
+                            [ 'main' => '#7C3AED', 'soft' => '#EDE9FE', 'name' => 'purple'  ],
+                            [ 'main' => '#0D9488', 'soft' => '#CCFBF1', 'name' => 'teal'    ],
+                            [ 'main' => '#F59E0B', 'soft' => '#FEF3C7', 'name' => 'amber'   ],
+                            [ 'main' => '#22C55E', 'soft' => '#DCFCE7', 'name' => 'green'   ],
+                        ];
+
+                        // Position → badge spec map. The `num` value, when non-empty,
+                        // is rendered as a number badge overlay on top of the icon —
+                        // gives the "ribbon with 2 / 3" look the client requested.
+                        $cwd_pos_map = [
+                            'champion'     => [ 'icon' => 'fa-trophy',      'cls' => 'is-champion',     'num' => '', 'label' => __( 'Champion',         'creativewings-core' ) ],
+                            'runner_up_1'  => [ 'icon' => 'fa-award',       'cls' => 'is-runnerup-1',  'num' => '2', 'label' => __( '1st Runner-Up',    'creativewings-core' ) ],
+                            'runner_up_2'  => [ 'icon' => 'fa-award',       'cls' => 'is-runnerup-2',  'num' => '3', 'label' => __( '2nd Runner-Up',    'creativewings-core' ) ],
+                            'honorable'    => [ 'icon' => 'fa-star',        'cls' => 'is-honorable',   'num' => '',  'label' => __( 'Honorable Mention','creativewings-core' ) ],
+                            'participation'=> [ 'icon' => 'fa-certificate', 'cls' => 'is-participation','num' => '', 'label' => __( 'Participation',    'creativewings-core' ) ],
+                            'custom'       => [ 'icon' => 'fa-medal',       'cls' => 'is-custom',      'num' => '',  'label' => '' ],
+                            ''             => [ 'icon' => 'fa-medal',       'cls' => 'is-default',     'num' => '',  'label' => '' ],
+                        ];
+
+                        // Append "Other" bucket at the end as its own group entry.
+                        if ( ! empty( $cwd_prize_other ) ) {
+                            $cwd_prize_groups[ '__other__' ] = $cwd_prize_other;
+                        }
+                    ?>
                     <section class="cwd-section">
                         <h2 class="cwd-section-title"><i class="fas fa-trophy"></i> Prizes</h2>
                         <?php if ($total_prize): ?>
@@ -1214,19 +1428,54 @@ class CW_Shortcodes {
                             Total Prize Pool: <strong><?php echo esc_html('RM '.number_format(floatval($total_prize),2)); ?></strong>
                         </div>
                         <?php endif; ?>
-                        <?php if ( ! empty($prizes) ): ?>
-                        <div class="cwd-prize-grid">
-                            <?php foreach ($prizes as $pr):
-                                if (empty($pr['prize_title'])) continue; ?>
-                            <div class="cwd-prize-card">
-                                <div class="cwd-prize-icon"><i class="fas fa-medal"></i></div>
-                                <h4 class="cwd-prize-title"><?php echo esc_html($pr['prize_title']); ?></h4>
-                                <?php if (!empty($pr['prize_description'])): ?>
-                                <p class="cwd-prize-desc"><?php echo esc_html($pr['prize_description']); ?></p>
-                                <?php endif; ?>
+                        <?php if ( ! empty( $cwd_prize_groups ) ):
+                            $cwd_color_idx = 0;
+                            foreach ( $cwd_prize_groups as $cwd_cat_label => $cwd_cat_prizes ):
+                                $cwd_is_other = ( $cwd_cat_label === '__other__' );
+                                if ( $cwd_is_other ) {
+                                    $cwd_main  = '#94A3B8';
+                                    $cwd_soft  = '#F1F5F9';
+                                    $cwd_swatch_name = 'neutral';
+                                    $cwd_cat_display = __( 'Other Prizes', 'creativewings-core' );
+                                } else {
+                                    $cwd_swatch = $cwd_cat_palette[ $cwd_color_idx % count( $cwd_cat_palette ) ];
+                                    $cwd_main = $cwd_swatch['main'];
+                                    $cwd_soft = $cwd_swatch['soft'];
+                                    $cwd_swatch_name = $cwd_swatch['name'];
+                                    $cwd_cat_display = $cwd_cat_label;
+                                    $cwd_color_idx++;
+                                }
+                        ?>
+                        <div class="cwd-prize-group cwd-prize-group--<?php echo esc_attr( $cwd_swatch_name ); ?>"
+                             style="--cwd-cat-main: <?php echo esc_attr( $cwd_main ); ?>; --cwd-cat-soft: <?php echo esc_attr( $cwd_soft ); ?>;">
+                            <div class="cwd-prize-group-head">
+                                <span class="cwd-prize-group-chip"><?php echo esc_html( $cwd_cat_display ); ?></span>
+                                <span class="cwd-prize-group-count"><?php echo (int) count( $cwd_cat_prizes ); ?> <?php echo esc_html( _n( 'prize', 'prizes', count( $cwd_cat_prizes ), 'creativewings-core' ) ); ?></span>
                             </div>
-                            <?php endforeach; ?>
+                            <div class="cwd-prize-grid">
+                                <?php foreach ( $cwd_cat_prizes as $pr ):
+                                    $cwd_pos_key = isset( $pr['prize_position'] ) ? (string) $pr['prize_position'] : '';
+                                    $cwd_pos     = isset( $cwd_pos_map[ $cwd_pos_key ] ) ? $cwd_pos_map[ $cwd_pos_key ] : $cwd_pos_map[''];
+                                ?>
+                                <div class="cwd-prize-card <?php echo esc_attr( $cwd_pos['cls'] ); ?>">
+                                    <div class="cwd-prize-icon" aria-hidden="true">
+                                        <i class="fas <?php echo esc_attr( $cwd_pos['icon'] ); ?>"></i>
+                                        <?php if ( $cwd_pos['num'] !== '' ): ?>
+                                        <span class="cwd-prize-icon-num"><?php echo esc_html( $cwd_pos['num'] ); ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if ( $cwd_pos['label'] !== '' ): ?>
+                                    <span class="cwd-prize-pos-label"><?php echo esc_html( $cwd_pos['label'] ); ?></span>
+                                    <?php endif; ?>
+                                    <h4 class="cwd-prize-title"><?php echo esc_html( $pr['prize_title'] ); ?></h4>
+                                    <?php if ( ! empty( $pr['prize_description'] ) ): ?>
+                                    <p class="cwd-prize-desc"><?php echo esc_html( $pr['prize_description'] ); ?></p>
+                                    <?php endif; ?>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
                         </div>
+                        <?php endforeach; ?>
                         <?php endif; ?>
                     </section>
                     <?php endif; ?>
@@ -1454,6 +1703,90 @@ class CW_Shortcodes {
         })();
         </script>
         <?php endif; ?>
+
+        <!-- ═════════════════ HERO IMAGE CAROUSEL (arrows + swipe) ═════════════════ -->
+        <script>
+        (function(){
+            var roots = document.querySelectorAll('[data-cwd-hero-carousel]');
+            if (!roots.length) return;
+            roots.forEach(function(root){
+                var track  = root.querySelector('[data-cwd-hero-track]');
+                var slides = root.querySelectorAll('[data-cwd-hero-slide]');
+                var total  = slides.length;
+                if (!track || total < 2) return;
+
+                var prev   = root.querySelector('[data-cwd-hero-prev]');
+                var next   = root.querySelector('[data-cwd-hero-next]');
+                var curr   = root.querySelector('[data-cwd-hero-curr]');
+                var live   = root.querySelector('[data-cwd-hero-live]');
+                var idx    = 0;
+
+                function show(i) {
+                    idx = ((i % total) + total) % total;
+                    track.style.transform = 'translate3d(' + (-100 * idx) + '%, 0, 0)';
+                    slides.forEach(function(s, j){
+                        var active = (j === idx);
+                        s.setAttribute('aria-hidden', active ? 'false' : 'true');
+                        s.setAttribute('tabindex', active ? '0' : '-1');
+                        s.classList.toggle('is-active', active);
+                    });
+                    if (curr) curr.textContent = String(idx + 1);
+                    if (live) live.textContent = 'Image ' + (idx + 1) + ' of ' + total;
+                }
+
+                if (prev) prev.addEventListener('click', function(e){ e.stopPropagation(); show(idx - 1); });
+                if (next) next.addEventListener('click', function(e){ e.stopPropagation(); show(idx + 1); });
+
+                // Keyboard nav while the carousel region (or any inner button) is focused.
+                root.addEventListener('keydown', function(e){
+                    if (e.key === 'ArrowLeft')       { show(idx - 1); e.preventDefault(); }
+                    else if (e.key === 'ArrowRight') { show(idx + 1); e.preventDefault(); }
+                });
+
+                // Touch swipe — threshold 40px, horizontal dominant.
+                // Track swipe state and block the synthetic click that fires after
+                // a swipe so the active slide's onclick (open lightbox) doesn't trigger.
+                var sx = null, sy = null, swiping = false, suppressClick = false;
+                track.addEventListener('touchstart', function(e){
+                    if (e.touches.length !== 1) return;
+                    sx = e.touches[0].clientX;
+                    sy = e.touches[0].clientY;
+                    swiping = false;
+                }, { passive: true });
+                track.addEventListener('touchmove', function(e){
+                    if (sx === null) return;
+                    var dx = e.touches[0].clientX - sx;
+                    var dy = e.touches[0].clientY - sy;
+                    if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) swiping = true;
+                }, { passive: true });
+                track.addEventListener('touchend', function(e){
+                    if (sx === null) return;
+                    var dx = (e.changedTouches[0].clientX || 0) - sx;
+                    var dy = (e.changedTouches[0].clientY || 0) - (sy || 0);
+                    var didSwipe = swiping;
+                    sx = sy = null; swiping = false;
+                    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+                        show(idx + (dx < 0 ? 1 : -1));
+                        suppressClick = true;
+                        setTimeout(function(){ suppressClick = false; }, 350);
+                    } else if (didSwipe) {
+                        // Small drag that didn't pass the threshold — still block the
+                        // ghost click so users don't accidentally open the lightbox.
+                        suppressClick = true;
+                        setTimeout(function(){ suppressClick = false; }, 300);
+                    }
+                });
+                // Capture-phase click suppressor — runs before the slide's inline
+                // onclick fires.
+                track.addEventListener('click', function(e){
+                    if (suppressClick) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                }, true);
+            });
+        })();
+        </script>
 
         <?php if ( $voting_enabled ):
             // Resolve visitor IP for "already voted" check
@@ -1783,6 +2116,15 @@ class CW_Shortcodes {
             } else {
                 html += '<input type="hidden" name="cw_names[' + num + ']" value="Self">';
             }
+            // Per-row design upload widget (multi-design campaigns only). The
+            // template was generated server-side with `{SLOT}` placeholders we
+            // swap for the current row number. Injected before the custom
+            // fields so the artwork picker sits prominently at the top of each
+            // participant section.
+            if (cfg.designUploadTpl) {
+                var tpl = String(cfg.designUploadTpl).replace(/\{SLOT\}/g, num);
+                html += tpl;
+            }
             if (cfg.fields && cfg.fields.length) {
                 cfg.fields.forEach(function(f, idx) {
                     var ftype = (f.type || 'text').toString().toLowerCase();
@@ -1824,9 +2166,12 @@ class CW_Shortcodes {
 
         function cwdAddRow(num) {
             var wrap = document.getElementById('cwd-reg-rows');
+            var rowNum = num || (wrap.children.length + 1);
             var div = document.createElement('div');
-            div.innerHTML = cwdBuildRow(num || (wrap.children.length + 1));
-            wrap.appendChild(div.firstChild);
+            div.innerHTML = cwdBuildRow(rowNum);
+            var newRow = div.firstChild;
+            wrap.appendChild(newRow);
+            cwdSetupDesignWidgetsForRow(newRow, rowNum);
             cwdUpdateAddBtn();
             cwdUpdateQty();
         }
@@ -1839,15 +2184,62 @@ class CW_Shortcodes {
             // Re-number
             var rows = wrap.querySelectorAll('.cwd-reg-row');
             rows.forEach(function(r, i) {
-                r.setAttribute('data-row', i + 1);
+                var newNum = i + 1;
+                r.setAttribute('data-row', newNum);
                 var title = r.querySelector('.cwd-reg-row-title');
-                if (title) title.textContent = cwdRegConfig.label + ' ' + (i + 1);
+                if (title) title.textContent = cwdRegConfig.label + ' ' + newNum;
                 r.querySelectorAll('[name]').forEach(function(el) {
-                    el.name = el.name.replace(/\[\d+\]/g, '[' + (i + 1) + ']');
+                    el.name = el.name.replace(/\[\d+\]/g, '[' + newNum + ']');
                 });
+                // The design upload widget needs its data-slot, heading, and
+                // prefill button (visible only on rows >= 2) refreshed too.
+                cwdRefreshDesignWidgetSlot(r, newNum);
             });
             cwdUpdateAddBtn();
             cwdUpdateQty();
+        }
+
+        /**
+         * After a row is freshly built from the template, the design upload
+         * container (if any) already has `{SLOT}` substituted to the row
+         * number in `name` attributes and `data-slot`. This wires the file
+         * inputs through the existing AJAX uploader and toggles the prefill
+         * button to row >= 2 only.
+         */
+        function cwdSetupDesignWidgetsForRow(rowEl, rowNum) {
+            if (!rowEl) return;
+            rowEl.querySelectorAll('.cw-design-upload').forEach(function (c) {
+                c.setAttribute('data-slot', rowNum);
+                // Heading currently reads "Submit design for Participant {SLOT}"
+                // from the template; substitute in-place defensively if the
+                // server-side replacement somehow missed it.
+                var h = c.querySelector('.cw-design-upload__title');
+                if (h && /\{SLOT\}/.test(h.textContent)) {
+                    h.textContent = h.textContent.replace(/\{SLOT\}/g, rowNum);
+                }
+                var prefill = c.querySelector('.cw-design-prefill-btn');
+                if (prefill) {
+                    prefill.style.display = rowNum > 1 ? '' : 'none';
+                }
+                if (window.CwDesign && typeof window.CwDesign.initContainer === 'function') {
+                    window.CwDesign.initContainer(c);
+                }
+            });
+        }
+
+        function cwdRefreshDesignWidgetSlot(rowEl, rowNum) {
+            if (!rowEl) return;
+            rowEl.querySelectorAll('.cw-design-upload').forEach(function (c) {
+                c.setAttribute('data-slot', rowNum);
+                var h = c.querySelector('.cw-design-upload__title');
+                if (h) h.textContent = (rowNum > 1 || cwdRegConfig.allowMultiple)
+                    ? 'Submit design for Participant ' + rowNum
+                    : 'Submit your design';
+                var prefill = c.querySelector('.cw-design-prefill-btn');
+                if (prefill) {
+                    prefill.style.display = rowNum > 1 ? '' : 'none';
+                }
+            });
         }
 
         document.getElementById('cwd-add-row-btn') && document.getElementById('cwd-add-row-btn').addEventListener('click', function(){

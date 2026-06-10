@@ -190,6 +190,367 @@
     pointer-events: none;
 }
 
+/* ────────────── Multi-design banner (above participant rows) ────────────── */
+
+.cw-design-multi-banner {
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    border: 1px dashed #93c5fd;
+    border-radius: 10px;
+    background: #eff6ff;
+}
+.cw-design-multi-banner__title {
+    margin: 0 0 4px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #1e3a8a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.cw-design-multi-banner__title i { color: #2563eb; }
+.cw-design-multi-banner__hint {
+    margin: 0;
+    font-size: 12.5px;
+    color: #1e40af;
+    line-height: 1.45;
+}
+
+/* ────────────── Per-row uploader (inside participant row) ────────────── */
+
+.cw-design-upload.is-per-row {
+    margin: 12px 0 8px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+.cw-design-upload.is-per-row .cw-design-upload__title--row {
+    font-size: 13.5px;
+    font-weight: 700;
+    margin: 0 0 8px;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.cw-design-upload.is-per-row .cw-design-upload__title--row::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #2563eb;
+}
+.cw-design-upload.is-per-row .cw-design-upload__row {
+    margin: 8px 0;
+}
+.cw-design-upload.is-per-row .cw-design-upload__label {
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+.cw-design-upload.is-per-row .cw-design-file {
+    max-width: 100%;
+    font-size: 12.5px;
+}
+.cw-design-upload.is-per-row .cw-design-feedback {
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.cw-design-prefill-btn {
+    appearance: none;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin-top: 6px;
+    font-size: 12px;
+    color: #334155;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: border-color 120ms ease, background 120ms ease;
+}
+.cw-design-prefill-btn:hover {
+    border-color: #2563eb;
+    background: #eff6ff;
+    color: #1e3a8a;
+}
+.cw-design-prefill-btn i { font-size: 11px; }
+
+/* ────────────── Checkout: multi-design line wrapper ────────────── */
+
+.cw-design-checkout-line {
+    margin: 18px 0;
+}
+.cw-design-checkout-line.is-multi {
+    padding: 18px 18px 6px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+}
+.cw-design-checkout-line.is-multi .cw-design-picker {
+    margin: 12px 0;
+    padding: 14px 14px;
+    background: #ffffff;
+}
+.cw-design-checkout-line.is-multi .cw-design-picker__heading {
+    font-size: 14px;
+}
+.cw-design-checkout-line.is-multi .cw-design-picker__preview-wrap {
+    min-height: 180px;
+    padding: 10px;
+}
+.cw-design-checkout-line__heading {
+    margin: 0 0 4px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+}
+.cw-design-checkout-line__hint {
+    margin: 0 0 8px;
+    font-size: 12.5px;
+    color: #475569;
+}
+
+/* ────────────── Checkout: "Your uploaded artwork" strip ────────────── */
+/* Sits at the top of each picker so participants can verify the raw PNG
+   (and its filename) before paying — the composite preview canvas below
+   already shows the artwork on the chosen casing, but a bare thumbnail
+   gives a fast "yes that's my file" confirmation. */
+.cw-design-picker__artwork {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    margin: 0 0 14px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+.cw-design-picker__artwork-thumb {
+    flex: 0 0 auto;
+    width: 56px;
+    height: 56px;
+    border-radius: 6px;
+    overflow: hidden;
+    background:
+        linear-gradient(45deg, #e2e8f0 25%, transparent 25%) -8px 0/16px 16px,
+        linear-gradient(-45deg, #e2e8f0 25%, transparent 25%) -8px 0/16px 16px,
+        linear-gradient(45deg, transparent 75%, #e2e8f0 75%) 0 8px/16px 16px,
+        linear-gradient(-45deg, transparent 75%, #e2e8f0 75%) 0 8px/16px 16px,
+        #ffffff;
+    border: 1px solid #cbd5e1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.cw-design-picker__artwork-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+.cw-design-picker__artwork-info {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12.5px;
+    line-height: 1.35;
+}
+.cw-design-picker__artwork-label {
+    font-weight: 700;
+    color: #0f172a;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+.cw-design-picker__artwork-file {
+    color: #334155;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.cw-design-picker__artwork-meta {
+    color: #64748b;
+    font-size: 11.5px;
+}
+.cw-design-picker__artwork-view {
+    color: #2563eb;
+    text-decoration: none;
+    font-size: 11.5px;
+    font-weight: 600;
+    margin-top: 2px;
+}
+.cw-design-picker__artwork-view:hover { text-decoration: underline; }
+
+/* ────────────── Order received / View order: locked mockup card ────────────── */
+.cw-design-mockups {
+    margin: 28px 0 0;
+    padding: 22px 24px 24px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+}
+.cw-design-mockups__title {
+    margin: 0 0 4px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.cw-design-mockups__title i { color: #2563eb; }
+.cw-design-mockups__hint {
+    margin: 0 0 16px;
+    font-size: 13px;
+    color: #475569;
+}
+.cw-design-mockups__line {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed #e2e8f0;
+}
+.cw-design-mockups__line:first-of-type {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+.cw-design-mockups__line-title {
+    margin: 0 0 12px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #1e293b;
+}
+.cw-design-mockups__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+}
+.cw-design-mockup {
+    padding: 14px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+}
+.cw-design-mockup__slot {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #2563eb;
+}
+.cw-design-mockup__canvas-wrap {
+    position: relative;
+    background: #ffffff;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 240px;
+}
+.cw-design-mockup__canvas {
+    display: block;
+    max-width: 100%;
+    margin: 0 auto;
+}
+.cw-design-mockup__loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+    font-size: 12.5px;
+    pointer-events: none;
+}
+.cw-design-mockup__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12.5px;
+    color: #475569;
+}
+.cw-design-mockup__variant {
+    font-weight: 700;
+    color: #1e293b;
+}
+.cw-design-mockup__variant i { color: #2563eb; margin-right: 4px; }
+.cw-design-mockup__file {
+    color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.cw-design-mockup__file i { margin-right: 4px; }
+.cw-design-mockup__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+}
+.cw-design-mockup__download-btn {
+    appearance: none;
+    border: none;
+    background: linear-gradient(135deg, #125B9A, #2D7BC7);
+    color: #fff;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 4px 12px rgba(18, 91, 154, .25);
+    transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+}
+.cw-design-mockup__download-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(18, 91, 154, .32);
+}
+.cw-design-mockup__download-btn[disabled] {
+    opacity: .55;
+    cursor: progress;
+    box-shadow: none;
+    transform: none;
+}
+.cw-design-mockup__artwork-link {
+    font-size: 12px;
+    font-weight: 600;
+    color: #2563eb;
+    text-decoration: none;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.cw-design-mockup__artwork-link:hover {
+    background: #eff6ff;
+    border-color: #2563eb;
+    color: #1e3a8a;
+    text-decoration: none;
+}
+
 /* ────────────── Responsiveness ────────────── */
 
 @media (max-width: 640px) {
@@ -205,5 +566,361 @@
     .cw-design-swatch img {
         width: 48px;
         height: 32px;
+    }
+
+    .cw-design-upload.is-per-row {
+        padding: 10px 12px;
+    }
+    .cw-design-checkout-line.is-multi {
+        padding: 14px 14px 4px;
+    }
+    .cw-design-mockups {
+        padding: 16px 14px 18px;
+    }
+    .cw-design-mockups__grid {
+        grid-template-columns: 1fr;
+    }
+    .cw-design-picker__artwork-thumb {
+        width: 48px;
+        height: 48px;
+    }
+}
+
+/* =================================================================
+ * Business judge dashboard — entry mockup previews + zoom lightbox
+ *
+ * Renders the participant's PNG composited onto their chosen casing
+ * variant. The same component appears in three places:
+ *   1. Entry card thumbnails on the "Manage Entries" page.
+ *   2. The evaluation modal's left preview panel.
+ *   3. The full-viewport lightbox opened by clicking either of the above.
+ *
+ * The canvas is drawn at the campaign's mask dimensions (e.g. 2400×600)
+ * and scaled down via CSS, so judges always see crisp pixels even when
+ * the card thumbnail is tiny.
+ * ================================================================= */
+
+.cw-design-entry-mockup {
+    position: relative;
+    display: block;
+    width: 100%;
+    background: #f1f5f9;
+    overflow: hidden;
+    cursor: zoom-in;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+}
+
+.cw-design-entry-mockup:focus-visible {
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .55);
+}
+
+.cw-design-entry-mockup__canvas {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    max-width: 100%;
+    object-fit: contain;
+    background:
+        linear-gradient(45deg, #e2e8f0 25%, transparent 25%) 0 0 / 16px 16px,
+        linear-gradient(-45deg, #e2e8f0 25%, transparent 25%) 0 8px / 16px 16px,
+        linear-gradient(45deg, transparent 75%, #e2e8f0 75%) 8px -8px / 16px 16px,
+        linear-gradient(-45deg, transparent 75%, #e2e8f0 75%) -8px 0 / 16px 16px,
+        #f8fafc;
+}
+
+.cw-design-entry-mockup__loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: #94a3b8;
+    pointer-events: none;
+    background: rgba(255, 255, 255, .35);
+}
+
+/* Hover/zoom affordance (the magnifying-glass pill). */
+.cw-design-entry-mockup__zoom {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, .78);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: .3px;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity .15s ease, transform .15s ease;
+    pointer-events: none;
+    backdrop-filter: blur(4px);
+}
+
+.cw-design-entry-mockup:hover .cw-design-entry-mockup__zoom,
+.cw-design-entry-mockup:focus-visible .cw-design-entry-mockup__zoom,
+.cw-entry-preview:hover .cw-design-entry-mockup__zoom,
+.cw-entry-preview:hover .cw-entry-plain-img + .cw-design-entry-mockup__zoom {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.cw-design-entry-mockup__zoom i {
+    margin-right: 4px;
+}
+
+/* When the mockup is used on entry cards it fills the existing preview slot
+ * (.cw-entry-preview is a flex container with explicit 190px height). */
+.cw-entry-mockup-card {
+    width: 100%;
+    height: 100%;
+    min-height: 180px;
+    flex: 1 1 100%;
+    align-self: stretch;
+}
+
+.cw-entry-mockup-card .cw-design-entry-mockup__canvas {
+    height: 100% !important;
+}
+
+/* When used inside the eval modal the canvas takes the full panel width.
+ * We let the canvas's natural aspect ratio decide height (via height:auto on
+ * the canvas), so portrait casings like bottles don't get squished. */
+.cw-entry-mockup-eval {
+    width: 100%;
+    border-radius: 12px;
+    background: #f1f5f9;
+    min-height: 200px;
+    border: 1.5px solid var(--cw-border, #e2e8f0);
+}
+
+.cw-entry-mockup-eval .cw-design-entry-mockup__zoom {
+    opacity: .95;
+    transform: none;
+}
+
+.cw-design-entry-mockup__caption {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #475569;
+    line-height: 1.5;
+}
+
+.cw-design-entry-mockup__caption strong {
+    color: #0f172a;
+    font-weight: 700;
+}
+
+.cw-design-entry-mockup__caption i {
+    color: #2563eb;
+    margin-right: 4px;
+}
+
+.cwb-eval-art-name {
+    color: #64748b;
+    font-size: 11px;
+}
+
+/* Plain (non-design) image previews still get a zoom cursor. */
+.cw-entry-plain-img {
+    cursor: zoom-in;
+}
+
+/* ── Lightbox overlay ────────────────────────────────────────────── */
+
+/*
+ * `!important` on the layout properties below is intentional defensive
+ * armour: when a theme (or Woo's my-account wrapper) puts `transform`,
+ * `filter`, or `contain` on an ancestor it cancels `position: fixed`
+ * for descendants. JS reparents the modal to <body> on open so this
+ * usually doesn't matter — but the `!important` ensures the overlay
+ * still covers the viewport in any browser / theme that misbehaves.
+ */
+.cw-entry-mockup-lightbox {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 100000 !important;
+    margin: 0 !important;
+    background: rgba(2, 6, 23, .92) !important;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    overflow: auto;
+    box-sizing: border-box;
+}
+
+.cw-entry-mockup-lightbox.is-open {
+    display: flex !important;
+    animation: cw-lbx-in .18s ease-out;
+}
+
+@keyframes cw-lbx-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.cw-entry-mockup-lightbox__inner {
+    position: relative;
+    width: 100%;
+    max-width: 1280px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+}
+
+.cw-entry-mockup-lightbox__close {
+    position: absolute;
+    top: -14px;
+    right: -14px;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: 0;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 18px;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    transition: transform .12s ease, background .12s ease;
+}
+
+.cw-entry-mockup-lightbox__close:hover {
+    transform: scale(1.06);
+    background: #f1f5f9;
+}
+
+.cw-entry-mockup-lightbox__caption {
+    color: #f8fafc;
+    font-size: 14px;
+    line-height: 1.5;
+    text-align: center;
+    max-width: 100%;
+    padding: 0 8px;
+    word-break: break-word;
+}
+
+.cw-entry-mockup-lightbox__caption strong {
+    color: #ffffff;
+    font-weight: 700;
+}
+
+.cw-entry-mockup-lightbox__caption i {
+    color: #fbbf24;
+    margin-right: 4px;
+}
+
+.cw-entry-mockup-lightbox__file {
+    color: #cbd5f5;
+    font-size: 13px;
+}
+
+.cw-entry-mockup-lightbox__stage {
+    position: relative;
+    width: 100%;
+    max-height: calc(100vh - 200px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+        linear-gradient(45deg, #1e293b 25%, transparent 25%) 0 0 / 24px 24px,
+        linear-gradient(-45deg, #1e293b 25%, transparent 25%) 0 12px / 24px 24px,
+        linear-gradient(45deg, transparent 75%, #1e293b 75%) 12px -12px / 24px 24px,
+        linear-gradient(-45deg, transparent 75%, #1e293b 75%) -12px 0 / 24px 24px,
+        #0f172a;
+    border-radius: 12px;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, .5);
+    overflow: hidden;
+    min-height: 280px;
+}
+
+.cw-entry-mockup-lightbox__canvas,
+.cw-entry-mockup-lightbox__img {
+    display: block;
+    max-width: 100%;
+    max-height: calc(100vh - 200px);
+    width: auto;
+    height: auto;
+    object-fit: contain;
+}
+
+.cw-entry-mockup-lightbox__loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #cbd5f5;
+    font-size: 16px;
+    background: rgba(15, 23, 42, .35);
+    backdrop-filter: blur(4px);
+    pointer-events: none;
+}
+
+.cw-entry-mockup-lightbox__loading i {
+    margin-right: 8px;
+}
+
+.cw-entry-mockup-lightbox__footer {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.cw-entry-mockup-lightbox__download {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: 999px;
+    background: #2563eb;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: background .15s ease, transform .12s ease;
+}
+
+.cw-entry-mockup-lightbox__download:hover {
+    background: #1d4ed8;
+    transform: translateY(-1px);
+    color: #ffffff;
+}
+
+@media (max-width: 600px) {
+    .cw-entry-mockup-lightbox {
+        padding: 12px;
+    }
+    .cw-entry-mockup-lightbox__close {
+        top: 4px;
+        right: 4px;
+        width: 36px;
+        height: 36px;
+        font-size: 16px;
+    }
+    .cw-entry-mockup-lightbox__caption {
+        font-size: 12px;
+    }
+    .cw-entry-mockup-lightbox__stage {
+        min-height: 200px;
     }
 }

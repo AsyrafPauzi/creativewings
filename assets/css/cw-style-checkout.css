@@ -316,7 +316,11 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
     border-left: 3px solid var(--cw-primary, #125B9A);
 }
 
-/* Section headings (billing/shipping only; order review uses .cw-order-review-stack) */
+/* Section headings (billing/shipping only; order review uses .cw-order-review-stack)
+   `text-align:left` is `!important` because some themes (Astra in particular)
+   ship a default `text-align:center` on .woocommerce h3/h4 inside the
+   checkout column — we override defensively so the plugin renders the same
+   regardless of which theme the site is on. */
 .cw-commerce-shell .woocommerce-billing-fields > h3,
 .cw-commerce-shell .woocommerce-shipping-fields > h3,
 .cw-commerce-shell .woocommerce-additional-fields > h3 {
@@ -326,6 +330,19 @@ body.cw-checkout-school-claim .cw-commerce-shell #customer_details .col-2 {
     margin: 0 0 16px;
     padding-bottom: 10px;
     border-bottom: 1px solid var(--cw-border, #e8edf2);
+    text-align: left !important;
+}
+
+/* Form labels + fields default to left-align as well — same theme override
+   rationale; matches the natural reading order on LTR locales and keeps
+   the floating-label / field-grid layout from drifting to the centre. */
+.cw-commerce-shell .woocommerce-billing-fields .form-row,
+.cw-commerce-shell .woocommerce-shipping-fields .form-row,
+.cw-commerce-shell .woocommerce-additional-fields .form-row,
+.cw-commerce-shell .woocommerce-billing-fields label,
+.cw-commerce-shell .woocommerce-shipping-fields label,
+.cw-commerce-shell .woocommerce-additional-fields label {
+    text-align: left !important;
 }
 
 /* ── Form fields ── */

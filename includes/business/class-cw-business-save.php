@@ -36,9 +36,20 @@ class CW_Business_Save {
 
     private function save_campaign( $pid ) {
         if ( ! is_user_logged_in() ) {
-            wp_die( 'Error' );
+            wp_die( esc_html__( 'You must be logged in to save a campaign.', 'creativewings-core' ) );
         }
         $uid = get_current_user_id();
+
+        // Buffer ALL output during the save flow. Stray PHP notices, theme
+        // hooks that echo HTML during `wp_update_post`, image-optimiser
+        // libraries that print debug strings, etc. would otherwise corrupt
+        // the response and silently kill the final `wp_safe_redirect`,
+        // leaving the user staring at /wp-admin/admin-post.php — visible
+        // as an apparent blank page. We discard the buffer right before
+        // redirecting so the redirect headers always send cleanly.
+        if ( ! headers_sent() ) {
+            ob_start();
+        }
 
         if ( ! function_exists( 'media_handle_upload' ) ) {
             require_once ABSPATH . 'wp-admin/includes/image.php';
@@ -52,7 +63,22 @@ class CW_Business_Save {
         $result = CW_Campaign_Persistence::save_from_array( $data, (int) $pid, $uid );
 
         if ( is_wp_error( $result ) ) {
-            wp_die( esc_html( $result->get_error_message() ) );
+            // Surface the real error message instead of relying on `wp_die`
+            // alone (which can look like a blank page on themes that aren't
+            // styled for it). Falls back to a friendly default when the
+            // WP_Error itself is empty.
+            if ( ob_get_level() > 0 ) {
+                ob_end_clean();
+            }
+            $msg = $result->get_error_message();
+            if ( $msg === '' ) {
+                $msg = __( 'Could not save the campaign. Please try again or contact support.', 'creativewings-core' );
+            }
+            wp_die(
+                esc_html( $msg ),
+                esc_html__( 'Campaign save failed', 'creativewings-core' ),
+                [ 'response' => 400, 'back_link' => true ]
+            );
         }
 
         $pid           = (int) $result;
@@ -145,6 +171,69 @@ class CW_Business_Save {
             }
         }
 
+        // ─── Participant Template (downloadable resource) ─────────────
+        // Single attachment per campaign. Stored as `cw_template_file_id` so
+        // we can re-resolve the URL (and delete the old file) cleanly when
+        // the organiser swaps or removes it.
+        $tpl_remove   = ! empty( $_POST['cw_template_remove'] ) && (string) $_POST['cw_template_remove'] !== '0';
+        $tpl_existing = (int) get_post_meta( $pid, 'cw_template_file_id', true );
+        $tpl_new_id   = 0;
+
+        if ( ! empty( $_FILES['cw_template_file']['name'] ) ) {
+            // Templates legitimately include vector source formats WordPress
+            // doesn't whitelist by default (.ai, .psd, .eps). Allow them
+            // temporarily during JUST this upload so we don't widen the
+            // attack surface of the site-wide media library.
+            $mime_filter = function ( $mimes ) {
+                $mimes['ai']  = 'application/postscript';
+                $mimes['eps'] = 'application/postscript';
+                $mimes['psd'] = 'image/vnd.adobe.photoshop';
+                $mimes['zip'] = 'application/zip';
+                // Explicit PDF entry: WordPress' default mime set already
+                // includes PDF, but some security plugins (e.g. Wordfence,
+                // SecuPress) strip it. Re-declaring it here guarantees the
+                // template upload still works on those installs.
+                $mimes['pdf'] = 'application/pdf';
+                return $mimes;
+            };
+            // Skip WP's "real MIME vs extension" guard for .ai/.eps/.psd because
+            // they're all served as `application/octet-stream` by many editors —
+            // wp_check_filetype_and_ext would reject them otherwise.
+            $ext_filter = function ( $checked, $file, $filename, $mimes, $real_mime ) {
+                $ext = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
+                if ( in_array( $ext, [ 'ai', 'eps', 'psd', 'zip', 'pdf' ], true ) ) {
+                    if ( empty( $checked['ext'] ) || empty( $checked['type'] ) ) {
+                        $checked['ext']  = $ext;
+                        $checked['type'] = $mimes[ $ext ] ?? 'application/octet-stream';
+                        $checked['proper_filename'] = false;
+                    }
+                }
+                return $checked;
+            };
+
+            add_filter( 'upload_mimes', $mime_filter );
+            add_filter( 'wp_check_filetype_and_ext', $ext_filter, 10, 5 );
+
+            $maybe_new = media_handle_upload( 'cw_template_file', $pid );
+
+            remove_filter( 'upload_mimes', $mime_filter );
+            remove_filter( 'wp_check_filetype_and_ext', $ext_filter, 10 );
+
+            if ( ! is_wp_error( $maybe_new ) ) {
+                $tpl_new_id = (int) $maybe_new;
+                update_post_meta( $pid, 'cw_template_file_id', $tpl_new_id );
+                // Drop the previous template attachment — it's not referenced
+                // anywhere else (no gallery, no thumbnail, just this one slot).
+                if ( $tpl_existing && $tpl_existing !== $tpl_new_id ) {
+                    wp_delete_attachment( $tpl_existing, true );
+                }
+            }
+        } elseif ( $tpl_remove && $tpl_existing ) {
+            // No new file but the user pressed "Remove" → fully detach.
+            wp_delete_attachment( $tpl_existing, true );
+            delete_post_meta( $pid, 'cw_template_file_id' );
+        }
+
         if ( class_exists( 'CW_Sponsor_Coupons' ) ) {
             CW_Sponsor_Coupons::sync_campaign_coupons( $pid );
         }
@@ -156,7 +245,27 @@ class CW_Business_Save {
         set_transient( 'cw_popup_msg_uid_' . $uid, $message, 60 );
         set_transient( 'cw_popup_type_uid_' . $uid, 'success', 60 );
 
-        wp_safe_redirect( add_query_arg( 'tab', 'campaigns', get_permalink( wc_get_page_id( 'myaccount' ) ) ) );
+        // Discard any buffered output before redirecting. Anything noisy
+        // during save (plugin notices, optimiser debug lines, etc.) would
+        // otherwise prevent the Location: header from being sent and the
+        // user would land on a blank admin-post.php response.
+        if ( ob_get_level() > 0 ) {
+            ob_end_clean();
+        }
+
+        // Resolve the destination defensively. `wc_get_page_id` can return
+        // -1 / 0 on installs where the My Account page slug got renamed or
+        // never created; `get_permalink()` then returns false, and
+        // `wp_safe_redirect( false )` falls back to /wp-admin which also
+        // looks broken to a logged-in business user. Fall back to home URL.
+        $myaccount_id  = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'myaccount' ) : 0;
+        $myaccount_url = $myaccount_id > 0 ? get_permalink( $myaccount_id ) : '';
+        if ( ! $myaccount_url ) {
+            $myaccount_url = home_url( '/my-account/' );
+        }
+        $redirect_to = add_query_arg( 'tab', 'campaigns', $myaccount_url );
+
+        wp_safe_redirect( $redirect_to );
         exit;
     }
 

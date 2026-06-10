@@ -578,6 +578,44 @@ select.cw-input-dark {
     grid-template-columns: 70px 1fr 1fr 30px;
     gap: 6px;
 }
+
+/* Prize repeater rows: Title | Category | Position | Description | × */
+.cww-rep-row.cww-rep-row-prize {
+    grid-template-columns: 1.2fr 1fr 1fr 1.4fr 30px;
+    gap: 6px;
+}
+.cww-rep-row.cww-rep-row-prize select.cww-rep-pos {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--cw-border);
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--cw-text);
+    background: var(--cw-bg);
+    cursor: pointer;
+}
+.cww-rep-row.cww-rep-row-prize select.cww-rep-pos:focus {
+    border-color: var(--cw-primary);
+    outline: none;
+    background: #fff;
+}
+
+/* Tablet: stack into 2 rows but still single repeater item */
+@media (max-width: 860px) {
+    .cww-rep-row.cww-rep-row-prize {
+        grid-template-columns: 1fr 1fr 30px;
+        grid-template-areas:
+            "title    title    del"
+            "category position position"
+            "desc     desc     desc";
+    }
+    .cww-rep-row.cww-rep-row-prize input[name$="[prize_title]"]       { grid-area: title; }
+    .cww-rep-row.cww-rep-row-prize input[name$="[prize_category]"]    { grid-area: category; }
+    .cww-rep-row.cww-rep-row-prize select.cww-rep-pos                 { grid-area: position; }
+    .cww-rep-row.cww-rep-row-prize input[name$="[prize_description]"] { grid-area: desc; }
+    .cww-rep-row.cww-rep-row-prize .cww-rep-del                       { grid-area: del; }
+}
 .cww-rep-row-school .cww-input-code {
     text-align: center;
     font-variant-numeric: tabular-nums;
