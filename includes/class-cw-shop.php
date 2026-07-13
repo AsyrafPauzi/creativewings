@@ -942,6 +942,8 @@ class CW_Shop {
                         // and lets modules look up per-row arrays (artworks, variants,
                         // etc.) by slot rather than relying on call-order heuristics.
                         do_action( 'cw_entry_created_from_order', (int) $entry_id, $item, $order, (int) $p_num );
+
+                        $this->apply_guest_entry_meta_from_order( (int) $entry_id, $order );
                     }
                 }
             } 
@@ -950,6 +952,30 @@ class CW_Shop {
         }
         $order->update_meta_data( '_cw_entries_created', 'yes' );
         $order->save();
+    }
+
+    /**
+     * Stamp guest billing email and DOB onto entries when the order has no user.
+     *
+     * @param int      $entry_id
+     * @param WC_Order $order
+     */
+    private function apply_guest_entry_meta_from_order( $entry_id, $order ) {
+        if ( ! $entry_id || ! ( $order instanceof WC_Order ) || $order->get_user_id() ) {
+            return;
+        }
+
+        $email = $order->get_billing_email();
+        if ( $email ) {
+            update_post_meta( $entry_id, 'cw_guest_email', sanitize_email( $email ) );
+        }
+
+        if ( class_exists( 'CW_Guest_Join' ) ) {
+            $dob = $order->get_meta( CW_Guest_Join::ORDER_META_DOB );
+            if ( $dob ) {
+                update_post_meta( $entry_id, CW_Guest_Join::ORDER_META_DOB, sanitize_text_field( $dob ) );
+            }
+        }
     }
 
     /**
@@ -1093,6 +1119,11 @@ class CW_Shop {
         }
         do_action( 'cw_staged_claimed', $user_id, $row, $product_id );
         do_action( 'cw_order_entry_created', $user_id, $entry_id, $product_id, $order_id );
+
+        $order = wc_get_order( $order_id );
+        if ( $order ) {
+            $this->apply_guest_entry_meta_from_order( (int) $entry_id, $order );
+        }
     }
 
     public function redirect_to_checkout( $url ) { return wc_get_checkout_url(); }

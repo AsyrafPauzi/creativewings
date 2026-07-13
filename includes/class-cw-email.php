@@ -401,6 +401,134 @@ HTML;
         );
     }
 
+    /**
+     * Resolve the complete-guest-registration page URL (Task 7 shortcode page).
+     */
+    private static function get_complete_guest_registration_page_url() {
+        $page = get_page_by_path( 'complete-guest-registration' );
+        if ( $page && 'publish' === $page->post_status ) {
+            return get_permalink( $page );
+        }
+
+        return home_url( '/complete-guest-registration/' );
+    }
+
+    /**
+     * Email a one-time link so a guest can finish account registration after payment.
+     *
+     * @param WC_Order $order
+     * @param string   $token Plaintext completion token.
+     * @return bool
+     */
+    public static function send_guest_complete_registration( $order, $token ) {
+        if ( ! ( $order instanceof WC_Order ) || ! is_string( $token ) || '' === $token ) {
+            return false;
+        }
+
+        $to = $order->get_billing_email();
+        if ( ! $to || ! is_email( $to ) ) {
+            error_log( sprintf(
+                '[CW_Email] Skipped guest complete-registration email for order #%d — no valid recipient.',
+                (int) $order->get_id()
+            ) );
+            return false;
+        }
+
+        $complete_url = add_query_arg(
+            [
+                'cw_guest_order' => $order->get_id(),
+                'cw_guest_token' => $token,
+            ],
+            self::get_complete_guest_registration_page_url()
+        );
+
+        $first_name = trim( (string) $order->get_billing_first_name() );
+        if ( '' === $first_name ) {
+            $first_name = __( 'there', 'creativewings-core' );
+        }
+
+        $subject = sprintf(
+            /* translators: %s: site brand name */
+            __( 'Complete your %s registration', 'creativewings-core' ),
+            'Creative Wings'
+        );
+
+        $body = self::build_guest_complete_registration_html_body( [
+            'first_name'   => $first_name,
+            'complete_url' => $complete_url,
+        ] );
+
+        $html = self::email_template_wrap( [
+            'heading' => __( 'Complete your registration', 'creativewings-core' ),
+            'body'    => $body,
+        ] );
+
+        $headers = [ 'Content-Type: text/html; charset=UTF-8' ];
+
+        $force_from_addr = static function () {
+            $host = wp_parse_url( home_url(), PHP_URL_HOST );
+            $host = preg_replace( '/^www\./i', '', (string) $host );
+            return $host ? ( 'no-reply@' . $host ) : 'no-reply@creativewings.asia';
+        };
+        $force_from_name = static function () {
+            return 'Creative Wings';
+        };
+        add_filter( 'wp_mail_from', $force_from_addr, 99 );
+        add_filter( 'wp_mail_from_name', $force_from_name, 99 );
+
+        $sent = false;
+        try {
+            $sent = (bool) wp_mail( $to, $subject, $html, $headers );
+        } catch ( \Throwable $e ) {
+            error_log( sprintf(
+                '[CW_Email] wp_mail threw while sending guest complete-registration email for order #%d: %s',
+                (int) $order->get_id(),
+                $e->getMessage()
+            ) );
+            $sent = false;
+        }
+
+        remove_filter( 'wp_mail_from', $force_from_addr, 99 );
+        remove_filter( 'wp_mail_from_name', $force_from_name, 99 );
+
+        if ( ! $sent ) {
+            error_log( sprintf(
+                '[CW_Email] wp_mail returned false for guest complete-registration email — order #%d / to %s',
+                (int) $order->get_id(),
+                $to
+            ) );
+        }
+
+        return $sent;
+    }
+
+    /**
+     * Inner HTML body for the guest complete-registration email.
+     *
+     * @param array{first_name:string,complete_url:string} $args
+     */
+    private static function build_guest_complete_registration_html_body( array $args ) {
+        $first_name = esc_html( $args['first_name'] );
+        $url_esc    = esc_url( $args['complete_url'] );
+
+        $hi_line    = sprintf( __( 'Hi %s,', 'creativewings-core' ), '<strong>' . $first_name . '</strong>' );
+        $thanks     = esc_html__( 'Thank you for joining — your entry has been submitted successfully.', 'creativewings-core' );
+        $next_step  = esc_html__( 'To manage your submission and receive updates, please complete your account registration using the button below.', 'creativewings-core' );
+        $cta_label  = esc_html__( 'Complete registration', 'creativewings-core' );
+        $fallback   = esc_html__( "If the button doesn't work, copy this link into your browser:", 'creativewings-core' );
+        $disclaimer = esc_html__( 'This link is personal to you and expires after 14 days.', 'creativewings-core' );
+
+        $body  = '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;">' . $hi_line . '</p>';
+        $body .= '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;">' . $thanks . '</p>';
+        $body .= '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;">' . $next_step . '</p>';
+        $body .= '<p style="text-align:center;margin:28px 0;"><a href="' . $url_esc . '" style="display:inline-block;background:#0F6796;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:999px;font-weight:700;font-size:15px;line-height:1;">' . $cta_label . '</a></p>';
+        $body .= '<p style="margin:0 0 10px;font-size:13px;line-height:1.65;color:#555555;">' . $fallback . '</p>';
+        $body .= '<p style="margin:0 0 22px;font-size:13px;line-height:1.65;color:#0F6796;word-break:break-all;"><a href="' . $url_esc . '" style="color:#0F6796;">' . esc_html( $args['complete_url'] ) . '</a></p>';
+        $body .= '<p style="margin:24px 0 0;padding:14px 16px;background:#f1f5f9;border-radius:10px;font-size:13px;line-height:1.6;color:#555555;">' . $disclaimer . '</p>';
+
+        return $body;
+    }
+
     public function on_cert_ready( $user_id, $entry_id, $campaign_id ) {
         $user = get_userdata( $user_id );
         if ( ! $user ) {

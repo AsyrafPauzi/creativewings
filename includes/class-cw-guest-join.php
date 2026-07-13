@@ -347,5 +347,112 @@ class CW_Guest_Join {
         }
     }
 
-    public function maybe_send_complete_registration_email( $order_id ) {}
+    /**
+     * Whether the order includes CW campaign registration line items.
+     *
+     * @param WC_Order $order
+     */
+    public static function order_has_cw_registration( $order ) {
+        if ( ! ( $order instanceof WC_Order ) ) {
+            return false;
+        }
+
+        foreach ( $order->get_items() as $item ) {
+            if ( $item->get_meta( '_cw_participant_data' ) || $item->get_meta( '_cw_staged_id' ) ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Create a one-time completion token; store hash + expiry on the order.
+     *
+     * @param int $order_id
+     * @return string Plaintext token for the email URL, or empty on failure.
+     */
+    public static function create_completion_token( $order_id ) {
+        $order = wc_get_order( $order_id );
+        if ( ! $order ) {
+            return '';
+        }
+
+        $token  = bin2hex( random_bytes( 32 ) );
+        $hash   = hash( 'sha256', $token );
+        $expiry = time() + ( self::TOKEN_TTL_DAYS * DAY_IN_SECONDS );
+
+        $order->update_meta_data( self::ORDER_META_TOKEN_HASH, $hash );
+        $order->update_meta_data( self::ORDER_META_TOKEN_EXPIRES, $expiry );
+        $order->update_meta_data( self::ORDER_META_COMPLETED, 'no' );
+        $order->save();
+
+        return $token;
+    }
+
+    /**
+     * Verify a completion token for a guest order.
+     *
+     * @param int    $order_id
+     * @param string $token
+     */
+    public static function verify_completion_token( $order_id, $token ) {
+        $order = wc_get_order( $order_id );
+        if ( ! $order || $order->get_user_id() ) {
+            return false;
+        }
+
+        if ( 'yes' === $order->get_meta( self::ORDER_META_COMPLETED ) ) {
+            return false;
+        }
+
+        $expires = (int) $order->get_meta( self::ORDER_META_TOKEN_EXPIRES );
+        if ( $expires && time() > $expires ) {
+            return false;
+        }
+
+        $hash = (string) $order->get_meta( self::ORDER_META_TOKEN_HASH );
+        if ( ! $hash ) {
+            return false;
+        }
+
+        return hash_equals( $hash, hash( 'sha256', (string) $token ) );
+    }
+
+    public function maybe_send_complete_registration_email( $order_id ) {
+        $order_id = (int) $order_id;
+        $order    = wc_get_order( $order_id );
+        if ( ! $order || $order->get_user_id() ) {
+            return;
+        }
+
+        if ( ! self::order_has_cw_registration( $order ) ) {
+            return;
+        }
+
+        if ( 'yes' === $order->get_meta( '_cw_guest_complete_email_sent' ) ) {
+            return;
+        }
+
+        if ( ! $order->is_paid() && ! in_array( $order->get_status(), [ 'processing', 'completed' ], true ) ) {
+            return;
+        }
+
+        $token = self::create_completion_token( $order_id );
+        if ( ! $token ) {
+            return;
+        }
+
+        if ( ! class_exists( 'CW_Email' ) ) {
+            return;
+        }
+
+        $sent = CW_Email::send_guest_complete_registration( $order, $token );
+        if ( ! $sent ) {
+            return;
+        }
+
+        $order->update_meta_data( '_cw_guest_complete_email_sent', 'yes' );
+        $order->save();
+    }
 }
