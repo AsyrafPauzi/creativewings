@@ -552,10 +552,11 @@ class CW_Shop {
             return false;
         }
 
-        // Anti-spam: one entry per user (= per email). Default ON for any campaign that
-        // hasn't explicitly opted out via the admin toggle.
-        $uid = get_current_user_id();
-        if ( $uid && self::campaign_limits_to_one_entry( (int) $product_id ) && self::user_already_has_entry( $uid, (int) $product_id ) ) {
+        // Anti-spam: one entry per logged-in user. Guests may register; duplicate
+        // email handling is enforced at guest checkout (CW_Guest_Join).
+        if ( is_user_logged_in()
+            && self::campaign_limits_to_one_entry( (int) $product_id )
+            && self::user_already_has_entry( get_current_user_id(), (int) $product_id ) ) {
             wc_add_notice(
                 __( 'You have already registered for this campaign with this account. Only one entry per user is allowed.', 'creativewings-core' ),
                 'error'

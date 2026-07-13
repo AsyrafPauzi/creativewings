@@ -63,8 +63,9 @@ class CW_Design_Submission {
         add_action( 'save_post_product', [ $this, 'save_metabox' ], 30, 2 );
         add_action( 'admin_enqueue_scripts', [ $this, 'maybe_enqueue_media_picker' ] );
 
-        // AJAX upload (artwork + optional source).
+        // AJAX upload (artwork + optional source) — logged-in and guest registration.
         add_action( 'wp_ajax_' . self::AJAX_ACTION, [ $this, 'handle_artwork_upload' ] );
+        add_action( 'wp_ajax_nopriv_' . self::AJAX_ACTION, [ $this, 'handle_artwork_upload' ] );
 
         // Campaign registration modal — the `[cw_event_detail]` shortcode bypasses
         // the standard WooCommerce single-product template, so we render the
@@ -606,11 +607,14 @@ class CW_Design_Submission {
     public function handle_artwork_upload() {
         check_ajax_referer( self::NONCE_AJAX, 'security' );
 
-        if ( ! is_user_logged_in() ) {
-            wp_send_json_error( [ 'message' => __( 'Please log in before uploading.', 'creativewings-core' ) ] );
-        }
-
         $product_id = isset( $_POST['product_id'] ) ? (int) $_POST['product_id'] : 0;
+
+        if ( class_exists( 'CW_Shop' ) ) {
+            $block = CW_Shop::get_registration_block_reason( $product_id, false );
+            if ( $block ) {
+                wp_send_json_error( [ 'message' => $block ] );
+            }
+        }
         $role       = isset( $_POST['role'] ) ? sanitize_key( wp_unslash( $_POST['role'] ) ) : 'artwork';
         // `slot` lets a multi-design campaign upload one PNG per participant row.
         // 0 (or missing) keeps the legacy single-design behaviour intact.
