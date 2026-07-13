@@ -13,6 +13,9 @@ class CW_Guest_Join {
     const TOKEN_TTL_DAYS           = 14;
 
     public function __construct() {
+        add_filter( 'pre_option_woocommerce_enable_guest_checkout', [ $this, 'filter_enable_guest_checkout_option' ] );
+        add_filter( 'woocommerce_checkout_registration_required', [ $this, 'filter_checkout_registration_required' ] );
+        add_filter( 'woocommerce_checkout_get_value', [ $this, 'filter_checkout_get_value' ], 10, 2 );
         add_action( 'woocommerce_after_checkout_billing_form', [ $this, 'render_guest_dob_field' ], 20 );
         add_action( 'woocommerce_checkout_process', [ $this, 'validate_guest_checkout' ], 20 );
         add_action( 'woocommerce_checkout_update_order_meta', [ $this, 'save_guest_checkout_meta' ], 20 );
@@ -21,6 +24,53 @@ class CW_Guest_Join {
         add_action( 'woocommerce_order_status_completed', [ $this, 'maybe_send_complete_registration_email' ], 30 );
         add_filter( 'woocommerce_login_redirect', [ $this, 'filter_woocommerce_login_redirect' ], 20, 2 );
         add_action( 'template_redirect', [ $this, 'maybe_redirect_resume_join' ], 5 );
+    }
+
+    /**
+     * Allow guest checkout for CW campaign carts even when the site option is off.
+     *
+     * @param mixed $value Stored option value or false when not yet loaded.
+     * @return mixed
+     */
+    public function filter_enable_guest_checkout_option( $value ) {
+        if ( self::is_guest_checkout_context() ) {
+            return 'yes';
+        }
+
+        return $value;
+    }
+
+    /**
+     * Skip forced account creation on checkout for CW guest registration carts.
+     *
+     * @param bool $required Whether registration is required.
+     * @return bool
+     */
+    public function filter_checkout_registration_required( $required ) {
+        if ( self::is_guest_checkout_context() ) {
+            return false;
+        }
+
+        return $required;
+    }
+
+    /**
+     * Repopulate custom checkout fields after validation errors.
+     *
+     * @param mixed  $value Field value.
+     * @param string $input Field key.
+     * @return mixed
+     */
+    public function filter_checkout_get_value( $value, $input ) {
+        if ( self::ORDER_META_DOB !== $input ) {
+            return $value;
+        }
+
+        if ( isset( $_POST['cw_guest_dob'] ) ) {
+            return sanitize_text_field( wp_unslash( $_POST['cw_guest_dob'] ) );
+        }
+
+        return $value;
     }
 
     /**
