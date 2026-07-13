@@ -259,6 +259,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             $this->shop       = new CW_Shop();
             new CW_Design_Submission();
             new CW_Checkout();
+            new CW_Guest_Join();
             $this->shortcodes = new CW_Shortcodes();
             new CW_Organizer_Profile();
             new CW_Directory();

@@ -68,6 +68,7 @@ class CW_Loader {
         // Always load: hooks are lightweight; avoids get_query_var() before main query exists (wp-admin fatal).
         require_once CW_PATH . 'includes/class-cw-school-upload.php';
         require_once CW_PATH . 'includes/class-cw-claim-flow.php';
+        require_once CW_PATH . 'includes/class-cw-guest-join.php';
 
         if ( is_admin() ) {
             require_once CW_PATH . 'includes/business/class-cw-campaign-import.php';
