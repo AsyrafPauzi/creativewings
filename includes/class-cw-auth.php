@@ -362,6 +362,18 @@ class CW_Auth {
         if ( ! empty( $req ) && strpos( $req, 'wp-admin' ) !== false ) return $req;
         if ( is_wp_error( $user ) || ! isset( $user->roles ) ) return $redirect;
 
+        $requested = $redirect;
+        if ( empty( $requested ) && ! empty( $req ) ) {
+            $requested = $req;
+        }
+
+        if ( class_exists( 'CW_Guest_Join' ) ) {
+            $guest_redirect = CW_Guest_Join::resolve_login_redirect( $requested, $user );
+            if ( null !== $guest_redirect ) {
+                return $guest_redirect;
+            }
+        }
+
         // --- NEW FIX: Read the Onboarding Complete Flag ---
         $is_onboarded = get_user_meta($user->ID, 'cw_onboarding_complete', true) === 'true';
         

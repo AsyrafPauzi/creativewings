@@ -2126,6 +2126,15 @@ class CW_Shortcodes {
             if (e.target === this) cwdCloseRegModal();
         });
 
+        (function() {
+            if (new URLSearchParams(window.location.search).get('cw_resume_join') !== '1') {
+                return;
+            }
+            document.addEventListener('DOMContentLoaded', function() {
+                cwdOpenRegModal();
+            });
+        })();
+
         function cwdInitRows() {
             var wrap = document.getElementById('cwd-reg-rows');
             wrap.innerHTML = '';
