@@ -1066,6 +1066,9 @@ class CW_Auth {
             );
         }
 
+        $pdpa_page = get_page_by_path( 'pdpa' );
+        $pdpa_url  = $pdpa_page ? get_permalink( $pdpa_page ) : home_url( '/pdpa/' );
+
         ob_start();
         ?>
         <div class="cw-auth-wrapper">
@@ -1123,6 +1126,22 @@ class CW_Auth {
                             <input type="password" id="cw_guest_password_confirm" name="cw_password_confirm" required minlength="8" placeholder="<?php esc_attr_e( 'Re-enter password', 'creativewings-core' ); ?>" class="cw-input-text-v2" autocomplete="new-password">
                         </div>
                         <small id="cw_guest_pass_match_msg" style="display:none;color:#dc2626;font-size:12px;"><?php esc_html_e( 'Passwords do not match.', 'creativewings-core' ); ?></small>
+                    </div>
+
+                    <div class="cw-pdpa-consent">
+                        <label class="cw-pdpa-consent-label" for="cw_pdpa_consent">
+                            <input type="checkbox" id="cw_pdpa_consent" name="cw_pdpa_consent" value="1" required>
+                            <span class="cw-pdpa-consent-text">
+                                <?php
+                                printf(
+                                    /* translators: %s: link to PDPA notice page */
+                                    esc_html__( 'I have read and agree to the %s. For applicants under 18, a parent or guardian gives permission to collect and use the information provided.', 'creativewings-core' ),
+                                    '<a href="' . esc_url( $pdpa_url ) . '" target="_blank" rel="noopener" class="cw-pdpa-consent-link">' . esc_html__( 'Personal Data Protection (PDPA) Notice', 'creativewings-core' ) . '</a>'
+                                );
+                                ?>
+                                <span class="cw-pdpa-req" aria-hidden="true">*</span>
+                            </span>
+                        </label>
                     </div>
 
                     <button type="submit" class="cw-btn-primary cw-btn-full"><?php esc_html_e( 'Create account', 'creativewings-core' ); ?></button>
@@ -1248,6 +1267,10 @@ class CW_Auth {
             $back_to_form( 'pass_mismatch' );
         }
 
+        if ( empty( $_POST['cw_pdpa_consent'] ) ) {
+            $back_to_form( 'pdpa_required' );
+        }
+
         $full_name = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
         $birthdate = sanitize_text_field( (string) $order->get_meta( CW_Guest_Join::ORDER_META_DOB ) );
 
@@ -1329,6 +1352,9 @@ class CW_Auth {
                 break;
             case 'pass_mismatch':
                 $msg = __( 'Passwords do not match. Please re-enter them.', 'creativewings-core' );
+                break;
+            case 'pdpa_required':
+                $msg = __( 'Please tick the PDPA consent box to continue. For applicants under 18, a parent or guardian must give consent.', 'creativewings-core' );
                 break;
             case 'security':
                 $msg = __( 'Security check failed. Please try again.', 'creativewings-core' );

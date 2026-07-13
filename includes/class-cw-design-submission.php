@@ -607,6 +607,13 @@ class CW_Design_Submission {
     public function handle_artwork_upload() {
         check_ajax_referer( self::NONCE_AJAX, 'security' );
 
+        if ( ! is_user_logged_in() && class_exists( 'CW_Security' ) ) {
+            $rl = CW_Security::rate_limit( CW_Security::RATE_PIC_UPLOAD . 'design_artwork', 60, 3600 );
+            if ( is_wp_error( $rl ) ) {
+                wp_send_json_error( [ 'message' => $rl->get_error_message() ] );
+            }
+        }
+
         $product_id = isset( $_POST['product_id'] ) ? (int) $_POST['product_id'] : 0;
 
         if ( class_exists( 'CW_Shop' ) ) {
