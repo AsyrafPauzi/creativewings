@@ -12,6 +12,7 @@ class CW_Auth {
         add_shortcode( 'custom_forgot_password', [ $this, 'render_forgot_form' ] );
         add_shortcode( 'cw_complete_profile', [ $this, 'render_complete_profile_form' ] );
         add_shortcode( 'cw_reset_password', [ $this, 'render_reset_password_form' ] );
+        add_shortcode( 'cw_complete_guest_registration', [ $this, 'render_complete_guest_registration_form' ] );
         add_shortcode( 'logout_url', [ $this, 'shortcode_logout_url' ] );
         
         // 2. Logic Hooks
@@ -44,6 +45,8 @@ class CW_Auth {
         add_action( 'admin_post_cw_complete_profile', [ $this, 'process_complete_profile' ] );
         add_action( 'admin_post_nopriv_cw_reset_password', [ $this, 'process_reset_password' ] );
         add_action( 'admin_post_cw_reset_password',       [ $this, 'process_reset_password' ] );
+        add_action( 'admin_post_nopriv_cw_complete_guest_registration', [ $this, 'process_complete_guest_registration' ] );
+        add_action( 'admin_post_cw_complete_guest_registration',       [ $this, 'process_complete_guest_registration' ] );
         
         // 5. Social Login Integration
         add_action( 'nextend_social_login_register', [ $this, 'social_register_metadata' ], 10, 3 );
@@ -403,7 +406,7 @@ class CW_Auth {
         }
 
         // 0. General protection for login/register pages
-        if ( is_user_logged_in() && ( is_page('login') || is_page('registration') ) ) {
+        if ( is_user_logged_in() && ( is_page( 'login' ) || is_page( 'registration' ) || is_page( 'complete-guest-registration' ) || $this->request_matches_path( [ '/complete-guest-registration' ] ) ) ) {
             wp_redirect( home_url( '/my-account' ) );
             exit;
         }
@@ -519,6 +522,11 @@ class CW_Auth {
                 'shortcode' => '[cw_reset_password]',
                 'title'     => __( 'Reset Password', 'creativewings-core' ),
                 'why'       => __( 'Used as the destination for password-reset email links. Without this page, users can\'t reset their password via the new flow.', 'creativewings-core' ),
+            ],
+            'complete-guest-registration' => [
+                'shortcode' => '[cw_complete_guest_registration]',
+                'title'     => __( 'Complete Guest Registration', 'creativewings-core' ),
+                'why'       => __( 'Used for guest joiners to finish account setup after payment via the email link.', 'creativewings-core' ),
             ],
             'pdpa' => [
                 'shortcode' => '',
@@ -1019,6 +1027,325 @@ class CW_Auth {
         echo '<div class="cw-alert error">' . esc_html( $msg ) . '</div>';
     }
 
+    /* ==========================================================================
+       SHORTCODE: COMPLETE GUEST REGISTRATION (post-payment email link)
+       ========================================================================== */
+    public function render_complete_guest_registration_form() {
+        if ( is_user_logged_in() ) {
+            return '<script>window.location.href="' . esc_url( home_url( '/my-account' ) ) . '";</script>';
+        }
+
+        $order_id = isset( $_GET['cw_guest_order'] ) ? absint( $_GET['cw_guest_order'] ) : 0;
+        $token    = isset( $_GET['cw_guest_token'] ) ? sanitize_text_field( wp_unslash( $_GET['cw_guest_token'] ) ) : '';
+
+        if ( ! $order_id || ! $token || ! class_exists( 'CW_Guest_Join' ) || ! CW_Guest_Join::verify_completion_token( $order_id, $token ) ) {
+            return $this->render_static_auth_message(
+                __( 'Invalid or expired link', 'creativewings-core' ),
+                __( 'This registration link is invalid, expired, or already used.', 'creativewings-core' ),
+                '<a href="' . esc_url( home_url( '/login' ) ) . '" class="cw-link-main">' . esc_html__( 'Log in', 'creativewings-core' ) . '</a>'
+            );
+        }
+
+        $order = wc_get_order( $order_id );
+        if ( ! $order ) {
+            return $this->render_static_auth_message(
+                __( 'Invalid or expired link', 'creativewings-core' ),
+                __( 'This registration link is invalid, expired, or already used.', 'creativewings-core' )
+            );
+        }
+
+        $email = sanitize_email( $order->get_billing_email() );
+        $name  = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
+        $dob   = (string) $order->get_meta( CW_Guest_Join::ORDER_META_DOB );
+
+        if ( $email && email_exists( $email ) ) {
+            return $this->render_static_auth_message(
+                __( 'Account already exists', 'creativewings-core' ),
+                __( 'This email already has an account. Please log in to access your registration.', 'creativewings-core' ),
+                '<a href="' . esc_url( home_url( '/login' ) ) . '" class="cw-link-main">' . esc_html__( 'Log in', 'creativewings-core' ) . '</a>'
+            );
+        }
+
+        ob_start();
+        ?>
+        <div class="cw-auth-wrapper">
+            <div class="cw-auth-card cw-card-nova">
+                <h1 class="cw-auth-heading"><?php esc_html_e( 'Complete your registration', 'creativewings-core' ); ?></h1>
+                <p class="cw-complete-profile-subtitle">
+                    <?php esc_html_e( 'Your campaign entry is already submitted. Choose a password to finish setting up your account.', 'creativewings-core' ); ?>
+                </p>
+
+                <?php $this->display_guest_complete_messages(); ?>
+
+                <form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="POST" class="cw-auth-form-v2" id="cw-guest-complete-form">
+                    <?php wp_nonce_field( 'cw_complete_guest_reg_action', 'cw_complete_guest_reg_nonce' ); ?>
+                    <input type="hidden" name="action" value="cw_complete_guest_registration">
+                    <input type="hidden" name="cw_guest_order" value="<?php echo esc_attr( (string) $order_id ); ?>">
+                    <input type="hidden" name="cw_guest_token" value="<?php echo esc_attr( $token ); ?>">
+
+                    <div class="cw-input-group-v2">
+                        <label class="cw-label"><?php esc_html_e( 'Email address', 'creativewings-core' ); ?></label>
+                        <div class="cw-input-icon-v2">
+                            <i class="fas fa-envelope"></i>
+                            <input type="email" value="<?php echo esc_attr( $email ); ?>" readonly class="cw-input-text-v2 cw-input-readonly">
+                        </div>
+                    </div>
+
+                    <div class="cw-input-group-v2">
+                        <label class="cw-label"><?php esc_html_e( 'Full name', 'creativewings-core' ); ?></label>
+                        <div class="cw-input-icon-v2">
+                            <i class="fas fa-user"></i>
+                            <input type="text" value="<?php echo esc_attr( $name ); ?>" readonly class="cw-input-text-v2 cw-input-readonly">
+                        </div>
+                    </div>
+
+                    <div class="cw-input-group-v2">
+                        <label class="cw-label"><?php esc_html_e( 'Date of birth', 'creativewings-core' ); ?></label>
+                        <div class="cw-input-icon-v2">
+                            <i class="fas fa-calendar"></i>
+                            <input type="text" value="<?php echo esc_attr( $dob ); ?>" readonly class="cw-input-text-v2 cw-input-readonly">
+                        </div>
+                    </div>
+
+                    <div class="cw-input-group-v2">
+                        <label class="cw-label" for="cw_guest_password"><?php esc_html_e( 'Password', 'creativewings-core' ); ?></label>
+                        <div class="cw-input-icon-v2">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" id="cw_guest_password" name="cw_password" required minlength="8" placeholder="<?php esc_attr_e( 'Choose a password', 'creativewings-core' ); ?>" class="cw-input-text-v2" autocomplete="new-password">
+                        </div>
+                        <small style="color:#555555;font-size:12px;"><?php esc_html_e( 'Use 8+ chars, numbers & symbols.', 'creativewings-core' ); ?></small>
+                    </div>
+
+                    <div class="cw-input-group-v2">
+                        <label class="cw-label" for="cw_guest_password_confirm"><?php esc_html_e( 'Confirm password', 'creativewings-core' ); ?></label>
+                        <div class="cw-input-icon-v2">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" id="cw_guest_password_confirm" name="cw_password_confirm" required minlength="8" placeholder="<?php esc_attr_e( 'Re-enter password', 'creativewings-core' ); ?>" class="cw-input-text-v2" autocomplete="new-password">
+                        </div>
+                        <small id="cw_guest_pass_match_msg" style="display:none;color:#dc2626;font-size:12px;"><?php esc_html_e( 'Passwords do not match.', 'creativewings-core' ); ?></small>
+                    </div>
+
+                    <button type="submit" class="cw-btn-primary cw-btn-full"><?php esc_html_e( 'Create account', 'creativewings-core' ); ?></button>
+
+                    <div class="cw-auth-links-v2">
+                        <a href="<?php echo esc_url( home_url( '/login' ) ); ?>" class="cw-link-sub"><?php esc_html_e( 'Already have an account? Log in', 'creativewings-core' ); ?></a>
+                    </div>
+                </form>
+
+                <script>
+                (function(){
+                    var form  = document.getElementById('cw-guest-complete-form');
+                    if (!form) return;
+                    var p1    = document.getElementById('cw_guest_password');
+                    var p2    = document.getElementById('cw_guest_password_confirm');
+                    var note  = document.getElementById('cw_guest_pass_match_msg');
+                    function check() {
+                        if (p2.value === '') { note.style.display = 'none'; p2.setCustomValidity(''); return; }
+                        if (p1.value !== p2.value) {
+                            note.style.display = 'block';
+                            p2.setCustomValidity('<?php echo esc_js( __( 'Passwords do not match.', 'creativewings-core' ) ); ?>');
+                        } else {
+                            note.style.display = 'none';
+                            p2.setCustomValidity('');
+                        }
+                    }
+                    p1.addEventListener('input', check);
+                    p2.addEventListener('input', check);
+                })();
+                </script>
+            </div>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+
+    /* ==========================================================================
+       HANDLER: COMPLETE GUEST REGISTRATION
+       ========================================================================== */
+    public function process_complete_guest_registration() {
+        if ( is_user_logged_in() ) {
+            wp_safe_redirect( home_url( '/my-account' ) );
+            exit;
+        }
+
+        $form_url = $this->get_complete_guest_registration_url();
+
+        if ( ! isset( $_POST['cw_complete_guest_reg_nonce'] )
+            || ! wp_verify_nonce( $_POST['cw_complete_guest_reg_nonce'], 'cw_complete_guest_reg_action' ) ) {
+            wp_safe_redirect( add_query_arg(
+                [
+                    'guest_reg_error' => 'security',
+                    'cw_guest_order'  => isset( $_POST['cw_guest_order'] ) ? absint( $_POST['cw_guest_order'] ) : 0,
+                    'cw_guest_token'  => isset( $_POST['cw_guest_token'] ) ? rawurlencode( sanitize_text_field( wp_unslash( $_POST['cw_guest_token'] ) ) ) : '',
+                ],
+                $this->get_complete_guest_registration_url()
+            ) );
+            exit;
+        }
+
+        if ( class_exists( 'CW_Security' ) ) {
+            $rl = CW_Security::rate_limit( CW_Security::RATE_REGISTRATION, 10, 3600 );
+            if ( is_wp_error( $rl ) ) {
+                wp_safe_redirect( add_query_arg(
+                    [
+                        'guest_reg_error' => 'rate_limit',
+                        'cw_guest_order'  => isset( $_POST['cw_guest_order'] ) ? absint( $_POST['cw_guest_order'] ) : 0,
+                        'cw_guest_token'  => isset( $_POST['cw_guest_token'] ) ? rawurlencode( sanitize_text_field( wp_unslash( $_POST['cw_guest_token'] ) ) ) : '',
+                    ],
+                    $this->get_complete_guest_registration_url()
+                ) );
+                exit;
+            }
+        }
+
+        $order_id = isset( $_POST['cw_guest_order'] ) ? absint( $_POST['cw_guest_order'] ) : 0;
+        $token    = isset( $_POST['cw_guest_token'] ) ? sanitize_text_field( wp_unslash( $_POST['cw_guest_token'] ) ) : '';
+
+        if ( ! $order_id || ! $token || ! class_exists( 'CW_Guest_Join' ) || ! CW_Guest_Join::verify_completion_token( $order_id, $token ) ) {
+            wp_safe_redirect( add_query_arg( 'guest_reg_error', 'invalid_link', $form_url ) );
+            exit;
+        }
+
+        $order = wc_get_order( $order_id );
+        if ( ! $order ) {
+            wp_safe_redirect( add_query_arg( 'guest_reg_error', 'invalid_link', $form_url ) );
+            exit;
+        }
+
+        $email = sanitize_email( $order->get_billing_email() );
+        if ( ! $email || ! is_email( $email ) ) {
+            wp_safe_redirect( add_query_arg( 'guest_reg_error', 'invalid_link', $form_url ) );
+            exit;
+        }
+
+        if ( email_exists( $email ) ) {
+            wp_safe_redirect( add_query_arg( 'login', 'guest_email_exists', home_url( '/login' ) ) );
+            exit;
+        }
+
+        $pass  = isset( $_POST['cw_password'] ) ? (string) wp_unslash( $_POST['cw_password'] ) : '';
+        $pass2 = isset( $_POST['cw_password_confirm'] ) ? (string) wp_unslash( $_POST['cw_password_confirm'] ) : '';
+
+        $back_to_form = function( $code ) use ( $order_id, $token ) {
+            wp_safe_redirect( add_query_arg(
+                [
+                    'guest_reg_error' => $code,
+                    'cw_guest_order'  => $order_id,
+                    'cw_guest_token'  => rawurlencode( $token ),
+                ],
+                $this->get_complete_guest_registration_url()
+            ) );
+            exit;
+        };
+
+        if ( '' === $pass ) {
+            $back_to_form( 'pass_empty' );
+        }
+        if ( strlen( $pass ) < 8 ) {
+            $back_to_form( 'pass_short' );
+        }
+        if ( $pass !== $pass2 ) {
+            $back_to_form( 'pass_mismatch' );
+        }
+
+        $full_name = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
+        $birthdate = sanitize_text_field( (string) $order->get_meta( CW_Guest_Join::ORDER_META_DOB ) );
+
+        $username = explode( '@', $email )[0] . rand( 10, 999 );
+        if ( strlen( $username ) < 4 ) {
+            $back_to_form( 'generic' );
+        }
+
+        $user_id = wp_create_user( $username, $pass, $email );
+        if ( is_wp_error( $user_id ) ) {
+            $back_to_form( 'generic' );
+        }
+
+        $parts = preg_split( '/\s+/', trim( $full_name ), 2 );
+        $first = $parts[0] ?? $full_name;
+        $last  = $parts[1] ?? '';
+
+        update_user_meta( $user_id, 'cw_full_name', $full_name );
+        update_user_meta( $user_id, 'birthdate', $birthdate );
+        update_user_meta( $user_id, 'first_name', $first );
+        update_user_meta( $user_id, 'last_name', $last );
+        update_user_meta( $user_id, 'account_type', 'contestant' );
+        update_user_meta( $user_id, 'cw_pdpa_consent', 'yes' );
+        update_user_meta( $user_id, 'cw_pdpa_consent_at', current_time( 'mysql' ) );
+        update_user_meta( $user_id, 'cw_pdpa_consent_ip', isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '' );
+
+        wp_update_user( [
+            'ID'           => $user_id,
+            'display_name' => $full_name,
+            'first_name'   => $first,
+            'last_name'    => $last,
+        ] );
+
+        $user = new WP_User( $user_id );
+        $user->set_role( 'contestant' );
+
+        if ( ! CW_Guest_Join::attach_order_to_user( $order_id, $user_id ) ) {
+            wp_delete_user( $user_id );
+            $back_to_form( 'generic' );
+        }
+
+        wp_set_current_user( $user_id );
+        wp_set_auth_cookie( $user_id );
+
+        $account_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url( '/my-account' );
+        wp_safe_redirect( $account_url );
+        exit;
+    }
+
+    private function get_complete_guest_registration_url() {
+        $page = get_page_by_path( 'complete-guest-registration' );
+        if ( $page && 'publish' === $page->post_status ) {
+            return get_permalink( $page );
+        }
+
+        return home_url( '/complete-guest-registration/' );
+    }
+
+    private function render_static_auth_message( $heading, $message, $links_html = '' ) {
+        return
+            '<div class="cw-auth-wrapper"><div class="cw-auth-card cw-card-nova">'
+            . '<h1 class="cw-auth-heading">' . esc_html( $heading ) . '</h1>'
+            . '<div class="cw-alert error">' . esc_html( $message ) . '</div>'
+            . ( $links_html ? '<div class="cw-auth-links-v2">' . $links_html . '</div>' : '' )
+            . '</div></div>';
+    }
+
+    private function display_guest_complete_messages() {
+        if ( ! isset( $_GET['guest_reg_error'] ) ) {
+            return;
+        }
+
+        switch ( sanitize_key( wp_unslash( $_GET['guest_reg_error'] ) ) ) {
+            case 'pass_empty':
+                $msg = __( 'Please enter your password.', 'creativewings-core' );
+                break;
+            case 'pass_short':
+                $msg = __( 'Password must be at least 8 characters long.', 'creativewings-core' );
+                break;
+            case 'pass_mismatch':
+                $msg = __( 'Passwords do not match. Please re-enter them.', 'creativewings-core' );
+                break;
+            case 'security':
+                $msg = __( 'Security check failed. Please try again.', 'creativewings-core' );
+                break;
+            case 'rate_limit':
+                $msg = __( 'Too many attempts. Please wait and try again.', 'creativewings-core' );
+                break;
+            case 'invalid_link':
+                $msg = __( 'This registration link is invalid, expired, or already used.', 'creativewings-core' );
+                break;
+            default:
+                $msg = __( 'An error occurred. Please try again.', 'creativewings-core' );
+        }
+
+        echo '<div class="cw-alert error">' . esc_html( $msg ) . '</div>';
+    }
+
     public function customize_password_reset_email( $defaults, $key, $user_login, $user_data ) {
         $reset_url = add_query_arg(
             [
@@ -1173,6 +1500,10 @@ HTML;
 
         if ( isset( $_GET['login'] ) && $_GET['login'] === 'failed' ) {
             echo '<div class="cw-alert error">' . __('Invalid email or password.', 'creativewings-core') . '</div>';
+        }
+
+        if ( isset( $_GET['login'] ) && $_GET['login'] === 'guest_email_exists' ) {
+            echo '<div class="cw-alert error">' . esc_html__( 'This email already has an account. Please log in with your existing password.', 'creativewings-core' ) . '</div>';
         }
 
         if ( isset( $_GET['reset'] ) ) {

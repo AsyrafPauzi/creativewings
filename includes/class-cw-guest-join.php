@@ -419,6 +419,61 @@ class CW_Guest_Join {
         return hash_equals( $hash, hash( 'sha256', (string) $token ) );
     }
 
+    /**
+     * Link a completed guest order to the new user and invalidate the token.
+     *
+     * @param int $order_id
+     * @param int $user_id
+     * @return bool
+     */
+    public static function attach_order_to_user( $order_id, $user_id ) {
+        $order_id = (int) $order_id;
+        $user_id  = (int) $user_id;
+
+        if ( ! $order_id || ! $user_id ) {
+            return false;
+        }
+
+        $order = wc_get_order( $order_id );
+        if ( ! $order || $order->get_user_id() ) {
+            return false;
+        }
+
+        $order->set_customer_id( $user_id );
+        $order->update_meta_data( self::ORDER_META_COMPLETED, 'yes' );
+        $order->delete_meta_data( self::ORDER_META_TOKEN_HASH );
+        $order->delete_meta_data( self::ORDER_META_TOKEN_EXPIRES );
+        $order->save();
+
+        if ( ! class_exists( 'CW_Shop' ) ) {
+            return true;
+        }
+
+        $entries = get_posts( [
+            'post_type'   => CW_Shop::entry_post_types(),
+            'meta_key'    => 'order_id',
+            'meta_value'  => $order_id,
+            'numberposts' => -1,
+            'fields'      => 'ids',
+            'post_status' => 'any',
+        ] );
+
+        foreach ( $entries as $entry_id ) {
+            $entry_id = (int) $entry_id;
+            if ( ! $entry_id ) {
+                continue;
+            }
+
+            wp_update_post( [
+                'ID'          => $entry_id,
+                'post_author' => $user_id,
+            ] );
+            update_post_meta( $entry_id, 'customer_id', $user_id );
+        }
+
+        return true;
+    }
+
     public function maybe_send_complete_registration_email( $order_id ) {
         $order_id = (int) $order_id;
         $order    = wc_get_order( $order_id );
