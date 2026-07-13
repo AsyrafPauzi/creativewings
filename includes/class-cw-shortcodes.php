@@ -511,6 +511,9 @@ class CW_Shortcodes {
         $is_competition  = ( $cat_type === 'competition' );
         $is_seminar      = ( $cat_type === 'seminar' );
         $is_activity     = ! $is_competition && ! $is_seminar;
+        $join_cta_label  = $is_activity
+            ? __( 'Join activity', 'creativewings-core' )
+            : __( 'Join competition', 'creativewings-core' );
         $voting_enabled  = $is_competition && ( $g('cw_enable_voting') === 'yes' );
         $show_public_gallery = ( $g('cw_show_submissions_gallery') === 'yes' );
 
@@ -915,9 +918,9 @@ class CW_Shortcodes {
                         <?php elseif ( $is_upcoming ): ?>
                             <button class="cwd-cta-btn cwd-cta-upcoming" disabled><i class="fas fa-clock"></i> Coming Soon</button>
                         <?php elseif ( ! is_user_logged_in() ): ?>
-                            <a href="<?php echo esc_url(wc_get_page_permalink('myaccount') . '?redirect_to=' . urlencode(get_permalink($pid))); ?>" class="cwd-cta-btn cwd-cta-join">
-                                <i class="fas fa-sign-in-alt"></i> Log in to Join
-                            </a>
+                            <button type="button" class="cwd-cta-btn cwd-cta-join" onclick="cwdOpenJoinGate()">
+                                <i class="fas fa-bolt"></i> <?php echo esc_html( $join_cta_label ); ?>
+                            </button>
                         <?php else: ?>
                             <button type="button" class="cwd-cta-btn cwd-cta-join" onclick="cwdOpenRegModal()">
                                 <i class="fas fa-bolt"></i> Join Now
@@ -2007,12 +2010,35 @@ class CW_Shortcodes {
             <?php elseif ( $is_upcoming ): ?>
             <button class="cwd-cta-btn cwd-cta-upcoming" disabled><i class="fas fa-clock"></i> Coming Soon</button>
             <?php elseif ( ! is_user_logged_in() ): ?>
-            <a href="<?php echo esc_url(wc_get_page_permalink('myaccount').'?redirect_to='.urlencode(get_permalink($pid))); ?>" class="cwd-cta-btn cwd-cta-join">Log in to Join</a>
+            <button type="button" class="cwd-cta-btn cwd-cta-join" onclick="cwdOpenJoinGate()">
+                <?php echo esc_html( $join_cta_label ); ?> <i class="fas fa-bolt"></i>
+            </button>
             <?php else: ?>
             <button type="button" class="cwd-cta-btn cwd-cta-join" onclick="cwdOpenRegModal()">Join Now <i class="fas fa-bolt"></i></button>
             <?php endif; ?>
         </div>
         <?php endif; ?>
+
+        <!-- ═══════════════════ JOIN GATE (logged-out) ═══════════════════ -->
+        <div id="cwd-join-gate" class="cwd-modal-overlay" style="display:none;" aria-modal="true" role="dialog">
+            <div class="cwd-modal-wrap cwd-join-gate-wrap">
+                <div class="cwd-modal-head">
+                    <h3 class="cwd-modal-title"><?php echo esc_html( $join_cta_label ); ?></h3>
+                    <button type="button" class="cwd-modal-close" onclick="cwdCloseJoinGate()" aria-label="Close">&times;</button>
+                </div>
+                <div class="cwd-modal-body cwd-join-gate-body">
+                    <a class="cwd-cta-btn cwd-cta-join" href="<?php echo esc_url( wc_get_page_permalink( 'myaccount' ) . '?redirect_to=' . rawurlencode( get_permalink( $pid ) ) ); ?>">
+                        <?php esc_html_e( 'Already have an account? Log in', 'creativewings-core' ); ?>
+                    </a>
+                    <a class="cwd-cta-btn" href="<?php echo esc_url( home_url( '/registration' ) ); ?>">
+                        <?php esc_html_e( 'Register', 'creativewings-core' ); ?>
+                    </a>
+                    <button type="button" class="cwd-link-guest" onclick="cwdCloseJoinGate(); cwdOpenRegModal();">
+                        <?php esc_html_e( 'Join as guest', 'creativewings-core' ); ?>
+                    </button>
+                </div>
+            </div>
+        </div>
 
         <!-- ═══════════════════ REGISTRATION MODAL ═══════════════════ -->
         <div id="cwd-reg-modal" class="cwd-modal-overlay" style="display:none;" aria-modal="true" role="dialog">
@@ -2063,6 +2089,26 @@ class CW_Shortcodes {
 
         <script>
         var cwdRegConfig = <?php echo json_encode($reg_config); ?>;
+
+        function cwdOpenJoinGate() {
+            var m = document.getElementById('cwd-join-gate');
+            if (!m) return;
+            m.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+        function cwdCloseJoinGate() {
+            var m = document.getElementById('cwd-join-gate');
+            if (m) m.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+        (function() {
+            var gate = document.getElementById('cwd-join-gate');
+            if (gate) {
+                gate.addEventListener('click', function(e) {
+                    if (e.target === this) cwdCloseJoinGate();
+                });
+            }
+        })();
 
         function cwdOpenRegModal() {
             var m = document.getElementById('cwd-reg-modal');

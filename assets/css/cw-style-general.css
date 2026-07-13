@@ -2584,6 +2584,42 @@ button#cwd-reg-submit.cwd-reg-submit-primary i {
 /* Fix chip not stretching in modal */
 .cwd-modal-head-info .cwd-cat-chip { align-self: flex-start; }
 
+/* Join gate (logged-out path chooser) */
+.cwd-join-gate-wrap { max-width: 420px; }
+.cwd-join-gate-body {
+    gap: 12px;
+    padding: 20px;
+}
+.cwd-join-gate-body .cwd-cta-btn {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+}
+.cwd-join-gate-body .cwd-cta-btn:not(.cwd-cta-join) {
+    background: #fff !important;
+    background-image: none !important;
+    color: var(--cwd-primary, #125B9A) !important;
+    -webkit-text-fill-color: var(--cwd-primary, #125B9A) !important;
+    border: 2px solid var(--cwd-primary, #125B9A) !important;
+    box-shadow: none !important;
+}
+.cwd-link-guest {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cwd-muted, #64748b);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+    text-align: center;
+}
+.cwd-link-guest:hover { color: var(--cwd-primary, #125B9A); }
+
 @media (max-width: 480px) {
     .cwd-modal-wrap  { border-radius: 16px; max-height: 95vh; }
     .cwd-modal-head  { padding: 16px 16px 14px; }
