@@ -24,8 +24,14 @@ class CW_Activator {
         if ( ! class_exists( 'CW_Badges_Installer' ) && file_exists( CW_PATH . 'includes/badges/class-cw-badges-installer.php' ) ) {
             require_once CW_PATH . 'includes/badges/class-cw-badges-installer.php';
         }
+        if ( ! class_exists( 'CW_Points' ) && file_exists( CW_PATH . 'includes/class-cw-points.php' ) ) {
+            require_once CW_PATH . 'includes/class-cw-points.php';
+        }
         if ( class_exists( 'CW_Badges_Installer' ) ) {
             CW_Badges_Installer::maybe_install();
+        }
+        if ( class_exists( 'CW_Points' ) ) {
+            CW_Points::maybe_install();
         }
 
         // 4. Add Rewrite Endpoints
@@ -62,18 +68,24 @@ class CW_Activator {
      * Run on every load until DB version matches.
      */
     public static function maybe_upgrade() {
-        $target = '1.3.0';
+        $target = '1.4.0';
         $ver    = get_option( 'cw_db_version', '0' );
         if ( version_compare( $ver, $target, '>=' ) ) {
             // Even when the core DB is current, badge schema/seed may still need work.
             if ( class_exists( 'CW_Badges_Installer' ) ) {
                 CW_Badges_Installer::maybe_install();
             }
+            if ( class_exists( 'CW_Points' ) ) {
+                CW_Points::maybe_install();
+            }
             return;
         }
         self::create_tables();
         if ( class_exists( 'CW_Badges_Installer' ) ) {
             CW_Badges_Installer::maybe_install();
+        }
+        if ( class_exists( 'CW_Points' ) ) {
+            CW_Points::maybe_install();
         }
         update_option( 'cw_db_version', $target );
         if ( ! get_option( 'cw_webhook_secret' ) ) {

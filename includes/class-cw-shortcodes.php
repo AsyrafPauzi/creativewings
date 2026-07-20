@@ -516,6 +516,10 @@ class CW_Shortcodes {
             : __( 'Join competition', 'creativewings-core' );
         $voting_enabled  = $is_competition && ( $g('cw_enable_voting') === 'yes' );
         $show_public_gallery = ( $g('cw_show_submissions_gallery') === 'yes' );
+        $gallery_layout      = in_array( (string) $g( 'cw_submissions_gallery_layout' ), [ 'grid', 'map' ], true )
+            ? (string) $g( 'cw_submissions_gallery_layout' )
+            : 'grid';
+        $gallery_is_map      = ( 'map' === $gallery_layout );
 
         // ── Dates & status ────────────────────────────────────────────────────
         $date_start  = $g('cw_submission_start');
@@ -631,7 +635,7 @@ class CW_Shortcodes {
         $kpi_fill_percent = 0;   // Visual progress-bar fill — clamped to 0–100.
         $kpi_visible      = $kpi_show && $kpi_target > 0;
         if ( $kpi_visible && class_exists( 'CW_Campaign_Admin' ) ) {
-            $kpi_count        = (int) CW_Campaign_Admin::get_participant_count( $pid );
+            $kpi_count        = (int) CW_Campaign_Admin::get_public_participant_count( $pid );
             $kpi_percent      = $kpi_target > 0 ? round( ( $kpi_count / $kpi_target ) * 100, 1 ) : 0;
             $kpi_fill_percent = max( 0, min( 100, $kpi_percent ) );
         }
@@ -1094,26 +1098,27 @@ class CW_Shortcodes {
                     </div>
                     <?php endif; ?>
 
-                    <!-- Download Template Card (sidebar, only when organiser
-                         attached a participant template — PSD / AI / EPS / PDF
-                         / ZIP / PNG / SVG). Resolves the attachment id to a
-                         fresh URL each render so swapped files don't 404. -->
+                    <!-- Resources Card (sidebar, only when organiser attached
+                         one or more participant templates — PSD / AI / EPS /
+                         PDF / ZIP / PNG / SVG). Resolves each attachment id
+                         to a fresh URL each render so swapped files don't
+                         404. Uses CW_Campaign_Templates so legacy single-file
+                         campaigns keep rendering without a manual migration. -->
                     <?php
-                        $cwd_tpl_id = (int) get_post_meta( $pid, 'cw_template_file_id', true );
-                        if ( $cwd_tpl_id ) :
-                            $cwd_tpl_url   = (string) wp_get_attachment_url( $cwd_tpl_id );
-                            $cwd_tpl_label = trim( (string) get_post_meta( $pid, 'cw_template_label', true ) );
-                            if ( $cwd_tpl_label === '' ) {
-                                $cwd_tpl_label = __( 'Download Template', 'creativewings-core' );
-                            }
-                            $cwd_tpl_path = (string) get_attached_file( $cwd_tpl_id );
-                            $cwd_tpl_name = $cwd_tpl_path ? basename( $cwd_tpl_path ) : '';
-                            $cwd_tpl_ext  = $cwd_tpl_name ? strtoupper( pathinfo( $cwd_tpl_name, PATHINFO_EXTENSION ) ) : '';
-                            $cwd_tpl_size = ( $cwd_tpl_path && file_exists( $cwd_tpl_path ) ) ? size_format( (int) filesize( $cwd_tpl_path ), 1 ) : '';
-                            if ( $cwd_tpl_url ) :
+                        $cwd_tpls = class_exists( 'CW_Campaign_Templates' )
+                            ? CW_Campaign_Templates::get_files_with_meta( $pid )
+                            : [];
+                        if ( ! empty( $cwd_tpls ) ) :
                     ?>
                     <div class="cwd-card cwd-template-card">
                         <h4 class="cwd-card-heading"><i class="fas fa-cloud-download-alt"></i> Resources</h4>
+                        <?php foreach ( $cwd_tpls as $cwd_tpl ) :
+                            $cwd_tpl_url   = $cwd_tpl['url'];
+                            $cwd_tpl_label = $cwd_tpl['label'];
+                            $cwd_tpl_name  = $cwd_tpl['name'];
+                            $cwd_tpl_ext   = $cwd_tpl['ext'];
+                            $cwd_tpl_size  = $cwd_tpl['size'];
+                        ?>
                         <a href="<?php echo esc_url( $cwd_tpl_url ); ?>"
                            class="cwd-template-download"
                            download
@@ -1136,8 +1141,9 @@ class CW_Shortcodes {
                         <?php if ( $cwd_tpl_name ): ?>
                         <p class="cwd-template-filename" title="<?php echo esc_attr( $cwd_tpl_name ); ?>"><?php echo esc_html( $cwd_tpl_name ); ?></p>
                         <?php endif; ?>
+                        <?php endforeach; ?>
                     </div>
-                    <?php endif; endif; ?>
+                    <?php endif; ?>
 
                     <!-- Organiser Card -->
                     <div class="cwd-card cwd-org-card">
@@ -1200,43 +1206,120 @@ class CW_Shortcodes {
 
                     <!-- ─────────────────────────────────────────────────────────────
                          PUBLIC SUBMISSIONS GALLERY (anonymous, opt-in)
-                         Sits at the top of the right column when the campaign
-                         toggle `cw_show_submissions_gallery` is on. Uses the
-                         exact same compact tile design as the WooCommerce
-                         Gallery section below so both feel like one system.
+                         Layout: basic grid or world map (campaign setting).
                          ───────────────────────────────────────────────────────────── -->
                     <?php
                     if ( $show_public_gallery ):
-                        $pub_per_page = 12;
-                        $pub_page     = isset( $_GET['cwd_pub_page'] ) ? max( 1, (int) $_GET['cwd_pub_page'] ) : 1;
-
-                        $pub_entry_types = class_exists( 'CW_Shop' )
+                        $pub_message_label = (string) get_post_meta( $pid, 'cw_checkout_message_label', true );
+                        $pub_entry_types   = class_exists( 'CW_Shop' )
                             ? CW_Shop::entry_post_types()
                             : [ 'cw_competition_entry', 'cw_activity_entry' ];
 
-                        $pub_query = new WP_Query( [
-                            'post_type'      => $pub_entry_types,
-                            'post_status'    => 'publish',
-                            'posts_per_page' => $pub_per_page,
-                            'paged'          => $pub_page,
-                            'orderby'        => 'date',
-                            'order'          => 'DESC',
-                            'meta_query'     => [
-                                [
-                                    'key'     => 'product_id',
-                                    'value'   => $pid,
-                                    'compare' => '=',
-                                    'type'    => 'NUMERIC',
+                        $pub_rows     = [];
+                        $map_more     = 0;
+                        $map_points   = [];
+                        $map_total    = 0;
+                        $found_images = 0;
+                        $pub_query    = null;
+
+                        if ( $gallery_is_map ) {
+                            $map_interactive_cap = 150;
+                            $map_point_data = CW_Cache::remember(
+                                'campaign:' . (int) $pid . ':paid',
+                                'map_gallery',
+                                5 * MINUTE_IN_SECONDS,
+                                static function () use ( $pub_entry_types, $pid ) {
+                                    $query = new WP_Query( [
+                                        'post_type'              => $pub_entry_types,
+                                        'post_status'            => 'publish',
+                                        'posts_per_page'         => CW_Map_Coordinates::MAX_POINTS,
+                                        'fields'                 => 'ids',
+                                        'orderby'                => 'date',
+                                        'order'                  => 'DESC',
+                                        'no_found_rows'          => true,
+                                        'update_post_meta_cache' => false,
+                                        'update_post_term_cache' => false,
+                                        'meta_query'             => [
+                                            'relation' => 'AND',
+                                            [
+                                                'key'     => 'product_id',
+                                                'value'   => $pid,
+                                                'compare' => '=',
+                                                'type'    => 'NUMERIC',
+                                            ],
+                                            [
+                                                'key'     => 'upload_document',
+                                                'compare' => 'EXISTS',
+                                            ],
+                                        ],
+                                    ] );
+                                    $ids = array_map( 'intval', (array) $query->posts );
+                                    // Pending / unpaid checkouts must not appear on the map or in its KPI.
+                                    if ( class_exists( 'CW_Campaign_Admin' ) ) {
+                                        $ids = CW_Campaign_Admin::filter_successful_entry_ids( $ids );
+                                    }
+                                    // Keep image artwork only (matches interactive pin rules).
+                                    $ids = array_values( array_filter( $ids, static function ( $entry_id ) {
+                                        $art = (string) get_post_meta( (int) $entry_id, 'upload_document', true );
+                                        return (bool) preg_match( '/\.(jpe?g|png|gif|webp)$/i', $art );
+                                    } ) );
+                                    return [
+                                        'ids'   => $ids,
+                                        'total' => count( $ids ),
+                                    ];
+                                }
+                            );
+                            $map_total      = (int) ( $map_point_data['total'] ?? 0 );
+                            $map_all_ids    = array_map( 'intval', (array) ( $map_point_data['ids'] ?? [] ) );
+                            $map_pin_ids    = array_slice( $map_all_ids, 0, $map_interactive_cap );
+                            // Canvas only draws submissions beyond the interactive pin set
+                            // (avoids duplicate red dots under every pin when count is small).
+                            $map_canvas_ids = array_slice( $map_all_ids, $map_interactive_cap );
+                            $map_points     = CW_Map_Coordinates::points_for_entries( $map_canvas_ids );
+
+                            $pub_query   = new WP_Query( [
+                                'post_type'      => $pub_entry_types,
+                                'post_status'    => 'publish',
+                                'post__in'       => $map_pin_ids ?: [ 0 ],
+                                'posts_per_page' => $map_interactive_cap,
+                                'orderby'        => 'post__in',
+                                'no_found_rows'  => true,
+                                'meta_query'     => [
+                                    'relation' => 'AND',
+                                    [
+                                        'key'     => 'product_id',
+                                        'value'   => $pid,
+                                        'compare' => '=',
+                                        'type'    => 'NUMERIC',
+                                    ],
+                                    [
+                                        'key'     => 'upload_document',
+                                        'compare' => 'EXISTS',
+                                    ],
                                 ],
-                            ],
-                        ] );
+                            ] );
+                        } else {
+                            $pub_per_page = 12;
+                            $pub_page     = isset( $_GET['cwd_pub_page'] ) ? max( 1, (int) $_GET['cwd_pub_page'] ) : 1;
+                            $pub_query    = new WP_Query( [
+                                'post_type'      => $pub_entry_types,
+                                'post_status'    => 'publish',
+                                'posts_per_page' => $pub_per_page,
+                                'paged'          => $pub_page,
+                                'orderby'        => 'date',
+                                'order'          => 'DESC',
+                                'meta_query'     => [
+                                    [
+                                        'key'     => 'product_id',
+                                        'value'   => $pid,
+                                        'compare' => '=',
+                                        'type'    => 'NUMERIC',
+                                    ],
+                                ],
+                            ] );
+                        }
 
-                        $pub_message_label = (string) get_post_meta( $pid, 'cw_checkout_message_label', true );
-
-                        // Pre-collect rows so we can both render the grid and
-                        // emit a JS lookup table for lightbox prev/next.
-                        $pub_rows = [];
-                        if ( $pub_query->have_posts() ) {
+                        if ( $pub_query && $pub_query->have_posts() ) {
                             while ( $pub_query->have_posts() ) {
                                 $pub_query->the_post();
                                 $eid = get_the_ID();
@@ -1244,11 +1327,14 @@ class CW_Shortcodes {
                                 if ( ! $art || ! preg_match( '/\.(jpe?g|png|gif|webp)$/i', $art ) ) {
                                     continue;
                                 }
+                                $found_images++;
                                 $msg     = '';
                                 $details = get_post_meta( $eid, 'participant_details', true );
                                 if ( is_array( $details ) ) {
                                     foreach ( $details as $row ) {
-                                        if ( ! is_array( $row ) || empty( $row['label'] ) ) continue;
+                                        if ( ! is_array( $row ) || empty( $row['label'] ) ) {
+                                            continue;
+                                        }
                                         $label = (string) $row['label'];
                                         if ( ( $pub_message_label && $label === $pub_message_label )
                                              || ( ! $pub_message_label && stripos( $label, 'message' ) !== false ) ) {
@@ -1265,22 +1351,227 @@ class CW_Shortcodes {
                                         $thumb_url = $tsrc[0];
                                     }
                                 }
-                                $pub_rows[] = [
+
+                                $entry = [
+                                    'id'    => (int) $eid,
                                     'thumb' => $thumb_url,
                                     'full'  => $art,
                                     'msg'   => $msg,
                                 ];
+                                if ( $gallery_is_map ) {
+                                    $point = CW_Map_Coordinates::point_for_entry( (int) $eid );
+                                    $entry['x']       = $point['x'];
+                                    $entry['y']       = $point['y'];
+                                    $entry['country'] = $point['country'];
+                                }
+                                $pub_rows[] = $entry;
                             }
                             wp_reset_postdata();
                         }
-                    ?>
+
+                        if ( $gallery_is_map ) {
+                            $map_more = max( 0, $map_total - count( $pub_rows ) );
+                        }
+
+                        $pub_json_rows = array_values( array_map( static function ( $r ) {
+                            return [
+                                'full' => $r['full'],
+                                'alt'  => __( 'Anonymous submission', 'creativewings-core' ),
+                                'msg'  => $r['msg'] ?: '',
+                            ];
+                        }, $pub_rows ) );
+
+                        if ( $gallery_is_map ) :
+                            $map_kpi_enabled = $kpi_target > 0;
+                            $map_target      = $kpi_target;
+                            // Same successful-join count as the hero KPI (pending checkouts excluded).
+                            $map_count = $kpi_visible ? (int) $kpi_count : (int) $map_total;
+                            $map_fill  = $map_kpi_enabled
+                                ? max( 0, min( 100, round( ( $map_count / $map_target ) * 100, 1 ) ) )
+                                : 0;
+
+                            if ( $map_kpi_enabled ) {
+                                $map_label_text = sprintf(
+                                    __( '%1$s / %2$s %3$s · %4$s%%', 'creativewings-core' ),
+                                    number_format_i18n( $map_count ),
+                                    number_format_i18n( $map_target ),
+                                    $kpi_label,
+                                    $map_fill
+                                );
+                            } else {
+                                $map_label_text = sprintf(
+                                    _n( '%s submission on the map', '%s submissions on the map', $map_count, 'creativewings-core' ),
+                                    number_format_i18n( $map_count )
+                                );
+                            }
+
+                            $map_asset = add_query_arg(
+                                'ver',
+                                defined( 'CW_VERSION' ) ? CW_VERSION : '1',
+                                CW_URL . 'assets/img/world-map.svg'
+                            );
+                            $map_js    = class_exists( 'CW_Core_Platform' )
+                                ? CW_Core_Platform::asset( 'assets/js/cw-map-gallery.js' )
+                                : [ 'url' => CW_URL . 'assets/js/cw-map-gallery.js', 'version' => defined( 'CW_VERSION' ) ? CW_VERSION : null ];
+
+                            wp_enqueue_style(
+                                'cw-style-map-gallery',
+                                CW_URL . 'assets/css/cw-style-map-gallery.css',
+                                [ 'cw-style-general' ],
+                                defined( 'CW_VERSION' ) ? CW_VERSION : null
+                            );
+                            wp_enqueue_script(
+                                'cw-map-gallery',
+                                $map_js['url'],
+                                [],
+                                $map_js['version'] ?? null,
+                                true
+                            );
+                        ?>
+                    <section class="cwd-section cwd-gallery-section cwd-public-gallery cwd-map-gallery-section" id="cwd-public-gallery">
+                        <h2 class="cwd-section-title"><i class="fas fa-globe"></i> <?php esc_html_e( 'Public Submissions', 'creativewings-core' ); ?></h2>
+
+                        <div id="cwd-map-gallery" class="cwd-map-gallery<?php echo $map_total <= 0 ? ' is-empty' : ''; ?>"
+                             data-cwd-map
+                             role="region"
+                             aria-label="<?php esc_attr_e( 'Submission world map', 'creativewings-core' ); ?>">
+
+                            <div class="cwd-map-toolbar">
+                                <p class="cwd-map-count" data-cwd-map-count><?php echo esc_html( $map_label_text ); ?></p>
+                                <?php if ( $map_kpi_enabled ) : ?>
+                                <div class="cwd-map-kpi-track" aria-hidden="true">
+                                    <div class="cwd-map-kpi-fill" data-cwd-map-fill style="width:<?php echo esc_attr( (string) $map_fill ); ?>%;"></div>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="cwd-map-stage">
+                                <img class="cwd-map-bg"
+                                     src="<?php echo esc_url( $map_asset ); ?>"
+                                     alt=""
+                                     decoding="async"
+                                     width="1000"
+                                     height="500">
+                                <canvas class="cwd-map-canvas"
+                                        data-cwd-map-canvas
+                                        aria-label="<?php
+                                        echo esc_attr(
+                                            sprintf(
+                                                _n(
+                                                    '%s approved submission plotted across random countries.',
+                                                    '%s approved submissions plotted across random countries.',
+                                                    $map_total,
+                                                    'creativewings-core'
+                                                ),
+                                                number_format_i18n( $map_total )
+                                            )
+                                        );
+                                        ?>"></canvas>
+                                <?php if ( $map_kpi_enabled ) : ?>
+                                <div class="cwd-map-fill-overlay" style="opacity:<?php echo esc_attr( (string) round( min( 1, $map_fill / 100 ) * 0.35, 3 ) ); ?>;" aria-hidden="true"></div>
+                                <?php endif; ?>
+                                <div class="cwd-map-pins" data-cwd-map-pins>
+                                    <?php foreach ( $pub_rows as $i => $row ) : ?>
+                                    <button type="button"
+                                            class="cwd-map-pin cwd-pub-gallery-item<?php echo $row['msg'] !== '' ? ' has-msg' : ''; ?>"
+                                            style="left:<?php echo esc_attr( (string) $row['x'] ); ?>%;top:<?php echo esc_attr( (string) $row['y'] ); ?>%;"
+                                            data-pub-index="<?php echo (int) $i; ?>"
+                                            data-full="<?php echo esc_url( $row['full'] ); ?>"
+                                            aria-label="<?php esc_attr_e( 'View anonymous submission', 'creativewings-core' ); ?>">
+                                        <span class="cwd-map-pin-dot" aria-hidden="true"></span>
+                                    </button>
+                                    <?php endforeach; ?>
+                                </div>
+
+                                <?php if ( $map_total <= 0 ) : ?>
+                                <div class="cwd-map-empty">
+                                    <p><?php esc_html_e( 'No submissions on the map yet — be the first to join!', 'creativewings-core' ); ?></p>
+                                    <button type="button" class="cwd-map-empty-cta" onclick="if(typeof cwdOpenJoinGate==='function'){cwdOpenJoinGate();}else if(typeof cwdOpenRegModal==='function'){cwdOpenRegModal();}">
+                                        <?php esc_html_e( 'Join now', 'creativewings-core' ); ?>
+                                    </button>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+
+                            <p class="cwd-map-more" data-cwd-map-more <?php echo $map_more > 0 ? '' : 'hidden'; ?>>
+                                <?php
+                                if ( $map_more > 0 ) {
+                                    printf(
+                                        esc_html__( '+%d more submissions', 'creativewings-core' ),
+                                        (int) $map_more
+                                    );
+                                }
+                                ?>
+                            </p>
+                            <?php if ( $map_total > 0 ) : ?>
+                            <p class="cwd-map-note">
+                                <?php
+                                if ( ! empty( $map_points ) ) {
+                                    printf(
+                                        esc_html__(
+                                            'All %1$s successful submissions are on the map. The latest %2$s highlighted pins can be opened; older ones appear as dots.',
+                                            'creativewings-core'
+                                        ),
+                                        esc_html( number_format_i18n( $map_total ) ),
+                                        esc_html( number_format_i18n( min( 150, count( $pub_rows ) ) ) )
+                                    );
+                                } else {
+                                    printf(
+                                        esc_html__(
+                                            '%s successful submissions are shown as pins — click a pin to open the artwork.',
+                                            'creativewings-core'
+                                        ),
+                                        esc_html( number_format_i18n( count( $pub_rows ) ) )
+                                    );
+                                }
+                                ?>
+                            </p>
+                            <?php endif; ?>
+                        </div>
+
+                        <?php if ( ! empty( $pub_json_rows ) || ! empty( $map_points ) ) : ?>
+                        <script>
+                        window.cwdPublicSubmissions = <?php echo wp_json_encode( $pub_json_rows ); ?>;
+                        window.cwdMapGallery = <?php echo wp_json_encode( [
+                            'pins' => array_values( array_map( static function ( $r ) {
+                                return [
+                                    'full' => $r['full'],
+                                    'alt'  => __( 'Anonymous submission', 'creativewings-core' ),
+                                    'msg'  => $r['msg'] ?: '',
+                                    'x'    => (float) ( $r['x'] ?? 50 ),
+                                    'y'    => (float) ( $r['y'] ?? 50 ),
+                                ];
+                            }, $pub_rows ) ),
+                            'points' => $map_points,
+                            'kpi' => [
+                                'enabled'     => (bool) $map_kpi_enabled,
+                                'count'       => (int) $map_count,
+                                'target'      => (int) $map_target,
+                                'fillPercent' => (float) $map_fill,
+                                'labelText'   => $map_label_text,
+                            ],
+                            'renderedPointCount' => count( $map_points ),
+                            'totalPointCount'    => (int) $map_count,
+                            'moreCount' => (int) $map_more,
+                            'i18n' => [
+                                'anonymous' => __( 'Anonymous submission', 'creativewings-core' ),
+                                'openPin'   => __( 'View anonymous submission', 'creativewings-core' ),
+                                'more'      => __( '+%d more submissions', 'creativewings-core' ),
+                            ],
+                        ] ); ?>;
+                        </script>
+                        <?php endif; ?>
+                    </section>
+                        <?php
+                        else :
+                        ?>
                     <section class="cwd-section cwd-gallery-section cwd-public-gallery" id="cwd-public-gallery">
                         <h2 class="cwd-section-title"><i class="fas fa-images"></i> <?php esc_html_e( 'Public Submissions', 'creativewings-core' ); ?></h2>
-                        <?php if ( empty( $pub_rows ) ): ?>
+                        <?php if ( empty( $pub_rows ) ) : ?>
                             <p class="cwd-public-empty"><?php esc_html_e( 'No public submissions yet — be the first to join!', 'creativewings-core' ); ?></p>
-                        <?php else: ?>
+                        <?php else : ?>
                             <div class="cwd-gallery-grid cwd-pub-gallery-grid" id="cwd-public-gallery-grid">
-                                <?php foreach ( $pub_rows as $i => $row ):
+                                <?php foreach ( $pub_rows as $i => $row ) :
                                     $tip = $row['msg'] !== ''
                                         ? sprintf( __( '"%s" — tap to enlarge', 'creativewings-core' ), $row['msg'] )
                                         : __( 'Tap to enlarge', 'creativewings-core' );
@@ -1296,7 +1587,7 @@ class CW_Shortcodes {
                                          loading="lazy" decoding="async"
                                          width="240" height="240">
                                     <span class="cwd-gallery-zoom-icon" aria-hidden="true"><i class="fas fa-search-plus"></i></span>
-                                    <?php if ( $row['msg'] !== '' ): ?>
+                                    <?php if ( $row['msg'] !== '' ) : ?>
                                         <span class="cwd-pub-gallery-flag" aria-hidden="true"><i class="fas fa-quote-left"></i></span>
                                     <?php endif; ?>
                                 </button>
@@ -1304,8 +1595,8 @@ class CW_Shortcodes {
                             </div>
 
                             <?php
-                            $pub_total_pages = (int) $pub_query->max_num_pages;
-                            if ( $pub_total_pages > 1 ):
+                            $pub_total_pages = $pub_query ? (int) $pub_query->max_num_pages : 0;
+                            if ( $pub_total_pages > 1 ) :
                                 $links = paginate_links( [
                                     'base'      => add_query_arg( 'cwd_pub_page', '%#%' ) . '#cwd-public-gallery',
                                     'format'    => '',
@@ -1317,31 +1608,26 @@ class CW_Shortcodes {
                                     'next_text' => __( 'Next', 'creativewings-core' ) . ' ›',
                                     'type'      => 'array',
                                 ] );
-                                if ( $links ): ?>
+                                if ( $links ) : ?>
                                 <nav class="cwd-public-pagination" role="navigation" aria-label="<?php esc_attr_e( 'Submissions pagination', 'creativewings-core' ); ?>">
-                                    <?php foreach ( $links as $link ) echo '<span class="cwd-public-page-item">' . $link . '</span>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                                    <?php foreach ( $links as $link ) {
+                                        echo '<span class="cwd-public-page-item">' . $link . '</span>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+                                    } ?>
                                 </nav>
-                            <?php endif;
-                            endif; ?>
+                            <?php
+                                endif;
+                            endif;
+                            ?>
 
                             <script>
-                            /*
-                             * Each entry: { full, alt, msg }.
-                             * `alt` stays as a generic "Anonymous submission" for the <img>
-                             * accessibility name; `msg` is the participant's checkout
-                             * message and is what the lightbox caption renders.
-                             */
-                            window.cwdPublicSubmissions = <?php echo wp_json_encode( array_values( array_map( function ( $r ) {
-                                return [
-                                    'full' => $r['full'],
-                                    'alt'  => __( 'Anonymous submission', 'creativewings-core' ),
-                                    'msg'  => $r['msg'] ?: '',
-                                ];
-                            }, $pub_rows ) ) ); ?>;
+                            window.cwdPublicSubmissions = <?php echo wp_json_encode( $pub_json_rows ); ?>;
                             </script>
                         <?php endif; ?>
                     </section>
-                    <?php endif; ?>
+                        <?php
+                        endif; // map vs grid
+                    endif; // show_public_gallery
+                    ?>
 
                     <!-- About -->
                     <?php $content = get_post_field('post_content', $pid);
@@ -1559,7 +1845,14 @@ class CW_Shortcodes {
             }
         }
         $hero_offset = $thumb ? 1 : 0;
-        if ( ! empty( $lightbox_images ) ): ?>
+        // Always render lightbox when there are product images OR a public map gallery
+        // (pins need cwdGalleryOpen even if the campaign has no WC gallery).
+        $need_lightbox = ! empty( $lightbox_images ) || ! empty( $show_public_gallery );
+        if ( $need_lightbox ):
+            if ( empty( $lightbox_images ) ) {
+                $lightbox_images = [];
+            }
+        ?>
         <!-- ═════════════════ PRODUCT GALLERY LIGHTBOX ═════════════════ -->
         <div id="cwd-gallery-lightbox" class="cwd-gallery-lightbox" style="display:none;" role="dialog" aria-modal="true" aria-label="Image viewer"
              onclick="if(event.target===this)cwdGalleryClose()">
@@ -1593,9 +1886,6 @@ class CW_Shortcodes {
                 img.src = item.full;
                 img.alt = item.alt || '';
                 if (counter) counter.textContent = (current + 1) + ' / ' + images.length;
-                // Caption: prefer the explicit `msg` (Public Submissions), fall back
-                // to `alt` for the WooCommerce gallery where the alt text is the
-                // image description and is worth surfacing too. Skip empty strings.
                 if (caption && captionText) {
                     var msg = (item.msg || '').toString().trim();
                     if (!msg && item.alt && (item.alt + '').trim() !== 'Anonymous submission') {
@@ -1622,13 +1912,10 @@ class CW_Shortcodes {
                 document.body.style.overflow = '';
             }
             function step(d) { open(current + d); }
-            // Expose so external clickers (hero image, public submissions tiles) can call us.
             window.cwdGalleryOpen  = open;
             window.cwdGalleryClose = close;
             window.cwdGalleryStep  = step;
 
-            // WooCommerce-style gallery grid: dataset indices are 0-based on the
-            // original $gallery_images, so add heroOffset to land on the right slot.
             var grid = document.getElementById('cwd-gallery-grid');
             if (grid) {
                 grid.addEventListener('click', function(e){
@@ -1638,43 +1925,43 @@ class CW_Shortcodes {
                     open( heroOffset + (parseInt(t.getAttribute('data-cwd-gallery-index'), 10) || 0) );
                 });
             }
-            // Public Submissions gallery (anonymous artwork tiles). The tiles
-            // are NOT part of the WooCommerce image set, so we temporarily
-            // swap the lightbox image list to the public-submissions array
-            // (exposed by the inline script as window.cwdPublicSubmissions)
-            // and open at the clicked index. This gives proper prev/next
-            // navigation through the entire visible page of submissions.
-            var pubGrid = document.getElementById('cwd-public-gallery-grid');
-            if (pubGrid) {
-                pubGrid.addEventListener('click', function(e){
-                    var btn = e.target.closest('.cwd-pub-gallery-item');
-                    if (!btn) return;
-                    e.preventDefault();
-                    var idx     = parseInt(btn.getAttribute('data-pub-index'), 10) || 0;
-                    var pubList = Array.isArray(window.cwdPublicSubmissions) ? window.cwdPublicSubmissions : [];
-                    if (!pubList.length) {
-                        // Fallback to a single-image shot if the inline list
-                        // didn't render for any reason.
-                        var full = btn.getAttribute('data-full');
-                        if (!full) return;
-                        pubList = [ { full: full, alt: '' } ];
-                        idx     = 0;
-                    }
-                    var prevImages  = images;
-                    var prevHeroOff = heroOffset;
-                    images     = pubList;
-                    heroOffset = 0;
-                    open(idx);
-                    // Restore original list when the lightbox closes so
-                    // hero / Gallery clicks keep their own list.
-                    var restore = function(){
-                        images     = prevImages;
-                        heroOffset = prevHeroOff;
-                        document.removeEventListener('cwdGalleryClosed', restore);
-                    };
-                    document.addEventListener('cwdGalleryClosed', restore);
-                });
+
+            function openPublicList(idx, pubList) {
+                if (!pubList || !pubList.length) return;
+                var prevImages  = images;
+                var prevHeroOff = heroOffset;
+                images     = pubList;
+                heroOffset = 0;
+                open(idx);
+                var restore = function(){
+                    images     = prevImages;
+                    heroOffset = prevHeroOff;
+                    document.removeEventListener('cwdGalleryClosed', restore);
+                };
+                document.addEventListener('cwdGalleryClosed', restore);
             }
+
+            // Map pins + legacy pub tiles.
+            document.addEventListener('click', function(e){
+                var btn = e.target.closest('.cwd-map-pin, .cwd-pub-gallery-item');
+                if (!btn || !btn.closest('#cwd-public-gallery')) return;
+                e.preventDefault();
+                var idx     = parseInt(btn.getAttribute('data-pub-index') || btn.getAttribute('data-pin-index'), 10) || 0;
+                var pubList = Array.isArray(window.cwdPublicSubmissions) ? window.cwdPublicSubmissions : [];
+                if (!pubList.length) {
+                    var full = btn.getAttribute('data-full');
+                    if (!full) return;
+                    pubList = [ { full: full, alt: '', msg: '' } ];
+                    idx     = 0;
+                }
+                openPublicList(idx, pubList);
+            });
+
+            document.addEventListener('cwdMapOpenPin', function(ev){
+                var detail = ev && ev.detail ? ev.detail : {};
+                openPublicList(detail.index || 0, detail.list || window.cwdPublicSubmissions || []);
+            });
+
             document.addEventListener('keydown', function(e){
                 var lb = document.getElementById('cwd-gallery-lightbox');
                 if (!lb || lb.style.display === 'none') return;
@@ -1682,14 +1969,11 @@ class CW_Shortcodes {
                 else if (e.key === 'ArrowLeft')  step(-1);
                 else if (e.key === 'ArrowRight') step(1);
             });
-            // Patch close so anyone listening for cwdGalleryClosed gets notified
-            // (used by the public-gallery one-shot list swap above).
             var origClose = window.cwdGalleryClose;
             window.cwdGalleryClose = function(){
                 origClose();
                 document.dispatchEvent(new CustomEvent('cwdGalleryClosed'));
             };
-            // Touch swipe support
             var touchStartX = null;
             var lbEl = document.getElementById('cwd-gallery-lightbox');
             if (lbEl) {
@@ -2189,6 +2473,29 @@ class CW_Shortcodes {
                         if (!s) return '';
                         return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
                     };
+
+                    // Word-count limits — organiser-defined, 0 means "no limit".
+                    // The data attributes get bound by `cwdInitWordCounters()`
+                    // after the row is inserted into the DOM so the counter
+                    // updates live and the form blocks out-of-range submissions.
+                    var minW = parseInt(f.min_words, 10) || 0;
+                    var maxW = parseInt(f.max_words, 10) || 0;
+                    var hasWordLimit = (minW > 0 || maxW > 0);
+                    var wordAttrs = hasWordLimit
+                        ? ' data-cwd-min-words="' + minW + '" data-cwd-max-words="' + maxW + '"'
+                        : '';
+                    var counterId = 'cwd-wc-' + num + '-' + idx;
+                    var wordHint = '';
+                    if (hasWordLimit) {
+                        var hintParts = [];
+                        if (minW > 0) hintParts.push('min ' + minW);
+                        if (maxW > 0) hintParts.push('max ' + maxW);
+                        wordHint = '<div class="cwd-reg-wordcount" id="' + counterId + '" data-min="' + minW + '" data-max="' + maxW + '">'
+                                 + '<span class="cwd-reg-wordcount__current">0</span> words'
+                                 + ' <span class="cwd-reg-wordcount__limits">(' + hintParts.join(' &middot; ') + ')</span>'
+                                 + '</div>';
+                    }
+
                     html += '<div class="cwd-reg-field"><label class="cwd-reg-label">' + esc(f.label) + reqStar + '</label>';
                     if (ftype === 'file') {
                         html += '<input type="file" name="cw_data[' + num + '][' + idx + ']" class="cwd-reg-input" accept=".pdf,.doc,.docx,.zip,.jpg,.jpeg,.png"' + req + '>';
@@ -2198,7 +2505,8 @@ class CW_Shortcodes {
                         html += '<img class="cwd-reg-media-preview" id="cwd-reg-prev-' + num + '-' + idx + '" alt="" style="display:none;max-width:120px;border-radius:8px;margin-top:8px;border:1px solid var(--cwd-border);">';
                         html += '</div>';
                     } else if (ftype === 'textarea' || ftype === 'wysiwyg') {
-                        html += '<textarea name="cw_data[' + num + '][' + idx + ']" class="cwd-reg-input" placeholder="' + esc(f.placeholder || f.label) + '" rows="3"' + req + '></textarea>';
+                        html += '<textarea name="cw_data[' + num + '][' + idx + ']" class="cwd-reg-input" placeholder="' + esc(f.placeholder || f.label) + '" rows="3"' + req + wordAttrs + '></textarea>';
+                        html += wordHint;
                     } else if (ftype === 'select' && f.opts) {
                         var opts = String(f.opts).split(',').map(function(o){ return o.trim(); }).filter(Boolean);
                         html += '<select name="cw_data[' + num + '][' + idx + ']" class="cwd-reg-input"' + req + '>';
@@ -2210,7 +2518,11 @@ class CW_Shortcodes {
                         if (inputType !== 'text' && inputType !== 'number' && inputType !== 'email' && inputType !== 'tel') {
                             inputType = 'text';
                         }
-                        html += '<input type="' + inputType + '" name="cw_data[' + num + '][' + idx + ']" class="cwd-reg-input" placeholder="' + esc(f.placeholder || f.label) + '"' + req + '>';
+                        // Word counters apply to free-text inputs too (e.g. a
+                        // "Title (max 8 words)" requirement on a Short Text).
+                        var extra = (inputType === 'text') ? wordAttrs : '';
+                        html += '<input type="' + inputType + '" name="cw_data[' + num + '][' + idx + ']" class="cwd-reg-input" placeholder="' + esc(f.placeholder || f.label) + '"' + req + extra + '>';
+                        if (inputType === 'text') html += wordHint;
                     }
                     html += '</div>';
                 });
@@ -2227,8 +2539,72 @@ class CW_Shortcodes {
             var newRow = div.firstChild;
             wrap.appendChild(newRow);
             cwdSetupDesignWidgetsForRow(newRow, rowNum);
+            cwdInitWordCounters(newRow);
             cwdUpdateAddBtn();
             cwdUpdateQty();
+        }
+
+        /**
+         * Word counter for any text/textarea field tagged with
+         * `data-cwd-min-words` / `data-cwd-max-words`. Updates the
+         * `.cwd-reg-wordcount` widget below the input in real time
+         * (with a colour state) and uses `setCustomValidity` so the
+         * native form submit blocks until the count is in range.
+         */
+        function cwdCountWords(str) {
+            if (!str) return 0;
+            // Strip rich-text tags (defensive; even though our textarea
+            // doesn't render HTML, paste from Word can include angle
+            // brackets in the value and we don't want to count them as
+            // words).
+            var plain = String(str).replace(/<[^>]+>/g, ' ');
+            var matches = plain.trim().match(/\S+/g);
+            return matches ? matches.length : 0;
+        }
+
+        function cwdUpdateWordCounter(input) {
+            var min = parseInt(input.getAttribute('data-cwd-min-words'), 10) || 0;
+            var max = parseInt(input.getAttribute('data-cwd-max-words'), 10) || 0;
+            if (min <= 0 && max <= 0) return;
+
+            var count = cwdCountWords(input.value);
+            // The counter widget is rendered immediately after the input
+            // (next-sibling) — see cwdBuildRow.
+            var counter = input.nextElementSibling && input.nextElementSibling.classList.contains('cwd-reg-wordcount')
+                ? input.nextElementSibling
+                : null;
+            if (counter) {
+                var cur = counter.querySelector('.cwd-reg-wordcount__current');
+                if (cur) cur.textContent = count;
+                counter.classList.toggle('is-under', min > 0 && count < min);
+                counter.classList.toggle('is-over',  max > 0 && count > max);
+                counter.classList.toggle('is-ok',
+                    ( min <= 0 || count >= min ) &&
+                    ( max <= 0 || count <= max ) &&
+                    count > 0
+                );
+            }
+
+            var msg = '';
+            if (min > 0 && count < min) {
+                msg = 'Please write at least ' + min + ' word' + (min === 1 ? '' : 's') + ' (currently ' + count + ').';
+            } else if (max > 0 && count > max) {
+                msg = 'Please keep this to ' + max + ' word' + (max === 1 ? '' : 's') + ' or fewer (currently ' + count + ').';
+            }
+            input.setCustomValidity(msg);
+        }
+
+        function cwdInitWordCounters(scope) {
+            if (!scope) scope = document;
+            scope.querySelectorAll('[data-cwd-min-words], [data-cwd-max-words]').forEach(function(input) {
+                if (input.getAttribute('data-cwd-wc-bound') === '1') return;
+                input.setAttribute('data-cwd-wc-bound', '1');
+                input.addEventListener('input', function() { cwdUpdateWordCounter(input); });
+                input.addEventListener('blur',  function() { cwdUpdateWordCounter(input); });
+                // Initial paint so the counter shows "0 words" rather than
+                // staying blank on first open.
+                cwdUpdateWordCounter(input);
+            });
         }
 
         function cwdRemoveRow(btn) {
@@ -2330,11 +2706,35 @@ class CW_Shortcodes {
             r.readAsDataURL(e.target.files[0]);
         });
 
-        // Submit loader
-        document.getElementById('cwd-reg-form').addEventListener('submit', function(){
+        // Submit handler — runs word-count validation first, then sets
+        // the loading state only if everything passes. Without this gate
+        // an out-of-range entry would still trigger the spinner state and
+        // confuse the participant when nothing happens.
+        document.getElementById('cwd-reg-form').addEventListener('submit', function(e){
+            // Force a final word-count refresh on every constrained field
+            // so the customValidity reflects the LATEST value (not whatever
+            // was last typed before the participant clicked elsewhere).
+            var form = e.currentTarget;
+            var problem = null;
+            form.querySelectorAll('[data-cwd-min-words], [data-cwd-max-words]').forEach(function(input) {
+                cwdUpdateWordCounter(input);
+                if (!problem && input.validationMessage) {
+                    problem = input;
+                }
+            });
+            if (problem) {
+                e.preventDefault();
+                e.stopPropagation();
+                problem.reportValidity();
+                try { problem.focus({ preventScroll: false }); } catch (_) { problem.focus(); }
+                return false;
+            }
+
             var btn = document.getElementById('cwd-reg-submit');
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+            }
         });
 
         function cwdCopyLink(btn) {

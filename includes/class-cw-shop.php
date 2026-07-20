@@ -569,7 +569,113 @@ class CW_Shop {
             wc_add_notice( 'Details are required.', 'error' );
             return false;
         }
+
+        // ── Word-count validation for free-text custom fields ───────────
+        // The organiser can set min_words / max_words per field in the
+        // campaign builder. The frontend already enforces this via
+        // setCustomValidity, but a determined user could bypass it by
+        // editing the DOM or scripting the POST — so we re-check here
+        // before anything lands in the cart. Bail with a clear, per-
+        // participant + per-field notice so the participant knows
+        // exactly which input needs fixing.
+        $word_check = self::validate_custom_field_word_counts( (int) $product_id );
+        if ( is_wp_error( $word_check ) ) {
+            foreach ( $word_check->get_error_messages() as $msg ) {
+                wc_add_notice( $msg, 'error' );
+            }
+            return false;
+        }
+
         return $passed;
+    }
+
+    /**
+     * Re-checks the POSTed `cw_data` payload against any min_words /
+     * max_words constraints saved on the campaign's custom fields.
+     *
+     * Counts whitespace-separated runs (matching the frontend counter),
+     * applies the same rule to text / textarea / wysiwyg field types,
+     * and skips fields without constraints. Empty optional fields are
+     * also skipped (the existing `required` flag is the gate for those).
+     *
+     * @param int $product_id
+     * @return true|WP_Error  WP_Error with one message per violation
+     */
+    public static function validate_custom_field_word_counts( $product_id ) {
+        $fields = get_post_meta( (int) $product_id, 'cw_custom_fields', true );
+        $fields = is_array( $fields ) ? array_values( $fields ) : [];
+        if ( empty( $fields ) ) {
+            return true;
+        }
+        $post = isset( $_POST['cw_data'] ) && is_array( $_POST['cw_data'] ) ? wp_unslash( $_POST['cw_data'] ) : [];
+        if ( empty( $post ) ) {
+            return true;
+        }
+
+        $word_count_types = [ 'text', 'textarea', 'wysiwyg' ];
+        $errors           = new WP_Error();
+
+        foreach ( $post as $row_idx => $row ) {
+            if ( ! is_array( $row ) ) {
+                continue;
+            }
+            foreach ( $fields as $f_idx => $f ) {
+                if ( ! is_array( $f ) ) {
+                    continue;
+                }
+                $type = strtolower( trim( (string) ( $f['type'] ?? 'text' ) ) );
+                if ( ! in_array( $type, $word_count_types, true ) ) {
+                    continue;
+                }
+                $min = isset( $f['min_words'] ) ? max( 0, (int) $f['min_words'] ) : 0;
+                $max = isset( $f['max_words'] ) ? max( 0, (int) $f['max_words'] ) : 0;
+                if ( $min <= 0 && $max <= 0 ) {
+                    continue;
+                }
+                $raw = isset( $row[ $f_idx ] ) ? (string) $row[ $f_idx ] : '';
+                // Match the frontend's "strip tags then count whitespace runs"
+                // rule so the participant doesn't see a mismatch between the
+                // live counter and the rejection message.
+                $plain = trim( wp_strip_all_tags( $raw ) );
+                if ( $plain === '' ) {
+                    // Empty optional fields are fine; required-fields are
+                    // policed by the `required` flag elsewhere.
+                    continue;
+                }
+                preg_match_all( '/\S+/u', $plain, $m );
+                $count = isset( $m[0] ) ? count( $m[0] ) : 0;
+
+                $label = (string) ( $f['label'] ?? sprintf( __( 'Field %d', 'creativewings-core' ), $f_idx + 1 ) );
+
+                if ( $min > 0 && $count < $min ) {
+                    $errors->add(
+                        'cw_min_words',
+                        sprintf(
+                            /* translators: 1: participant number, 2: field label, 3: required min, 4: current count */
+                            __( 'Participant %1$d &ndash; "%2$s" needs at least %3$d words (you wrote %4$d).', 'creativewings-core' ),
+                            (int) $row_idx,
+                            $label,
+                            $min,
+                            $count
+                        )
+                    );
+                } elseif ( $max > 0 && $count > $max ) {
+                    $errors->add(
+                        'cw_max_words',
+                        sprintf(
+                            /* translators: 1: participant number, 2: field label, 3: allowed max, 4: current count */
+                            __( 'Participant %1$d &ndash; "%2$s" allows up to %3$d words (you wrote %4$d).', 'creativewings-core' ),
+                            (int) $row_idx,
+                            $label,
+                            $max,
+                            $count
+                        )
+                    );
+                }
+            }
+        }
+
+        return $errors->has_errors() ? $errors : true;
     }
 
     /**
@@ -870,6 +976,15 @@ class CW_Shop {
         $order = wc_get_order( $order_id );
         if ( ! $order ) return;
 
+        // Pending / failed payments must not create entries.
+        if ( class_exists( 'CW_Post_Checkout' ) ) {
+            if ( ! CW_Post_Checkout::order_is_paid_enough( $order ) ) {
+                return;
+            }
+        } elseif ( ! $order->is_paid() && ! in_array( $order->get_status(), [ 'processing', 'completed' ], true ) ) {
+            return;
+        }
+
         $existing_entries = get_posts( [
             'post_type'   => self::entry_post_types(),
             'meta_key'    => 'order_id',
@@ -881,8 +996,16 @@ class CW_Shop {
 
         if ( ! add_post_meta( $order_id, '_cw_entry_lock', 'processing', true ) ) return;
 
+        // Defer badge evaluation until after checkout flood settles (see CW_Badges_Engine).
+        $GLOBALS['cw_defer_badge_eval'] = true;
+
         $user_id = $order->get_user_id();
-        $billing_name = $order->get_billing_first_name() . ' ' . $order->get_billing_last_name();
+        $billing_name = class_exists( 'CW_Guest_Join' )
+            ? CW_Guest_Join::get_order_full_name( $order )
+            : trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
+        if ( '' === $billing_name ) {
+            $billing_name = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
+        }
 
         foreach ( $order->get_items() as $item ) {
             $product_id = $item->get_product_id();
@@ -893,7 +1016,7 @@ class CW_Shop {
             $staged_id = (int) $item->get_meta( '_cw_staged_id' );
             if ( $staged_id && class_exists( 'CW_Staged_Submissions' ) ) {
                 $this->create_entry_from_staged( $staged_id, $order_id, $user_id, $product_id, $item, $post_type );
-                $this->maybe_send_online_access_link( $order, $product_id );
+                // Online-access email: CW_Post_Checkout async (not sync).
                 continue;
             }
 
@@ -909,6 +1032,11 @@ class CW_Shop {
                     $final_name = $billing_name;
                     if($is_activity) {
                         foreach($fields as $f) { if($f['label'] == 'Name') $final_name = $f['value']; }
+                    }
+
+                    $fields = self::append_checkout_message_to_fields( $fields, $product_id, $order_id );
+                    if ( class_exists( 'CW_Guest_Join' ) ) {
+                        $fields = CW_Guest_Join::append_profile_to_fields( $fields, $order_id );
                     }
 
                     // Create 1 Post PER Entry (Crucial for individual Scoring)
@@ -948,10 +1076,33 @@ class CW_Shop {
                 }
             } 
 
-            $this->maybe_send_online_access_link( $order, (int) $product_id );
+            // Online-access email deferred to CW_Post_Checkout async.
         }
         $order->update_meta_data( '_cw_entries_created', 'yes' );
         $order->save();
+
+        // Badges: deferred to CW_Post_Checkout async (on_entry_saved is suppressed via cw_defer_badge_eval).
+        $GLOBALS['cw_defer_badge_eval'] = false;
+    }
+
+    /**
+     * Send online meeting links for all campaign lines (async post-checkout).
+     *
+     * @param WC_Order $order
+     */
+    public function send_deferred_online_access_emails( $order ) {
+        if ( ! ( $order instanceof WC_Order ) ) {
+            return;
+        }
+        $seen = [];
+        foreach ( $order->get_items() as $item ) {
+            $product_id = (int) $item->get_product_id();
+            if ( $product_id <= 0 || isset( $seen[ $product_id ] ) ) {
+                continue;
+            }
+            $seen[ $product_id ] = true;
+            $this->maybe_send_online_access_link( $order, $product_id );
+        }
     }
 
     /**
@@ -1029,6 +1180,28 @@ class CW_Shop {
         }
     }
 
+    /**
+     * @param array<int, array<string, string>> $fields
+     * @return array<int, array<string, string>>
+     */
+    private static function append_checkout_message_to_fields( $fields, $product_id, $order_id ) {
+        if ( ! is_array( $fields ) ) {
+            $fields = [];
+        }
+        if ( get_post_meta( (int) $product_id, 'cw_enable_checkout_message', true ) !== 'yes' ) {
+            return $fields;
+        }
+        $msg = get_post_meta( (int) $order_id, 'cw_checkout_message', true );
+        if ( ! is_string( $msg ) || '' === trim( wp_strip_all_tags( $msg ) ) ) {
+            return $fields;
+        }
+        $fields[] = [
+            'label' => get_post_meta( (int) $product_id, 'cw_checkout_message_label', true ) ?: 'Message',
+            'value' => wp_kses_post( $msg ),
+        ];
+        return $fields;
+    }
+
     private function create_entry_from_staged( $staged_id, $order_id, $user_id, $product_id, $item, $post_type ) {
         global $wpdb;
         $row = $wpdb->get_row( $wpdb->prepare(
@@ -1037,6 +1210,12 @@ class CW_Shop {
         ), ARRAY_A );
 
         if ( ! $row || ( $row['status'] ?? '' ) === 'claimed' ) {
+            return;
+        }
+
+        // Moderation-pending / rejected staged rows must not become public entries.
+        $mod = (string) ( $row['moderation_status'] ?? 'approved' );
+        if ( $mod !== '' && $mod !== 'approved' ) {
             return;
         }
 

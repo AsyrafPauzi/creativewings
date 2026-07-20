@@ -32,6 +32,9 @@ class CW_Checkout {
         add_filter( 'woocommerce_form_field_args', [ $this, 'form_field_args' ], 10, 3 );
         add_filter( 'woocommerce_checkout_fields', [ $this, 'checkout_field_classes' ] );
         add_filter( 'woocommerce_checkout_fields', [ $this, 'maybe_hide_shipping_fields' ], 20 );
+
+        // Phase 1: congratulations modal → campaign product page
+        add_action( 'woocommerce_thankyou', [ $this, 'render_success_redirect_modal' ], 5 );
     }
 
     public function enqueue_assets() {
@@ -59,6 +62,7 @@ class CW_Checkout {
         }
         return is_cart()
             || is_checkout()
+            || ( function_exists( 'is_order_received_page' ) && is_order_received_page() )
             || is_shop()
             || is_product()
             || is_product_category()
@@ -325,5 +329,163 @@ class CW_Checkout {
             }
         }
         return $fields;
+    }
+
+    /**
+     * Congrats modal on order-received; after ~5s redirect to the campaign product page.
+     *
+     * @param int $order_id
+     */
+    public function render_success_redirect_modal( $order_id ) {
+        $order_id = (int) $order_id;
+        if ( $order_id <= 0 ) {
+            return;
+        }
+
+        $order = wc_get_order( $order_id );
+        if ( ! $order ) {
+            return;
+        }
+
+        $campaign = $this->resolve_campaign_from_order( $order );
+        if ( ! $campaign ) {
+            return;
+        }
+
+        $redirect_url = $campaign['url'];
+        $title        = $campaign['title'];
+        $seconds      = 5;
+
+        // Ensure checkout CSS is present on thank-you (is_checkout is true, but belt-and-braces).
+        wp_enqueue_style(
+            'cw-style-checkout',
+            CW_URL . 'assets/css/cw-style-checkout.css',
+            [ 'cw-style-general' ],
+            CW_VERSION
+        );
+        ?>
+        <div id="cw-success-redirect-modal" class="cw-success-modal" role="dialog" aria-modal="true" aria-labelledby="cw-success-redirect-title" data-redirect-url="<?php echo esc_url( $redirect_url ); ?>" data-seconds="<?php echo (int) $seconds; ?>">
+            <div class="cw-success-modal__backdrop"></div>
+            <div class="cw-success-modal__panel">
+                <div class="cw-success-modal__icon" aria-hidden="true">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="24" cy="24" r="24" fill="#DCFCE7"/>
+                        <path d="M14 24.5L21 31.5L34 16.5" stroke="#16A34A" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <h2 id="cw-success-redirect-title" class="cw-success-modal__title"><?php esc_html_e( 'Congratulations!', 'creativewings-core' ); ?></h2>
+                <p class="cw-success-modal__text">
+                    <?php
+                    echo esc_html(
+                        sprintf(
+                            /* translators: %s: campaign title */
+                            __( 'Your registration for “%s” is confirmed.', 'creativewings-core' ),
+                            $title
+                        )
+                    );
+                    ?>
+                </p>
+                <p class="cw-success-modal__countdown">
+                    <?php
+                    echo wp_kses_post(
+                        sprintf(
+                            /* translators: %s: seconds remaining (HTML) */
+                            __( 'Taking you back to the campaign in %s…', 'creativewings-core' ),
+                            '<strong id="cw-success-redirect-count">' . (int) $seconds . '</strong>'
+                        )
+                    );
+                    ?>
+                </p>
+                <a class="cw-success-modal__cta" href="<?php echo esc_url( $redirect_url ); ?>">
+                    <?php esc_html_e( 'Go to campaign now', 'creativewings-core' ); ?>
+                </a>
+            </div>
+        </div>
+        <script>
+        (function () {
+            var root = document.getElementById('cw-success-redirect-modal');
+            if (!root) return;
+            var url = root.getAttribute('data-redirect-url') || '';
+            var left = parseInt(root.getAttribute('data-seconds') || '5', 10);
+            var countEl = document.getElementById('cw-success-redirect-count');
+            if (!url) return;
+
+            document.documentElement.classList.add('cw-success-modal-open');
+
+            var timer = window.setInterval(function () {
+                left -= 1;
+                if (countEl) countEl.textContent = String(Math.max(left, 0));
+                if (left <= 0) {
+                    window.clearInterval(timer);
+                    window.location.href = url;
+                }
+            }, 1000);
+        })();
+        </script>
+        <?php
+    }
+
+    /**
+     * First CW campaign product on the order (product ID = campaign page).
+     *
+     * @param WC_Order $order
+     * @return array{id:int,url:string,title:string}|null
+     */
+    private function resolve_campaign_from_order( $order ) {
+        if ( ! ( $order instanceof WC_Order ) ) {
+            return null;
+        }
+
+        foreach ( $order->get_items() as $item ) {
+            if ( ! ( $item instanceof WC_Order_Item_Product ) ) {
+                continue;
+            }
+
+            $product_id = (int) $item->get_product_id();
+            if ( $product_id <= 0 ) {
+                continue;
+            }
+
+            if ( ! $this->product_is_cw_campaign( $product_id, $item ) ) {
+                continue;
+            }
+
+            $url = get_permalink( $product_id );
+            if ( ! $url ) {
+                continue;
+            }
+
+            return [
+                'id'    => $product_id,
+                'url'   => $url,
+                'title' => get_the_title( $product_id ) ?: __( 'campaign', 'creativewings-core' ),
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param int                  $product_id
+     * @param WC_Order_Item_Product $item
+     */
+    private function product_is_cw_campaign( $product_id, $item ) {
+        if ( get_post_meta( $product_id, 'cw_campaign_serial', true ) ) {
+            return true;
+        }
+
+        if ( $item->get_meta( '_cw_participant_data' ) || $item->get_meta( '_cw_staged_id' ) || $item->get_meta( '_cw_addons_data' ) ) {
+            return true;
+        }
+
+        if ( class_exists( 'CW_Design_Submission' ) ) {
+            if ( $item->get_meta( '_' . CW_Design_Submission::CART_FLAG )
+                || $item->get_meta( '_' . CW_Design_Submission::CART_ARTWORK_ID )
+                || $item->get_meta( '_' . CW_Design_Submission::CART_ARTWORK_IDS ) ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

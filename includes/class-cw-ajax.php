@@ -134,10 +134,20 @@ class CW_Ajax {
                 'post_status'    => 'inherit'
             );
             $attach_id = wp_insert_attachment( $attachment, $move_file['file'] );
-            // Ensure taxonomy functions are loaded if needed (safer approach)
-            if ( ! function_exists('wp_generate_attachment_metadata') ) require_once(ABSPATH . 'wp-admin/includes/taxonomy.php');
-            $attach_data = wp_generate_attachment_metadata( $attach_id, $move_file['file'] );
-            wp_update_attachment_metadata( $attach_id, $attach_data );
+
+            // Lean metadata (thumbnail only) — full WP size sets OOM under concurrent joins.
+            if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                CW_Image_Optimizer::maybe_raise_memory_for_upload();
+                $attach_data = CW_Image_Optimizer::generate_lean_metadata( (int) $attach_id, $move_file['file'] );
+            } else {
+                if ( ! function_exists( 'wp_generate_attachment_metadata' ) ) {
+                    require_once ABSPATH . 'wp-admin/includes/image.php';
+                }
+                $attach_data = wp_generate_attachment_metadata( $attach_id, $move_file['file'] );
+            }
+            if ( ! empty( $attach_data ) ) {
+                wp_update_attachment_metadata( $attach_id, $attach_data );
+            }
 
             // Optimize raster images on the fly (skips PDF/DOC which fail the mime gate inside).
             if ( class_exists( 'CW_Image_Optimizer' ) ) {
@@ -187,6 +197,13 @@ class CW_Ajax {
         update_post_meta($eid, 'judge_comment',  $comment);
         update_post_meta($eid, 'winner_status',  $winner_status);
         update_post_meta($eid, 'winner_rank',    $winner_rank);
+
+        if ( class_exists( 'CW_Badges_Engine' ) ) {
+            $customer = (int) get_post_meta( $eid, 'customer_id', true );
+            if ( $customer > 0 ) {
+                CW_Badges_Engine::evaluate_user( $customer, [ 'source' => 'winner_marked', 'entry_id' => $eid ] );
+            }
+        }
 
         wp_send_json_success(['message' => 'Score and Comment updated!', 'score' => $score, 'winner' => $winner_status, 'winner_rank' => $winner_rank]);
     } else {

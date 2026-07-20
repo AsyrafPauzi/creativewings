@@ -19,7 +19,7 @@ class CW_Badges_Installer {
     const TABLE_OPTION       = 'cw_badges_db_version';
     const TARGET_TABLE_VER   = '1.0.0';
     const SEED_OPTION        = 'cw_badges_seed_version';
-    const TARGET_SEED_VER    = '1.0.0';
+    const TARGET_SEED_VER    = '1.1.0';
 
     /** Full ledger table name (with the WP prefix). */
     public static function table() {
@@ -260,6 +260,47 @@ class CW_Badges_Installer {
               'rule_type' => 'manual', 'icon_class' => 'fas fa-flask',
               'color' => '#6366f1', 'sort_order' => 310, 'admin_only' => true,
               'description' => 'Provided feedback during the platform beta.' ],
+
+            // ───── Contestant / join & points (Phase 3) ─────
+            [ 'slug' => 'contestant_first_join', 'title' => 'First Competition', 'target_role' => 'creator',
+              'rule_type' => 'paid_joins_any', 'extra_config' => '{"min":1}',
+              'icon_class' => 'fas fa-flag-checkered', 'color' => '#0ea5e9', 'sort_order' => 50,
+              'description' => 'Complete your first paid campaign join (competition or activity).' ],
+
+            [ 'slug' => 'contestant_5_competitions', 'title' => '5 Competitions Joined', 'target_role' => 'creator',
+              'rule_type' => 'paid_joins_competition', 'extra_config' => '{"min":5}',
+              'icon_class' => 'fas fa-layer-group', 'color' => '#3b82f6', 'sort_order' => 55,
+              'description' => 'Join 5 paid competitions.' ],
+
+            [ 'slug' => 'contestant_10_competitions', 'title' => '10 Competitions Joined', 'target_role' => 'creator',
+              'rule_type' => 'paid_joins_competition', 'extra_config' => '{"min":10}',
+              'icon_class' => 'fas fa-layer-group', 'color' => '#2563eb', 'sort_order' => 56,
+              'description' => 'Join 10 paid competitions.' ],
+
+            [ 'slug' => 'contestant_early_bird', 'title' => 'Early Bird', 'target_role' => 'creator',
+              'rule_type' => 'early_bird_join',
+              'icon_class' => 'fas fa-dove', 'color' => '#f59e0b', 'sort_order' => 60,
+              'description' => 'Join a campaign within the first 7 days of its submission start.' ],
+
+            [ 'slug' => 'contestant_top_contributor', 'title' => 'Top Contributor', 'target_role' => 'creator',
+              'rule_type' => 'top_contributor',
+              'icon_class' => 'fas fa-chart-line', 'color' => '#10b981', 'sort_order' => 65,
+              'description' => 'Rank in the Top 10 contestants by current points balance.' ],
+
+            [ 'slug' => 'contestant_champion', 'title' => 'Champion', 'target_role' => 'creator',
+              'rule_type' => 'champion',
+              'icon_class' => 'fas fa-trophy', 'color' => '#facc15', 'sort_order' => 70,
+              'description' => 'Be marked as a winner by a campaign organiser.' ],
+
+            [ 'slug' => 'contestant_event_explorer', 'title' => 'Event Explorer', 'target_role' => 'creator',
+              'rule_type' => 'event_explorer',
+              'icon_class' => 'fas fa-map-marked-alt', 'color' => '#8b5cf6', 'sort_order' => 75,
+              'description' => 'Complete at least one paid competition and one paid activity.' ],
+
+            [ 'slug' => 'contestant_creative_legend', 'title' => 'Creative Legend', 'target_role' => 'creator',
+              'rule_type' => 'creative_legend',
+              'icon_class' => 'fas fa-crown', 'color' => '#eab308', 'sort_order' => 80,
+              'description' => 'Reach 50 paid joins or 10,000 lifetime points earned.' ],
         ];
     }
 }

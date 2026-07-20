@@ -2,11 +2,10 @@
 /**
  * Design Submission front-end logic.
  *
- *   1. Campaign product page (and the [cw_event_detail] modal) — validates a
- *      participant's PNG against the organizer-defined dimensions BEFORE
- *      uploading, then AJAX-uploads to cw_design_artwork_upload. Mirrors
- *      validation server-side. Supports one upload widget per participant row
- *      via a `data-slot` attribute on the container.
+ *   1. Campaign product page (and the [cw_event_detail] modal) — accepts any
+ *      PNG, shows a center cover-crop preview into campaign W×H, then
+ *      AJAX-uploads the original to cw_design_artwork_upload (server crops).
+ *      Supports one upload widget per participant row via `data-slot`.
  *   2. Checkout page — composites the participant's uploaded PNG onto each
  *      organizer-uploaded variant image on a <canvas>, with live preview as
  *      the participant clicks between swatches. Multi-design lines render one
@@ -60,21 +59,16 @@
 
                 if (role === 'artwork') {
                     if (!/\.png$/i.test(file.name) || (file.type && file.type !== 'image/png')) {
+                        clearFitPreview(container);
                         showError(feedback, cwDesignVars.messages.wrongExtension);
                         input.value = '';
                         return;
                     }
                     measurePng(file).then(function (dims) {
-                        if (dims.w !== requiredW || dims.h !== requiredH) {
-                            var msg = cwDesignVars.messages.wrongDimensions
-                                .replace('%d', requiredW)
-                                .replace('%d', requiredH);
-                            showError(feedback, msg + ' (' + dims.w + ' × ' + dims.h + ' uploaded).');
-                            input.value = '';
-                            return;
-                        }
+                        showFitPreview(container, file, dims, requiredW, requiredH);
                         uploadFile(input, role, productId, slot, file, hidden, feedback);
                     }).catch(function () {
+                        clearFitPreview(container);
                         showError(feedback, cwDesignVars.messages.wrongExtension);
                         input.value = '';
                     });
@@ -140,6 +134,94 @@
         });
     }
 
+    /**
+     * Show a small center cover-crop preview framed to campaign W×H aspect.
+     * Preview only — the original File is still uploaded; server crops.
+     */
+    function showFitPreview(container, file, dims, requiredW, requiredH) {
+        if (!container || !file || !dims || !requiredW || !requiredH) return;
+
+        var wrap = container.querySelector('.cw-design-fit-preview');
+        if (!wrap) {
+            wrap = document.createElement('div');
+            wrap.className = 'cw-design-fit-preview';
+            wrap.setAttribute('aria-hidden', 'true');
+            var feedback = container.querySelector('.cw-design-feedback[data-role="artwork"]');
+            if (feedback && feedback.parentNode) {
+                feedback.parentNode.insertBefore(wrap, feedback.nextSibling);
+            } else {
+                container.appendChild(wrap);
+            }
+        }
+
+        var canvas = wrap.querySelector('canvas');
+        if (!canvas) {
+            canvas = document.createElement('canvas');
+            wrap.appendChild(canvas);
+        }
+
+        var hint = wrap.querySelector('.cw-design-fit-preview__hint');
+        if (!hint) {
+            hint = document.createElement('p');
+            hint.className = 'cw-design-fit-preview__hint';
+            wrap.appendChild(hint);
+        }
+
+        var exact = dims.w === requiredW && dims.h === requiredH;
+        hint.textContent = exact
+            ? (cwDesignVars.messages.exactFit || 'Exact case size — ready to upload.')
+            : (cwDesignVars.messages.fitting || 'PNG only — we’ll fit it to the case.');
+
+        // Display canvas capped for UI; draw cover-crop of source into target aspect.
+        var maxDisplayH = 160;
+        var displayScale = Math.min(1, maxDisplayH / requiredH);
+        var displayW = Math.max(1, Math.round(requiredW * displayScale));
+        var displayH = Math.max(1, Math.round(requiredH * displayScale));
+        canvas.width = displayW;
+        canvas.height = displayH;
+
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        img.onload = function () {
+            var ctx = canvas.getContext('2d');
+            if (!ctx) {
+                URL.revokeObjectURL(url);
+                return;
+            }
+            ctx.clearRect(0, 0, displayW, displayH);
+
+            var dstAspect = requiredW / requiredH;
+            var srcAspect = img.naturalWidth / img.naturalHeight;
+            var sx, sy, sw, sh;
+            if (srcAspect > dstAspect) {
+                sh = img.naturalHeight;
+                sw = Math.max(1, Math.round(img.naturalHeight * dstAspect));
+                sx = Math.max(0, Math.floor((img.naturalWidth - sw) / 2));
+                sy = 0;
+            } else {
+                sw = img.naturalWidth;
+                sh = Math.max(1, Math.round(img.naturalWidth / dstAspect));
+                sx = 0;
+                sy = Math.max(0, Math.floor((img.naturalHeight - sh) / 2));
+            }
+            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, displayW, displayH);
+            URL.revokeObjectURL(url);
+        };
+        img.onerror = function () {
+            URL.revokeObjectURL(url);
+            clearFitPreview(container);
+        };
+        img.src = url;
+    }
+
+    function clearFitPreview(container) {
+        if (!container) return;
+        var wrap = container.querySelector('.cw-design-fit-preview');
+        if (wrap && wrap.parentNode) {
+            wrap.parentNode.removeChild(wrap);
+        }
+    }
+
     function uploadFile(input, role, productId, slot, file, hidden, feedback) {
         var fd = new FormData();
         fd.append('action', cwDesignVars.action);
@@ -167,6 +249,9 @@
                     showError(feedback, msg);
                     input.value = '';
                     if (hidden) hidden.value = '';
+                    if (role === 'artwork' && input.closest) {
+                        clearFitPreview(input.closest('.cw-design-upload'));
+                    }
                 }
             })
             .catch(function () {
@@ -174,6 +259,9 @@
                 showError(feedback, cwDesignVars.messages.genericError);
                 input.value = '';
                 if (hidden) hidden.value = '';
+                if (role === 'artwork' && input.closest) {
+                    clearFitPreview(input.closest('.cw-design-upload'));
+                }
             });
     }
 
@@ -274,17 +362,41 @@
         });
 
         function redraw() {
+            // Compositing order is critical: the casing variant PNG is a
+            // FRAME (rounded caps + outline) with a TRANSPARENT centre.
+            // The artwork must be drawn first so it fills the canvas, then
+            // the casing on top so its transparent centre reveals the
+            // artwork while its outline / caps appear *around* the design.
+            //
+            // Sizing rule: canvas buffer = the SELECTED casing's natural
+            // dimensions. That way the casing always renders 1:1 at native
+            // resolution and the print-area rectangle (configured in the
+            // same coord space) maps directly onto the canvas without any
+            // scale conversion.
             if (loading && pendingLoads <= 0) loading.style.display = 'none';
             var base = variantImages[current];
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            if (base) {
-                ctx.drawImage(base, 0, 0, canvas.width, canvas.height);
-            } else {
-                ctx.fillStyle = '#f1f5f9';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            }
+            var dims = resizeCanvasToVariant(canvas, base, canvas.width, canvas.height);
+            var cW = dims[0], cH = dims[1];
+            ctx.clearRect(0, 0, cW, cH);
+
+            // 1. Light placeholder background so transparent corners look
+            //    intentional rather than like a broken image.
+            ctx.fillStyle = '#f1f5f9';
+            ctx.fillRect(0, 0, cW, cH);
+
+            // 2. Artwork: cover-crop into the configured print-area window
+            //    (so the 0.9 cm wrap-around portion is invisible from the
+            //    front), or contain-fit when no print area is configured
+            //    (legacy campaigns).
             if (artwork) {
-                ctx.drawImage(artwork, 0, 0, canvas.width, canvas.height);
+                drawArtwork(ctx, artwork, cW, cH, cfg.printArea);
+            }
+
+            // 3. Variant casing on top — transparent centre lets the
+            //    artwork show through, while the bottle outline + caps
+            //    render around the design.
+            if (base) {
+                ctx.drawImage(base, 0, 0, cW, cH);
             }
         }
     }
@@ -296,6 +408,95 @@
             img.onerror = function () { reject(new Error('load:' + url)); };
             img.src = url;
         });
+    }
+
+    /**
+     * Draw an image into a canvas context using `object-fit: contain`
+     * semantics — preserve the image's aspect ratio, scale it to fit
+     * inside the target box, and center it on both axes. Used to drop a
+     * participant's artwork into the casing's design area without
+     * stretching: if the artwork is shorter than the casing (e.g.
+     * 425×2362 inside a 425×2598 canvas) it lands with equal padding
+     * top + bottom, mirroring the reference brief.
+     */
+    function drawContain(ctx, img, boxW, boxH) {
+        var iw = (img && (img.naturalWidth || img.width)) | 0;
+        var ih = (img && (img.naturalHeight || img.height)) | 0;
+        if (!iw || !ih) return;
+        var scale = Math.min(boxW / iw, boxH / ih);
+        var w = iw * scale;
+        var h = ih * scale;
+        var x = (boxW - w) / 2;
+        var y = (boxH - h) / 2;
+        ctx.drawImage(img, x, y, w, h);
+    }
+
+    /**
+     * Draw `img` into the rectangle (px, py, pw, ph) using `object-fit: cover`
+     * semantics: scale up to fully cover the rect (preserving aspect), then
+     * center-crop the overflow. Drawing is clipped to the rect so anything
+     * outside the print area is discarded — which is exactly how the physical
+     * sleeve works: customer uploads 3.6 cm wide, only 2.7 cm shows on the
+     * case front, the rest wraps around and is invisible.
+     */
+    function drawCover(ctx, img, px, py, pw, ph) {
+        var iw = (img && (img.naturalWidth || img.width)) | 0;
+        var ih = (img && (img.naturalHeight || img.height)) | 0;
+        if (!iw || !ih || pw <= 0 || ph <= 0) return;
+
+        var scale = Math.max(pw / iw, ph / ih);
+        var w = iw * scale;
+        var h = ih * scale;
+        var x = px + (pw - w) / 2;
+        var y = py + (ph - h) / 2;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(px, py, pw, ph);
+        ctx.clip();
+        ctx.drawImage(img, x, y, w, h);
+        ctx.restore();
+    }
+
+    /**
+     * Compositor "draw the artwork" helper. Picks between cover-crop (when
+     * the campaign has a print-area window configured — the casing's
+     * visible front face) and contain-fit (legacy behaviour, no crop).
+     *
+     * `printArea` may be either an object {x, y, w, h} or null/undefined.
+     */
+    function drawArtwork(ctx, img, canvasW, canvasH, printArea) {
+        if (!img) return;
+        if (printArea && printArea.w > 0 && printArea.h > 0) {
+            drawCover(
+                ctx, img,
+                +printArea.x || 0,
+                +printArea.y || 0,
+                +printArea.w,
+                +printArea.h
+            );
+        } else {
+            drawContain(ctx, img, canvasW, canvasH);
+        }
+    }
+
+    /**
+     * Resize a canvas's pixel buffer to the casing variant's natural
+     * dimensions so the displayed mockup matches the real product
+     * proportions (and the downloaded PNG comes out at the casing's
+     * native resolution). No-op when the variant isn't loaded yet.
+     * Returns the [w, h] used so the caller can keep working with it.
+     */
+    function resizeCanvasToVariant(canvas, variantImg, fallbackW, fallbackH) {
+        var cW = (variantImg && (variantImg.naturalWidth  || variantImg.width))  | 0;
+        var cH = (variantImg && (variantImg.naturalHeight || variantImg.height)) | 0;
+        if (!cW || !cH) {
+            cW = fallbackW || canvas.width  || 1;
+            cH = fallbackH || canvas.height || 1;
+        }
+        if (canvas.width  !== cW) canvas.width  = cW;
+        if (canvas.height !== cH) canvas.height = cH;
+        return [cW, cH];
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -331,16 +532,22 @@
         }
 
         function tryRender() {
+            // See checkout `redraw()` for the full rationale on stacking
+            // order + sizing. Canvas buffer is resized to the casing's
+            // natural dimensions on every render so the downloaded PNG
+            // comes out at native resolution and the configured print
+            // area (same coord space) maps 1:1 onto the buffer.
             if (loading && ready.pending <= 0) loading.style.display = 'none';
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            if (ready.variant) {
-                ctx.drawImage(ready.variant, 0, 0, canvas.width, canvas.height);
-            } else {
-                ctx.fillStyle = '#f1f5f9';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            }
+            var dims = resizeCanvasToVariant(canvas, ready.variant, canvas.width, canvas.height);
+            var cW = dims[0], cH = dims[1];
+            ctx.clearRect(0, 0, cW, cH);
+            ctx.fillStyle = '#f1f5f9';
+            ctx.fillRect(0, 0, cW, cH);
             if (ready.art) {
-                ctx.drawImage(ready.art, 0, 0, canvas.width, canvas.height);
+                drawArtwork(ctx, ready.art, cW, cH, cfg.printArea);
+            }
+            if (ready.variant) {
+                ctx.drawImage(ready.variant, 0, 0, cW, cH);
             }
             if (ready.pending <= 0 && btn) {
                 btn.disabled = false;
@@ -433,15 +640,20 @@
         var state = { art: null, variant: null, pending: 0 };
 
         function render() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            if (state.variant) {
-                ctx.drawImage(state.variant, 0, 0, canvas.width, canvas.height);
-            } else {
-                ctx.fillStyle = '#f1f5f9';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            }
+            // Stacking + sizing same as the checkout picker — casing
+            // natural dimensions drive the canvas, artwork is cropped to
+            // the configured print area (front face) when set, otherwise
+            // contain-fit so legacy entries still render.
+            var dims = resizeCanvasToVariant(canvas, state.variant, canvas.width, canvas.height);
+            var cW = dims[0], cH = dims[1];
+            ctx.clearRect(0, 0, cW, cH);
+            ctx.fillStyle = '#f1f5f9';
+            ctx.fillRect(0, 0, cW, cH);
             if (state.art) {
-                ctx.drawImage(state.art, 0, 0, canvas.width, canvas.height);
+                drawArtwork(ctx, state.art, cW, cH, cfg.printArea);
+            }
+            if (state.variant) {
+                ctx.drawImage(state.variant, 0, 0, cW, cH);
             }
             if (state.pending <= 0 && loading) loading.style.display = 'none';
         }
@@ -566,9 +778,22 @@
 
             var ready = { art: null, variant: null, pending: 0 };
             function paint() {
-                ctx.clearRect(0, 0, W, H);
-                if (ready.variant) ctx.drawImage(ready.variant, 0, 0, W, H);
-                if (ready.art)     ctx.drawImage(ready.art,     0, 0, W, H);
+                // Stacking + sizing matches the inline mockups so the
+                // zoom view is pixel-identical to what was on the card,
+                // just bigger. Buffer = casing native dims; artwork is
+                // cropped to the print-area window (or contain-fit when
+                // the campaign doesn't define one).
+                var dims = resizeCanvasToVariant(canvas, ready.variant, W, H);
+                var cW = dims[0], cH = dims[1];
+                ctx.clearRect(0, 0, cW, cH);
+                ctx.fillStyle = '#f1f5f9';
+                ctx.fillRect(0, 0, cW, cH);
+                if (ready.art) {
+                    drawArtwork(ctx, ready.art, cW, cH, cfg.printArea);
+                }
+                if (ready.variant) {
+                    ctx.drawImage(ready.variant, 0, 0, cW, cH);
+                }
                 if (ready.pending <= 0) loading.style.display = 'none';
             }
             ready.pending++;

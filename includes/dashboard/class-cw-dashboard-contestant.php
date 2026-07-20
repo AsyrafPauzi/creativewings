@@ -55,6 +55,11 @@ class CW_Dashboard_Contestant {
         $activities_url = add_query_arg( 'tab', 'activities', $base_url );
         $upgrade_url    = add_query_arg( 'tab', 'upgrade', $base_url );
         $explore_url    = add_query_arg( 'tab', 'explore', $base_url );
+        $points_url     = add_query_arg( 'tab', 'points', $base_url );
+
+        $points_balance = class_exists( 'CW_Points' ) ? CW_Points::get_balance( $uid ) : 0;
+        $points_expiry  = class_exists( 'CW_Points' ) ? CW_Points::get_expires_at( $uid ) : '';
+        $points_rank    = class_exists( 'CW_Points' ) ? CW_Points::get_user_rank( $uid ) : 0;
 
         $recent_entries = get_posts([
             'post_type'      => ['cw_competition_entry', 'cw_activity_entry'],
@@ -138,6 +143,33 @@ class CW_Dashboard_Contestant {
                         <h3><?php echo number_format($pending_review_count); ?></h3>
                     </div>
                     <span>Pending Review</span>
+                </div>
+
+                <!-- Points -->
+                <div class="cw-stat-box-v2">
+                    <div class="cw-stat-value-row">
+                        <div class="stat-icon blue"><i class="fas fa-coins"></i></div>
+                        <h3><?php echo number_format( $points_balance ); ?></h3>
+                    </div>
+                    <span>
+                        <a href="<?php echo esc_url( $points_url ); ?>" style="color:inherit;text-decoration:none;font-weight:600;">
+                            <?php esc_html_e( 'Points', 'creativewings-core' ); ?>
+                        </a>
+                        <?php if ( $points_rank > 0 ) : ?>
+                            · #<?php echo (int) $points_rank; ?>
+                        <?php endif; ?>
+                    </span>
+                    <?php if ( $points_expiry && $points_balance > 0 ) : ?>
+                        <small style="display:block;margin-top:6px;color:#64748b;font-size:11px;">
+                            <?php
+                            printf(
+                                /* translators: %s: expiry date */
+                                esc_html__( 'Expire %s unless you join again', 'creativewings-core' ),
+                                esc_html( date_i18n( get_option( 'date_format' ), strtotime( $points_expiry ) ) )
+                            );
+                            ?>
+                        </small>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Upgrade Card -->
@@ -840,5 +872,187 @@ class CW_Dashboard_Contestant {
 
         wp_safe_redirect( add_query_arg( 'updated', '1', $settings_url ) );
         exit;
+    }
+
+    /* ==========================================================================
+       POINTS + LEADERBOARD
+       ========================================================================== */
+
+    public function render_points() {
+        $uid      = get_current_user_id();
+        $base_url = get_permalink( wc_get_page_id( 'myaccount' ) );
+        $board_url = add_query_arg( 'tab', 'leaderboard', $base_url );
+
+        if ( ! class_exists( 'CW_Points' ) ) {
+            echo '<p>' . esc_html__( 'Points are unavailable.', 'creativewings-core' ) . '</p>';
+            return;
+        }
+
+        $balance  = CW_Points::get_balance( $uid );
+        $lifetime = CW_Points::get_lifetime_earned( $uid );
+        $expires  = CW_Points::get_expires_at( $uid );
+        $rank     = CW_Points::get_user_rank( $uid );
+
+        global $wpdb;
+        $table = CW_Points::table();
+        $rows  = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$table} WHERE user_id = %d ORDER BY id DESC LIMIT 20",
+                $uid
+            ),
+            ARRAY_A
+        );
+        ?>
+        <div class="cw-content-wrapper">
+            <div class="cw-dash-header">
+                <h2><?php esc_html_e( 'Your Points', 'creativewings-core' ); ?></h2>
+                <p><?php esc_html_e( 'Earn 1 point per RM1 of the original campaign price when you join. Points expire 12 months after your last join unless you join again.', 'creativewings-core' ); ?></p>
+            </div>
+
+            <div class="cw-stats-container" style="margin-bottom:28px;">
+                <div class="cw-stat-box-v2">
+                    <div class="cw-stat-value-row">
+                        <div class="stat-icon blue"><i class="fas fa-coins"></i></div>
+                        <h3><?php echo number_format( $balance ); ?></h3>
+                    </div>
+                    <span><?php esc_html_e( 'Current balance', 'creativewings-core' ); ?></span>
+                </div>
+                <div class="cw-stat-box-v2">
+                    <div class="cw-stat-value-row">
+                        <div class="stat-icon yellow"><i class="fas fa-bolt"></i></div>
+                        <h3><?php echo number_format( $lifetime ); ?></h3>
+                    </div>
+                    <span><?php esc_html_e( 'Lifetime earned', 'creativewings-core' ); ?></span>
+                </div>
+                <div class="cw-stat-box-v2">
+                    <div class="cw-stat-value-row">
+                        <div class="stat-icon blue"><i class="fas fa-list-ol"></i></div>
+                        <h3><?php echo $rank > 0 ? '#' . (int) $rank : '—'; ?></h3>
+                    </div>
+                    <span>
+                        <a href="<?php echo esc_url( $board_url ); ?>" style="color:inherit;font-weight:600;text-decoration:none;">
+                            <?php esc_html_e( 'Leaderboard rank', 'creativewings-core' ); ?>
+                        </a>
+                    </span>
+                </div>
+            </div>
+
+            <?php if ( $expires && $balance > 0 ) : ?>
+                <p style="margin:0 0 20px;color:#475569;font-size:14px;">
+                    <?php
+                    printf(
+                        /* translators: %s: date */
+                        esc_html__( 'Points expire on %s unless you join another campaign.', 'creativewings-core' ),
+                        '<strong>' . esc_html( date_i18n( get_option( 'date_format' ), strtotime( $expires ) ) ) . '</strong>'
+                    );
+                    ?>
+                </p>
+            <?php endif; ?>
+
+            <div style="background:#fff;border:1px dashed #cbd5e1;border-radius:12px;padding:20px 22px;margin-bottom:28px;">
+                <h3 style="margin:0 0 8px;font-size:1.05rem;"><?php esc_html_e( 'Redeem points', 'creativewings-core' ); ?></h3>
+                <p style="margin:0;color:#64748b;font-size:14px;">
+                    <?php esc_html_e( 'Coming Soon — merchandise, coupons, and more rewards.', 'creativewings-core' ); ?>
+                </p>
+            </div>
+
+            <h3 class="cw-recent-heading"><?php esc_html_e( 'Recent activity', 'creativewings-core' ); ?></h3>
+            <?php if ( empty( $rows ) ) : ?>
+                <div class="cw-recent-empty">
+                    <p class="cw-recent-empty-desc"><?php esc_html_e( 'No point transactions yet. Join a campaign to start earning.', 'creativewings-core' ); ?></p>
+                </div>
+            <?php else : ?>
+                <div class="cw-recent-table-wrap">
+                    <table class="cw-recent-table">
+                        <thead>
+                            <tr>
+                                <th><?php esc_html_e( 'Date', 'creativewings-core' ); ?></th>
+                                <th><?php esc_html_e( 'Type', 'creativewings-core' ); ?></th>
+                                <th><?php esc_html_e( 'Points', 'creativewings-core' ); ?></th>
+                                <th><?php esc_html_e( 'Note', 'creativewings-core' ); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $rows as $row ) : ?>
+                            <tr>
+                                <td><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $row['created_at'] ) ) ); ?></td>
+                                <td><?php echo esc_html( ucfirst( (string) $row['type'] ) ); ?></td>
+                                <td><?php echo ( (int) $row['points'] >= 0 ? '+' : '' ) . number_format( (int) $row['points'] ); ?></td>
+                                <td><?php echo esc_html( (string) ( $row['note'] ?? '' ) ); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    public function render_leaderboard() {
+        if ( ! class_exists( 'CW_Points' ) ) {
+            echo '<p>' . esc_html__( 'Leaderboard is unavailable.', 'creativewings-core' ) . '</p>';
+            return;
+        }
+
+        $uid   = get_current_user_id();
+        $rows  = CW_Points::get_leaderboard( CW_Points::LEADERBOARD_SIZE );
+        $mine  = CW_Points::get_balance( $uid );
+        $rank  = CW_Points::get_user_rank( $uid );
+        ?>
+        <div class="cw-content-wrapper">
+            <div class="cw-dash-header">
+                <h2><?php esc_html_e( 'Points Leaderboard', 'creativewings-core' ); ?></h2>
+                <p><?php esc_html_e( 'Site-wide ranking by current points balance.', 'creativewings-core' ); ?></p>
+            </div>
+
+            <?php if ( $rank > 0 ) : ?>
+                <p style="margin:0 0 18px;font-size:14px;color:#334155;">
+                    <?php
+                    printf(
+                        /* translators: 1: rank 2: balance */
+                        esc_html__( 'You are #%1$d with %2$s points.', 'creativewings-core' ),
+                        (int) $rank,
+                        number_format( $mine )
+                    );
+                    ?>
+                </p>
+            <?php endif; ?>
+
+            <?php if ( empty( $rows ) ) : ?>
+                <div class="cw-recent-empty">
+                    <p class="cw-recent-empty-desc"><?php esc_html_e( 'No ranked contestants yet. Be the first to earn points!', 'creativewings-core' ); ?></p>
+                </div>
+            <?php else : ?>
+                <div class="cw-recent-table-wrap">
+                    <table class="cw-recent-table">
+                        <thead>
+                            <tr>
+                                <th><?php esc_html_e( 'Rank', 'creativewings-core' ); ?></th>
+                                <th><?php esc_html_e( 'Contestant', 'creativewings-core' ); ?></th>
+                                <th><?php esc_html_e( 'Points', 'creativewings-core' ); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $rows as $row ) :
+                                $is_me = ( (int) $row['user_id'] === (int) $uid );
+                                ?>
+                            <tr<?php echo $is_me ? ' style="background:#f0f9ff;"' : ''; ?>>
+                                <td><strong>#<?php echo (int) $row['rank']; ?></strong></td>
+                                <td>
+                                    <?php echo esc_html( $row['display_name'] ); ?>
+                                    <?php if ( $is_me ) : ?>
+                                        <span style="margin-left:6px;font-size:11px;font-weight:700;color:#0369a1;"><?php esc_html_e( 'You', 'creativewings-core' ); ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo number_format( (int) $row['balance'] ); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+        <?php
     }
 }

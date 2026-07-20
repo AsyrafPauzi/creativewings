@@ -2,7 +2,7 @@
 /**
  * Plugin Name: CreativeWings Core Platform
  * Description: Complete ecosystem: Auth, Onboarding, Campaigns, Tournaments, and Business Logic.
- * Version: 11.0.80
+ * Version: 11.0.90
  * Author: CreativeWings Dev
  * Text Domain: creativewings-core
  * Domain Path: /languages
@@ -69,7 +69,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
         private function define_constants() {
             define( 'CW_PATH', plugin_dir_path( __FILE__ ) );
             define( 'CW_URL', plugin_dir_url( __FILE__ ) );
-            define( 'CW_VERSION', '11.0.82' );
+            define( 'CW_VERSION', '11.0.90' );
         }
 
         /**
@@ -251,6 +251,12 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             // Badges: register the CPT instance and wire engine hooks.
             new CW_Badges_CPT();
             CW_Badges_Engine::register_hooks();
+            if ( class_exists( 'CW_Points' ) ) {
+                CW_Points::register_hooks();
+            }
+            if ( class_exists( 'CW_Post_Checkout' ) ) {
+                CW_Post_Checkout::register_hooks();
+            }
             // Render any pending award toasts inside the WP footer on the front-end.
             add_action( 'wp_footer', [ 'CW_Badges_Display', 'maybe_render_toast' ], 50 );
 

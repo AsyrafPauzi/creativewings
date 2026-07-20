@@ -98,36 +98,10 @@ class CW_Business_Save {
         // Persisted as the WooCommerce product gallery (_product_image_gallery,
         // CSV of attachment IDs). The public product page picks them up
         // automatically via standard WC rendering.
-        $gallery_ids = [];
+        $gallery_ids   = [];
+        $new_upload_ids = [];
 
-        // 1) Keep-list: IDs of pre-existing gallery items the editor didn't
-        //    remove. Empty string means "keep nothing".
-        if ( isset( $_POST['cw_gallery_keep'] ) ) {
-            $raw = (string) wp_unslash( $_POST['cw_gallery_keep'] );
-            if ( $raw !== '' ) {
-                foreach ( explode( ',', $raw ) as $token ) {
-                    $id = (int) trim( $token );
-                    if ( $id > 0 ) {
-                        $gallery_ids[] = $id;
-                    }
-                }
-            }
-        } elseif ( ! empty( $_POST['campaign_id'] ) ) {
-            // Form was submitted without the hidden field (older payload). Keep
-            // whatever was already on the post so we don't accidentally nuke
-            // the gallery.
-            $existing = (string) get_post_meta( $pid, '_product_image_gallery', true );
-            if ( $existing !== '' ) {
-                foreach ( explode( ',', $existing ) as $token ) {
-                    $id = (int) trim( $token );
-                    if ( $id > 0 ) {
-                        $gallery_ids[] = $id;
-                    }
-                }
-            }
-        }
-
-        // 2) New uploads.
+        // 1) New uploads (indexed for cw_gallery_order tokens like n:0, n:1).
         if ( ! empty( $_FILES['cw_gallery_files']['name'] ) && is_array( $_FILES['cw_gallery_files']['name'] ) ) {
             $names = $_FILES['cw_gallery_files']['name'];
             $count = count( $names );
@@ -145,11 +119,10 @@ class CW_Business_Save {
                 if ( $single['error'] !== UPLOAD_ERR_OK ) {
                     continue;
                 }
-                // Reassign the global $_FILES slot for media_handle_upload().
                 $_FILES['cw_gallery_one'] = $single;
                 $new_id = media_handle_upload( 'cw_gallery_one', $pid );
                 if ( ! is_wp_error( $new_id ) ) {
-                    $gallery_ids[] = (int) $new_id;
+                    $new_upload_ids[] = (int) $new_id;
                     if ( class_exists( 'CW_Image_Optimizer' ) ) {
                         CW_Image_Optimizer::optimize_attachment( $new_id, 'campaign_thumb' );
                     }
@@ -158,7 +131,54 @@ class CW_Business_Save {
             unset( $_FILES['cw_gallery_one'] );
         }
 
-        // 3) Write the gallery meta (dedupe, preserve order).
+        // 2) Build final order from drag-and-drop payload when present.
+        if ( ! empty( $_POST['cw_gallery_order'] ) ) {
+            $raw = (string) wp_unslash( $_POST['cw_gallery_order'] );
+            if ( $raw !== '' ) {
+                foreach ( explode( ',', $raw ) as $token ) {
+                    $token = trim( $token );
+                    if ( preg_match( '/^e:(\d+)$/', $token, $m ) ) {
+                        $id = (int) $m[1];
+                        if ( $id > 0 ) {
+                            $gallery_ids[] = $id;
+                        }
+                    } elseif ( preg_match( '/^n:(\d+)$/', $token, $m ) ) {
+                        $idx = (int) $m[1];
+                        if ( isset( $new_upload_ids[ $idx ] ) ) {
+                            $gallery_ids[] = $new_upload_ids[ $idx ];
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3) Legacy fallback when order field is absent.
+        if ( empty( $gallery_ids ) ) {
+            if ( isset( $_POST['cw_gallery_keep'] ) ) {
+                $raw = (string) wp_unslash( $_POST['cw_gallery_keep'] );
+                if ( $raw !== '' ) {
+                    foreach ( explode( ',', $raw ) as $token ) {
+                        $id = (int) trim( $token );
+                        if ( $id > 0 ) {
+                            $gallery_ids[] = $id;
+                        }
+                    }
+                }
+            } elseif ( ! empty( $_POST['campaign_id'] ) ) {
+                $existing = (string) get_post_meta( $pid, '_product_image_gallery', true );
+                if ( $existing !== '' ) {
+                    foreach ( explode( ',', $existing ) as $token ) {
+                        $id = (int) trim( $token );
+                        if ( $id > 0 ) {
+                            $gallery_ids[] = $id;
+                        }
+                    }
+                }
+            }
+            $gallery_ids = array_merge( $gallery_ids, $new_upload_ids );
+        }
+
+        // 4) Write the gallery meta (dedupe, preserve order).
         $gallery_ids = array_values( array_unique( array_filter( $gallery_ids ) ) );
         update_post_meta( $pid, '_product_image_gallery', implode( ',', $gallery_ids ) );
         if ( ! empty( $_FILES['cw_cert_template']['name'] ) ) {
@@ -171,67 +191,128 @@ class CW_Business_Save {
             }
         }
 
-        // ─── Participant Template (downloadable resource) ─────────────
-        // Single attachment per campaign. Stored as `cw_template_file_id` so
-        // we can re-resolve the URL (and delete the old file) cleanly when
-        // the organiser swaps or removes it.
-        $tpl_remove   = ! empty( $_POST['cw_template_remove'] ) && (string) $_POST['cw_template_remove'] !== '0';
-        $tpl_existing = (int) get_post_meta( $pid, 'cw_template_file_id', true );
-        $tpl_new_id   = 0;
+        // ─── Participant Templates (downloadable resources) ───────────
+        // Multiple attachments per campaign. Each posted row in
+        // `cw_templates[idx]` carries the existing attachment id, label
+        // and a remove flag; the file input for that row is the FLAT
+        // key `cw_template_file_<idx>` so PHP's nested-$_FILES quirks
+        // never come into play (media_handle_upload wants flat keys).
+        // CW_Campaign_Templates::save_files() then persists the
+        // canonical array and mirrors the first entry to the legacy
+        // `cw_template_file_id` keys for back-compat.
+        $existing_files = class_exists( 'CW_Campaign_Templates' )
+            ? CW_Campaign_Templates::get_files( $pid )
+            : [];
+        $existing_ids_in_meta = [];
+        foreach ( $existing_files as $ef ) {
+            $existing_ids_in_meta[ (int) $ef['id'] ] = true;
+        }
 
-        if ( ! empty( $_FILES['cw_template_file']['name'] ) ) {
-            // Templates legitimately include vector source formats WordPress
-            // doesn't whitelist by default (.ai, .psd, .eps). Allow them
-            // temporarily during JUST this upload so we don't widen the
-            // attack surface of the site-wide media library.
-            $mime_filter = function ( $mimes ) {
-                $mimes['ai']  = 'application/postscript';
-                $mimes['eps'] = 'application/postscript';
-                $mimes['psd'] = 'image/vnd.adobe.photoshop';
-                $mimes['zip'] = 'application/zip';
-                // Explicit PDF entry: WordPress' default mime set already
-                // includes PDF, but some security plugins (e.g. Wordfence,
-                // SecuPress) strip it. Re-declaring it here guarantees the
-                // template upload still works on those installs.
-                $mimes['pdf'] = 'application/pdf';
-                return $mimes;
-            };
-            // Skip WP's "real MIME vs extension" guard for .ai/.eps/.psd because
-            // they're all served as `application/octet-stream` by many editors —
-            // wp_check_filetype_and_ext would reject them otherwise.
-            $ext_filter = function ( $checked, $file, $filename, $mimes, $real_mime ) {
-                $ext = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
-                if ( in_array( $ext, [ 'ai', 'eps', 'psd', 'zip', 'pdf' ], true ) ) {
-                    if ( empty( $checked['ext'] ) || empty( $checked['type'] ) ) {
-                        $checked['ext']  = $ext;
-                        $checked['type'] = $mimes[ $ext ] ?? 'application/octet-stream';
-                        $checked['proper_filename'] = false;
-                    }
-                }
-                return $checked;
-            };
-
-            add_filter( 'upload_mimes', $mime_filter );
-            add_filter( 'wp_check_filetype_and_ext', $ext_filter, 10, 5 );
-
-            $maybe_new = media_handle_upload( 'cw_template_file', $pid );
-
-            remove_filter( 'upload_mimes', $mime_filter );
-            remove_filter( 'wp_check_filetype_and_ext', $ext_filter, 10 );
-
-            if ( ! is_wp_error( $maybe_new ) ) {
-                $tpl_new_id = (int) $maybe_new;
-                update_post_meta( $pid, 'cw_template_file_id', $tpl_new_id );
-                // Drop the previous template attachment — it's not referenced
-                // anywhere else (no gallery, no thumbnail, just this one slot).
-                if ( $tpl_existing && $tpl_existing !== $tpl_new_id ) {
-                    wp_delete_attachment( $tpl_existing, true );
+        // Templates legitimately include vector source formats WordPress
+        // doesn't whitelist by default (.ai, .psd, .eps). Allow them
+        // temporarily during JUST these uploads so we don't widen the
+        // attack surface of the site-wide media library. Filters are
+        // added once outside the per-row loop and torn down after.
+        $mime_filter = function ( $mimes ) {
+            $mimes['ai']  = 'application/postscript';
+            $mimes['eps'] = 'application/postscript';
+            $mimes['psd'] = 'image/vnd.adobe.photoshop';
+            $mimes['zip'] = 'application/zip';
+            // Explicit PDF entry: WordPress' default mime set already
+            // includes PDF, but some security plugins (e.g. Wordfence,
+            // SecuPress) strip it. Re-declaring it here guarantees the
+            // template upload still works on those installs.
+            $mimes['pdf'] = 'application/pdf';
+            return $mimes;
+        };
+        // Skip WP's "real MIME vs extension" guard for .ai/.eps/.psd because
+        // they're all served as `application/octet-stream` by many editors —
+        // wp_check_filetype_and_ext would reject them otherwise.
+        $ext_filter = function ( $checked, $file, $filename, $mimes, $real_mime ) {
+            $ext = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
+            if ( in_array( $ext, [ 'ai', 'eps', 'psd', 'zip', 'pdf' ], true ) ) {
+                if ( empty( $checked['ext'] ) || empty( $checked['type'] ) ) {
+                    $checked['ext']  = $ext;
+                    $checked['type'] = $mimes[ $ext ] ?? 'application/octet-stream';
+                    $checked['proper_filename'] = false;
                 }
             }
-        } elseif ( $tpl_remove && $tpl_existing ) {
-            // No new file but the user pressed "Remove" → fully detach.
-            wp_delete_attachment( $tpl_existing, true );
-            delete_post_meta( $pid, 'cw_template_file_id' );
+            return $checked;
+        };
+
+        $posted_rows = isset( $_POST['cw_templates'] ) && is_array( $_POST['cw_templates'] )
+            ? wp_unslash( $_POST['cw_templates'] )
+            : [];
+
+        $new_template_rows = [];
+        $kept_ids          = [];
+
+        if ( ! empty( $posted_rows ) ) {
+            add_filter( 'upload_mimes', $mime_filter );
+            add_filter( 'wp_check_filetype_and_ext', $ext_filter, 10, 5 );
+        }
+
+        foreach ( $posted_rows as $row_idx => $row ) {
+            // Sanitize the row index — the form always uses integers but
+            // someone could POST garbage; coerce to a safe identifier
+            // for the matching flat file key.
+            $file_key = 'cw_template_file_' . preg_replace( '/[^A-Za-z0-9_]/', '_', (string) $row_idx );
+            $row_id   = isset( $row['id'] ) ? (int) $row['id'] : 0;
+            $row_lbl  = isset( $row['label'] ) ? sanitize_text_field( (string) $row['label'] ) : '';
+            $remove   = ! empty( $row['remove'] ) && (string) $row['remove'] !== '0';
+
+            // ── Remove this row ─────────────────────────────────────
+            if ( $remove ) {
+                if ( $row_id && isset( $existing_ids_in_meta[ $row_id ] ) ) {
+                    wp_delete_attachment( $row_id, true );
+                }
+                continue;
+            }
+
+            // ── Upload any new file for this row ───────────────────
+            $uploaded_new_id = 0;
+            if ( ! empty( $_FILES[ $file_key ]['name'] ) ) {
+                $maybe_new = media_handle_upload( $file_key, $pid );
+                if ( ! is_wp_error( $maybe_new ) ) {
+                    $uploaded_new_id = (int) $maybe_new;
+                    // Row was attached to a different id before — clean up.
+                    if ( $row_id && $row_id !== $uploaded_new_id && isset( $existing_ids_in_meta[ $row_id ] ) ) {
+                        wp_delete_attachment( $row_id, true );
+                    }
+                }
+            }
+
+            $final_id = $uploaded_new_id ?: $row_id;
+            if ( $final_id > 0 ) {
+                $new_template_rows[] = [
+                    'id'    => $final_id,
+                    'label' => $row_lbl,
+                ];
+                $kept_ids[ $final_id ] = true;
+            }
+            // Rows with a label but no file (and no existing id) are silently
+            // dropped — the organiser hadn't actually attached anything.
+        }
+
+        if ( ! empty( $posted_rows ) ) {
+            remove_filter( 'upload_mimes', $mime_filter );
+            remove_filter( 'wp_check_filetype_and_ext', $ext_filter, 10 );
+        }
+
+        // ── Orphan sweep ─────────────────────────────────────────────
+        // Anything that was in meta before but isn't in the new array
+        // (and wasn't already removed by a remove flag) gets deleted.
+        // This covers the edge case where a row was dropped entirely
+        // from the DOM via direct manipulation rather than the Remove
+        // button.
+        foreach ( $existing_ids_in_meta as $eid => $_ ) {
+            if ( empty( $kept_ids[ $eid ] ) ) {
+                wp_delete_attachment( (int) $eid, true );
+            }
+        }
+
+        if ( class_exists( 'CW_Campaign_Templates' ) ) {
+            CW_Campaign_Templates::save_files( $pid, $new_template_rows );
         }
 
         if ( class_exists( 'CW_Sponsor_Coupons' ) ) {

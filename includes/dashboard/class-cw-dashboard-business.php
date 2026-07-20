@@ -2958,6 +2958,10 @@ class CW_Dashboard_Business {
                             'width'        => $mockup['width'],
                             'height'       => $mockup['height'],
                             'artFilename'  => $mockup['art_filename'],
+                            // Crop the artwork to the campaign's print area
+                            // so the judging card matches the physical case.
+                            // Null = contain-fit (no crop).
+                            'printArea'    => $mockup['print_area'] ?? null,
                             'title'        => $entry->post_title,
                         ] );
                         $wrap_style = 'position:relative;display:flex;align-items:center;justify-content:center;width:100%;height:100%;min-height:180px;background:#f8fafc;overflow:hidden;cursor:zoom-in;box-sizing:border-box;';
@@ -3036,6 +3040,18 @@ class CW_Dashboard_Business {
                         <h4><?php echo esc_html($entry->post_title); ?></h4>
                         <div class="cw-entry-meta" style="display:flex; flex-direction:column; gap:4px;">
                             <span>By: <strong><?php echo esc_html($name); ?></strong></span>
+                            <?php
+                            // Show the casing variant the participant picked at
+                            // checkout so judges can see which colour was chosen
+                            // alongside the artwork (matches what's printed).
+                            // Null-safe: non-design entries simply skip this row.
+                            if ( $mockup && ! empty( $mockup['variant_name'] ) ) : ?>
+                            <span class="cw-entry-casing" style="color:#475569;">
+                                <i class="fas fa-palette" aria-hidden="true" style="color:#2563eb;margin-right:4px;"></i>
+                                <?php esc_html_e( 'Casing:', 'creativewings-core' ); ?>
+                                <strong style="color:#0f172a;"><?php echo esc_html( $mockup['variant_name'] ); ?></strong>
+                            </span>
+                            <?php endif; ?>
                             <?php if ( $is_judged ): ?>
                             <span>Score: <strong><?php echo esc_html($score); ?></strong> / 100</span>
                             <?php endif; ?>
@@ -3292,6 +3308,10 @@ class CW_Dashboard_Business {
                     width:       data.mockup.width  || 2400,
                     height:      data.mockup.height || 600,
                     artFilename: data.mockup.art_filename || '',
+                    // Print-area rectangle so the evaluation modal crops
+                    // the artwork to the visible "front face" of the case
+                    // (null falls back to contain-fit for legacy campaigns).
+                    printArea:   data.mockup.print_area || null,
                     title:       data.title
                 };
                 const cfgAttr = JSON.stringify(cfg).replace(/'/g, '&#39;');
@@ -3428,9 +3448,13 @@ class CW_Dashboard_Business {
                     saveBtn.prop('disabled', false).html('<i class="fas fa-save"></i> Save Score');
                     if (res.success) {
                         Swal.fire({ icon: 'success', title: 'Saved!', text: 'Score & comment updated.', timer: 1200, showConfirmButton: false });
-                        // Update card meta inline
-                        $(`.cw-evaluation-card[data-entry-id="${entryId}"] .cw-entry-meta`).html(
-                            `<span>By: <strong>${activeEntryData.submitter}</strong></span><span>Score: <strong>${score}</strong> / 100</span>`
+                        // Update card meta inline. Preserve the "Casing: …"
+                        // line if one was rendered server-side so the judge
+                        // doesn't lose context after saving the score.
+                        const cardMeta = $(`.cw-evaluation-card[data-entry-id="${entryId}"] .cw-entry-meta`);
+                        const casingLine = cardMeta.find('.cw-entry-casing').prop('outerHTML') || '';
+                        cardMeta.html(
+                            `<span>By: <strong>${activeEntryData.submitter}</strong></span>${casingLine}<span>Score: <strong>${score}</strong> / 100</span>`
                         );
                         activeEntryData.score   = score;
                         activeEntryData.comment = comment;

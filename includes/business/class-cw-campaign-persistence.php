@@ -117,7 +117,58 @@ class CW_Campaign_Persistence {
         update_post_meta( $product_id, '_regular_price', $price );
         update_post_meta( $product_id, '_price', $price );
         update_post_meta( $product_id, '_virtual', 'yes' );
-        update_post_meta( $product_id, 'organizer_id', (int) ( $data['organizer_id'] ?? $author_id ) );
+
+        // ── Organiser ownership ─────────────────────────────────────
+        // The `organizer_id` meta is the canonical pointer used by the
+        // organiser sidebar card, dashboard credits, e-mail signatures,
+        // wallet payouts, etc. It must stay locked to the campaign's
+        // creator (or whoever the admin transferred it to via the WP
+        // admin metabox) even when somebody else — including an admin
+        // saving on the organiser's behalf — re-saves the campaign
+        // through the front-end business form.
+        //
+        // Resolution order (existing campaigns):
+        //   1. Use the existing `organizer_id` meta if it's set.
+        //   2. Fall back to `post_author` (which the persistence
+        //      layer above already preserved correctly).
+        //   3. Honour an explicit `$data['organizer_id']` only when
+        //      it actually matches one of the two above — i.e. the
+        //      caller is re-asserting the same owner. We never let a
+        //      stale `$data['organizer_id']` from $_POST silently
+        //      reassign ownership.
+        // For brand-new campaigns we honour the supplied id (or fall
+        // back to `$author_id`).
+        if ( $is_new ) {
+            $organizer_to_save = (int) ( $data['organizer_id'] ?? $author_id );
+        } else {
+            $existing_org    = (int) get_post_meta( $product_id, 'organizer_id', true );
+            $existing_author = (int) get_post_field( 'post_author', $product_id );
+
+            // Self-heal: if `organizer_id` got clobbered to an admin id by an
+            // older version of this code (before the bugfix that stopped
+            // overwriting it on every save), drag it back to whatever the
+            // current post_author says — that's the canonical owner because
+            // the admin metabox is the ONLY path that ever changes
+            // post_author. If a campaign was transferred to a new business
+            // owner, post_author already reflects that, and this branch
+            // restores `organizer_id` to match.
+            $org_belongs_to_business = false;
+            if ( $existing_org > 0 && class_exists( 'CW_Roles' ) ) {
+                $org_user = get_userdata( $existing_org );
+                if ( $org_user && in_array( 'business_role', (array) $org_user->roles, true ) ) {
+                    $org_belongs_to_business = true;
+                }
+            }
+
+            if ( $existing_org > 0 && ( $org_belongs_to_business || $existing_org === $existing_author ) ) {
+                $organizer_to_save = $existing_org;
+            } elseif ( $existing_author > 0 ) {
+                $organizer_to_save = $existing_author;
+            } else {
+                $organizer_to_save = (int) ( $data['organizer_id'] ?? $author_id );
+            }
+        }
+        update_post_meta( $product_id, 'organizer_id', $organizer_to_save );
 
         $scalar_keys = [
             'submission_deadline', 'cw_total_prize_value', 'cw_min_participants', 'cw_max_participants',
@@ -126,14 +177,27 @@ class CW_Campaign_Persistence {
             'cw_cert_x', 'cw_cert_y', 'cw_cert_font_size', 'cw_cert_font_color', 'cw_cert_max_width', 'cw_cert_align',
             'cw_event_mode', 'cw_online_link', 'cw_multi_min', 'cw_multi_max',
             'cw_campaign_serial', 'cw_checkout_message_label',
+            'cw_submissions_gallery_layout',
             'cw_enable_addons', 'cw_enable_age_brackets', 'cw_enable_school_sponsors',
             'cw_allow_multiple_participants', 'cw_use_account_fullname',
             'cw_design_picker_label', 'cw_design_artwork_w', 'cw_design_artwork_h',
-            'cw_template_label',
+            // Print-area window on the casing (visible front face). Saved as
+            // integers via sanitize_text_field — JS treats any non-positive
+            // value as "no crop" so blank entries are safe.
+            'cw_design_print_x', 'cw_design_print_y', 'cw_design_print_w', 'cw_design_print_h',
+            // Note: `cw_template_label` was a scalar legacy meta when templates
+            // were single-file. With multi-template support it's now mirrored
+            // from the first row of `cw_template_files` by CW_Campaign_Templates,
+            // so we deliberately do NOT round-trip it through scalar persistence.
         ];
         foreach ( $scalar_keys as $k ) {
             if ( array_key_exists( $k, $data ) ) {
-                update_post_meta( $product_id, $k, sanitize_text_field( $data[ $k ] ) );
+                if ( 'cw_submissions_gallery_layout' === $k ) {
+                    $layout = sanitize_key( (string) $data[ $k ] );
+                    update_post_meta( $product_id, $k, in_array( $layout, [ 'grid', 'map' ], true ) ? $layout : 'grid' );
+                } else {
+                    update_post_meta( $product_id, $k, sanitize_text_field( $data[ $k ] ) );
+                }
             }
         }
 
@@ -192,6 +256,14 @@ class CW_Campaign_Persistence {
         update_post_meta( $product_id, 'cw_checkout_message_required', ! empty( $data['cw_checkout_message_required'] ) ? 'yes' : 'no' );
         $sco = $data['cw_school_coupons_optional'] ?? 'yes';
         update_post_meta( $product_id, 'cw_school_coupons_optional', ( $sco === 'yes' || $sco === true || $sco === '1' ) ? 'yes' : 'no' );
+
+        if ( array_key_exists( 'guest_checkout_fields', $data ) || array_key_exists( 'cw_guest_checkout_fields', $data ) || ! empty( $data['_save_feature_blocks'] ) ) {
+            $raw_modes = $data['guest_checkout_fields'] ?? $data['cw_guest_checkout_fields'] ?? [];
+            $sanitized = class_exists( 'CW_Guest_Join' )
+                ? CW_Guest_Join::sanitize_checkout_field_modes( $raw_modes )
+                : [];
+            update_post_meta( $product_id, 'cw_guest_checkout_fields', $sanitized );
+        }
 
         if ( ! self::is_yes( $data['cw_allow_multiple_participants'] ?? 'no' ) ) {
             update_post_meta( $product_id, 'cw_min_participants', '1' );
@@ -268,6 +340,7 @@ class CW_Campaign_Persistence {
             array_key_exists( 'cw_kpi_show_progress', $data )
             || array_key_exists( 'cw_kpi_target', $data )
             || array_key_exists( 'cw_kpi_label', $data )
+            || array_key_exists( 'cw_kpi_display_boost', $data )
             || ! empty( $data['_save_feature_blocks'] )
         ) {
             if ( self::is_yes( $data['cw_kpi_show_progress'] ?? 'no' ) ) {
@@ -291,6 +364,15 @@ class CW_Campaign_Persistence {
                     update_post_meta( $product_id, 'cw_kpi_label', $kpi_label );
                 } else {
                     delete_post_meta( $product_id, 'cw_kpi_label' );
+                }
+            }
+
+            if ( array_key_exists( 'cw_kpi_display_boost', $data ) ) {
+                $kpi_boost = max( 0, (int) $data['cw_kpi_display_boost'] );
+                if ( $kpi_boost > 0 ) {
+                    update_post_meta( $product_id, 'cw_kpi_display_boost', $kpi_boost );
+                } else {
+                    delete_post_meta( $product_id, 'cw_kpi_display_boost' );
                 }
             }
         }
@@ -347,7 +429,13 @@ class CW_Campaign_Persistence {
             'product_cat'                   => $_POST['product_cat'] ?? '',
             'cw_visibility'                 => $_POST['cw_visibility'] ?? 'visible',
             'regular_price'                 => $_POST['regular_price'] ?? '0',
-            'organizer_id'                  => get_current_user_id(),
+            // Note: do NOT seed `organizer_id` from get_current_user_id() here.
+            // For existing campaigns the persistence layer reads the stored
+            // owner from meta / post_author so an admin (or anyone else with
+            // edit access) saving on the organiser's behalf doesn't silently
+            // become the new organiser. For brand-new campaigns save_from_array()
+            // falls back to the `$author_id` argument, which the caller passes
+            // in (and which is the actual creator's user id).
             'submission_deadline'           => $_POST['submission_deadline'] ?? '',
             'cw_total_prize_value'          => $_POST['cw_total_prize_value'] ?? '',
             'cw_total_prize_amount'         => $_POST['cw_total_prize_amount'] ?? '',
@@ -377,15 +465,23 @@ class CW_Campaign_Persistence {
             'cw_allow_multiple_participants' => isset( $_POST['cw_allow_multiple_participants'] ) ? 'yes' : 'no',
             'cw_use_account_fullname'       => isset( $_POST['cw_use_account_fullname'] ) ? 'yes' : 'no',
             'cw_show_submissions_gallery'   => isset( $_POST['cw_show_submissions_gallery'] ) ? 'yes' : 'no',
+            'cw_submissions_gallery_layout' => ( isset( $_POST['cw_submissions_gallery_layout'] ) && 'map' === $_POST['cw_submissions_gallery_layout'] ) ? 'map' : 'grid',
             'cw_enable_design'              => isset( $_POST['cw_enable_design'] ) ? 'yes' : 'no',
             'cw_design_picker_label'        => $_POST['cw_design_picker_label'] ?? '',
             'cw_design_artwork_w'           => $_POST['cw_design_artwork_w'] ?? '',
             'cw_design_artwork_h'           => $_POST['cw_design_artwork_h'] ?? '',
+            'cw_design_print_x'             => $_POST['cw_design_print_x'] ?? '',
+            'cw_design_print_y'             => $_POST['cw_design_print_y'] ?? '',
+            'cw_design_print_w'             => $_POST['cw_design_print_w'] ?? '',
+            'cw_design_print_h'             => $_POST['cw_design_print_h'] ?? '',
             'cw_design_default_variant'     => $_POST['cw_design_default_variant'] ?? '',
-            'cw_template_label'             => $_POST['cw_template_label'] ?? '',
+            // Participant templates are persisted by CW_Business_Save directly
+            // (multi-file repeater under `cw_templates[idx]` + flat
+            // `cw_template_file_<idx>` $_FILES keys). Nothing to pipe through here.
             'cw_kpi_show_progress'          => isset( $_POST['cw_kpi_show_progress'] ) ? 'yes' : 'no',
             'cw_kpi_target'                 => $_POST['cw_kpi_target'] ?? '',
             'cw_kpi_label'                  => $_POST['cw_kpi_label'] ?? '',
+            'cw_kpi_display_boost'          => $_POST['cw_kpi_display_boost'] ?? '',
             '_save_feature_blocks'          => true,
         ];
 
@@ -411,6 +507,10 @@ class CW_Campaign_Persistence {
         $data['custom_fields'] = isset( $_POST['custom_fields'] ) && is_array( $_POST['custom_fields'] ) ? $_POST['custom_fields'] : [];
         $data['age_brackets']  = isset( $_POST['cw_age_brackets'] ) && is_array( $_POST['cw_age_brackets'] ) ? $_POST['cw_age_brackets'] : [];
         $data['schools']       = isset( $_POST['cw_school_sponsors'] ) && is_array( $_POST['cw_school_sponsors'] ) ? $_POST['cw_school_sponsors'] : [];
+        $data['cw_guest_checkout_fields'] = isset( $_POST['cw_guest_checkout_fields'] ) && is_array( $_POST['cw_guest_checkout_fields'] )
+            ? $_POST['cw_guest_checkout_fields']
+            : [];
+        $data['guest_checkout_fields'] = $data['cw_guest_checkout_fields'];
 
         return $data;
     }
@@ -475,6 +575,10 @@ class CW_Campaign_Persistence {
 
     private static function save_custom_fields( $pid, $rows ) {
         $allowed_cf = [ 'text', 'textarea', 'number', 'email', 'phone', 'file', 'media', 'select', 'wysiwyg' ];
+        // Only these field types support a word-count constraint. Numbers,
+        // files, dropdowns, etc. don't have a meaningful word count so we
+        // silently drop min/max for them at save time.
+        $word_count_types = [ 'text', 'textarea', 'wysiwyg' ];
         $fields     = [];
         foreach ( (array) $rows as $f ) {
             if ( empty( $f['label'] ) ) {
@@ -484,11 +588,27 @@ class CW_Campaign_Persistence {
             if ( ! in_array( $t, $allowed_cf, true ) ) {
                 $t = 'text';
             }
+
+            // Word-count limits. Stored as non-negative integers, 0 = no
+            // limit. Max is clamped to be ≥ min so a misconfiguration
+            // like min=50 max=10 can never block a participant.
+            $min_w = 0;
+            $max_w = 0;
+            if ( in_array( $t, $word_count_types, true ) ) {
+                $min_w = isset( $f['min_words'] ) ? max( 0, (int) $f['min_words'] ) : 0;
+                $max_w = isset( $f['max_words'] ) ? max( 0, (int) $f['max_words'] ) : 0;
+                if ( $max_w > 0 && $max_w < $min_w ) {
+                    $max_w = $min_w;
+                }
+            }
+
             $fields[] = [
-                'label'    => sanitize_text_field( $f['label'] ),
-                'type'     => $t,
-                'opts'     => isset( $f['opts'] ) ? sanitize_text_field( $f['opts'] ) : '',
-                'required' => ! empty( $f['required'] ) ? 1 : 0,
+                'label'     => sanitize_text_field( $f['label'] ),
+                'type'      => $t,
+                'opts'      => isset( $f['opts'] ) ? sanitize_text_field( $f['opts'] ) : '',
+                'required'  => ! empty( $f['required'] ) ? 1 : 0,
+                'min_words' => $min_w,
+                'max_words' => $max_w,
             ];
         }
         update_post_meta( $pid, 'cw_custom_fields', array_values( $fields ) );

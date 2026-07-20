@@ -508,6 +508,15 @@ class CW_Campaign_Admin {
             }
         }
 
+        if ( isset( $_POST['cw_kpi_display_boost'] ) ) {
+            $boost = max( 0, (int) $_POST['cw_kpi_display_boost'] );
+            if ( $boost > 0 ) {
+                update_post_meta( $post_id, 'cw_kpi_display_boost', $boost );
+            } else {
+                delete_post_meta( $post_id, 'cw_kpi_display_boost' );
+            }
+        }
+
         if ( class_exists( 'CW_Campaign_Resolver' ) ) {
             CW_Campaign_Resolver::flush_serial_cache( $post_id );
         }
@@ -660,6 +669,14 @@ class CW_Campaign_Admin {
         );
         clean_post_cache( $post_id );
 
+        // Keep the `organizer_id` post meta in lock-step with post_author.
+        // The two diverging causes subtle bugs: the campaign would belong to
+        // the new business under "My Campaigns" (post_author drives that),
+        // but the public organiser card, email signatures, dashboard credits
+        // and wallet would all still credit the previous owner because
+        // they read `organizer_id` meta instead.
+        update_post_meta( $post_id, 'organizer_id', $new_id );
+
         // Bust the homepage / dashboard prize-total cache so the new owner
         // sees their inherited stats immediately.
         delete_transient( 'cw_total_prize_money_v4' );
@@ -723,11 +740,11 @@ class CW_Campaign_Admin {
     }
 
     /**
-     * Number of individual participants who completed checkout for a campaign.
+     * Number of individual participants who successfully joined a campaign.
      *
-     * Each cw_activity_entry / cw_competition_entry post = one participant
-     * (entries are created during order processing in CW_Shop::create_entries_for_order).
-     * This gives a stable "people joined" count for both free and paid campaigns.
+     * Only published entries tied to a paid/completed order count. Pending,
+     * failed, cancelled, or on-hold checkouts are excluded so the public KPI
+     * matches real successful joins (not unfinished payments).
      *
      * @param int $campaign_id WooCommerce product ID.
      * @return int
@@ -738,13 +755,145 @@ class CW_Campaign_Admin {
             return 0;
         }
         global $wpdb;
-        $sql = "SELECT COUNT(p.ID)
+        $sql = "SELECT p.ID, om.meta_value AS order_id
                 FROM {$wpdb->posts} p
                 INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = 'product_id'
+                LEFT JOIN {$wpdb->postmeta} om ON om.post_id = p.ID AND om.meta_key = 'order_id'
                 WHERE p.post_type IN ('cw_activity_entry','cw_competition_entry')
                   AND p.post_status = 'publish'
                   AND pm.meta_value = %s";
-        return (int) $wpdb->get_var( $wpdb->prepare( $sql, (string) $campaign_id ) );
+        $rows = $wpdb->get_results( $wpdb->prepare( $sql, (string) $campaign_id ), ARRAY_A );
+        if ( empty( $rows ) ) {
+            return 0;
+        }
+
+        $entry_order_map = [];
+        foreach ( $rows as $row ) {
+            $entry_order_map[ (int) $row['ID'] ] = (int) ( $row['order_id'] ?? 0 );
+        }
+
+        return count( self::filter_successful_entry_ids( array_keys( $entry_order_map ), $entry_order_map ) );
+    }
+
+    /**
+     * Organiser-configured fake starting count for public KPI display only.
+     *
+     * @param int $campaign_id
+     * @return int
+     */
+    public static function get_display_boost( $campaign_id ) {
+        $campaign_id = (int) $campaign_id;
+        if ( $campaign_id <= 0 ) {
+            return 0;
+        }
+        return max( 0, (int) get_post_meta( $campaign_id, 'cw_kpi_display_boost', true ) );
+    }
+
+    /**
+     * Public-facing participant count = real successful joins + display boost.
+     * Does not invent map pins or affect admin/report stats.
+     *
+     * @param int $campaign_id
+     * @return int
+     */
+    public static function get_public_participant_count( $campaign_id ) {
+        return self::get_participant_count( $campaign_id ) + self::get_display_boost( $campaign_id );
+    }
+
+    /**
+     * Keep only entry IDs whose checkout successfully completed.
+     *
+     * @param int[]                $entry_ids       Entry post IDs.
+     * @param array<int,int>|null  $entry_order_map Optional map of entry_id => order_id.
+     * @return int[]
+     */
+    public static function filter_successful_entry_ids( $entry_ids, $entry_order_map = null ) {
+        $entry_ids = array_values( array_filter( array_map( 'intval', (array) $entry_ids ) ) );
+        if ( empty( $entry_ids ) ) {
+            return [];
+        }
+
+        if ( ! is_array( $entry_order_map ) ) {
+            $entry_order_map = [];
+            foreach ( $entry_ids as $entry_id ) {
+                $entry_order_map[ $entry_id ] = (int) get_post_meta( $entry_id, 'order_id', true );
+            }
+        }
+
+        $order_ids = [];
+        foreach ( $entry_ids as $entry_id ) {
+            $oid = (int) ( $entry_order_map[ $entry_id ] ?? 0 );
+            if ( $oid > 0 ) {
+                $order_ids[ $oid ] = true;
+            }
+        }
+
+        $paid_orders = self::paid_order_id_set( array_keys( $order_ids ) );
+        $successful  = [];
+
+        foreach ( $entry_ids as $entry_id ) {
+            $oid = (int) ( $entry_order_map[ $entry_id ] ?? 0 );
+            if ( $oid <= 0 ) {
+                // Legacy entries without an order still count as joined.
+                $successful[] = $entry_id;
+                continue;
+            }
+            if ( isset( $paid_orders[ $oid ] ) ) {
+                $successful[] = $entry_id;
+            }
+        }
+
+        return $successful;
+    }
+
+    /**
+     * @param int[] $order_ids
+     * @return array<int,bool> Set of paid order IDs.
+     */
+    private static function paid_order_id_set( $order_ids ) {
+        $order_ids = array_values( array_filter( array_map( 'intval', (array) $order_ids ) ) );
+        $paid      = [];
+        if ( empty( $order_ids ) ) {
+            return $paid;
+        }
+
+        if ( function_exists( 'wc_get_orders' ) ) {
+            $orders = wc_get_orders(
+                [
+                    'limit'   => -1,
+                    'include' => $order_ids,
+                    'status'  => [ 'processing', 'completed' ],
+                    'return'  => 'ids',
+                ]
+            );
+            foreach ( (array) $orders as $oid ) {
+                $paid[ (int) $oid ] = true;
+            }
+            // Also accept other statuses Woo marks paid (e.g. some gateways).
+            if ( class_exists( 'CW_Post_Checkout' ) ) {
+                $maybe = array_diff( $order_ids, array_keys( $paid ) );
+                foreach ( $maybe as $oid ) {
+                    $order = wc_get_order( (int) $oid );
+                    if ( $order && CW_Post_Checkout::order_is_paid_enough( $order ) ) {
+                        $paid[ (int) $oid ] = true;
+                    }
+                }
+            }
+            return $paid;
+        }
+
+        // Fallback without WooCommerce helpers: classic shop_order statuses.
+        global $wpdb;
+        $placeholders = implode( ',', array_fill( 0, count( $order_ids ), '%d' ) );
+        $sql          = "SELECT ID FROM {$wpdb->posts}
+                         WHERE post_type = 'shop_order'
+                           AND post_status IN ('wc-processing','wc-completed')
+                           AND ID IN ($placeholders)";
+        $found        = $wpdb->get_col( $wpdb->prepare( $sql, ...$order_ids ) );
+        foreach ( (array) $found as $oid ) {
+            $paid[ (int) $oid ] = true;
+        }
+        return $paid;
     }
 
     public function render_kpis( $post ) {
@@ -776,6 +925,7 @@ class CW_Campaign_Admin {
         $kpi_on     = get_post_meta( $post->ID, 'cw_kpi_show_progress', true ) === 'yes';
         $kpi_target = (int) get_post_meta( $post->ID, 'cw_kpi_target', true );
         $kpi_label  = (string) get_post_meta( $post->ID, 'cw_kpi_label', true );
+        $kpi_boost  = (int) get_post_meta( $post->ID, 'cw_kpi_display_boost', true );
 
         echo '<hr style="margin:14px 0 10px;border:none;border-top:1px solid #e2e8f0;">';
         echo '<p style="margin:0 0 6px;"><label style="font-weight:600;">';
@@ -787,6 +937,12 @@ class CW_Campaign_Admin {
 
         echo '<p style="margin:6px 0 2px;font-size:12px;color:#475569;">' . esc_html__( 'Label (optional, e.g. "participated")', 'creativewings-core' ) . '</p>';
         echo '<p style="margin:0 0 6px;"><input type="text" name="cw_kpi_label" value="' . esc_attr( $kpi_label ) . '" style="width:100%;" placeholder="participated"></p>';
+
+        echo '<p style="margin:6px 0 2px;font-size:12px;color:#475569;">' . esc_html__( 'Display boost (fake starting count)', 'creativewings-core' ) . '</p>';
+        echo '<p style="margin:0 0 6px;"><input type="number" name="cw_kpi_display_boost" min="0" step="1" value="' . esc_attr( (string) $kpi_boost ) . '" style="width:100%;" placeholder="e.g. 100"></p>';
+        echo '<p class="description" style="margin:0 0 6px;font-size:11px;color:#555555;">';
+        echo esc_html__( 'Added to the public count only (e.g. boost 100 + 45 real = 145). Map pins stay real.', 'creativewings-core' );
+        echo '</p>';
 
         echo '<p class="description" style="margin:6px 0 0;font-size:11px;color:#555555;">';
         echo esc_html__( 'Each completed checkout / registration linked to this campaign increases the count automatically.', 'creativewings-core' );

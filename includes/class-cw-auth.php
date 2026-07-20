@@ -28,6 +28,7 @@ class CW_Auth {
         // 3. Filters
         add_filter( 'authenticate', [ $this, 'check_empty_credentials' ], 30, 3 );
         add_filter( 'login_redirect', [ $this, 'custom_login_redirect' ], 10, 3 );
+        add_action( 'wp_footer', [ $this, 'fix_social_login_button_redirects' ], 5 );
 
         // 3b. Outgoing email branding (only overrides the default WordPress from values)
         add_filter( 'wp_mail_from',      [ $this, 'mail_from_address' ] );
@@ -48,8 +49,136 @@ class CW_Auth {
         add_action( 'admin_post_nopriv_cw_complete_guest_registration', [ $this, 'process_complete_guest_registration' ] );
         add_action( 'admin_post_cw_complete_guest_registration',       [ $this, 'process_complete_guest_registration' ] );
         
-        // 5. Social Login Integration
+        // 5. Social Login Integration (Nextend)
         add_action( 'nextend_social_login_register', [ $this, 'social_register_metadata' ], 10, 3 );
+        add_action( 'nsl_register_new_user', [ $this, 'on_nsl_register_new_user' ], 10, 2 );
+        add_filter( 'nsl_register_roles', [ $this, 'filter_nsl_register_roles' ], 10, 2 );
+        add_filter( 'google_login_redirect_url', [ $this, 'filter_nsl_redirect_url' ], 10, 2 );
+        add_filter( 'google_register_redirect_url', [ $this, 'filter_nsl_redirect_url' ], 10, 2 );
+        add_filter( 'facebook_login_redirect_url', [ $this, 'filter_nsl_redirect_url' ], 10, 2 );
+        add_filter( 'facebook_register_redirect_url', [ $this, 'filter_nsl_redirect_url' ], 10, 2 );
+        add_filter( 'nsl_google_auto_link_allowed', [ $this, 'filter_nsl_auto_link_allowed' ], 10, 3 );
+        add_filter( 'nsl_facebook_auto_link_allowed', [ $this, 'filter_nsl_auto_link_allowed' ], 10, 3 );
+        add_filter( 'nsl_already_linked_error_message', [ $this, 'filter_nsl_already_linked_message' ] );
+        add_filter( 'nsl_disabled_register_error_message', [ $this, 'filter_nsl_disabled_register_message' ], 10, 2 );
+    }
+
+    /**
+     * Contestant dashboard URL after signup / social login.
+     */
+    public static function get_contestant_dashboard_url() {
+        if ( function_exists( 'wc_get_page_permalink' ) ) {
+            $url = wc_get_page_permalink( 'myaccount' );
+            if ( $url ) {
+                return $url;
+            }
+        }
+        return home_url( '/my-account' );
+    }
+
+    /**
+     * Reject auth pages (login/register/wp-login) as post-login destinations.
+     *
+     * @param string $url
+     * @return string Safe destination URL.
+     */
+    public static function sanitize_post_login_redirect( $url ) {
+        $fallback = self::get_contestant_dashboard_url();
+        $url      = is_string( $url ) ? trim( $url ) : '';
+        if ( $url === '' || strtolower( $url ) === 'current' ) {
+            return $fallback;
+        }
+
+        $validated = wp_validate_redirect( $url, false );
+        if ( ! $validated ) {
+            return $fallback;
+        }
+
+        $path = (string) wp_parse_url( $validated, PHP_URL_PATH );
+        $path = '/' . trim( strtolower( $path ), '/' );
+        $blocked = [
+            '/login',
+            '/registration',
+            '/register',
+            '/wp-login.php',
+            '/forgot-password',
+            '/reset-password',
+            '/complete-guest-registration',
+        ];
+        foreach ( $blocked as $bad ) {
+            if ( $path === $bad || strpos( $path, $bad . '/' ) === 0 ) {
+                return $fallback;
+            }
+        }
+
+        return $validated;
+    }
+
+    /**
+     * Mark a new contestant as ready (skip Get Started plan picker).
+     *
+     * @param int $user_id
+     */
+    public static function mark_contestant_onboarded( $user_id ) {
+        $user_id = (int) $user_id;
+        if ( $user_id <= 0 ) {
+            return;
+        }
+        update_user_meta( $user_id, 'cw_onboarding_complete', 'true' );
+        update_user_meta( $user_id, 'account_type', 'contestant' );
+    }
+
+    /**
+     * Nextend social buttons with a working dashboard redirect (not "/").
+     *
+     * @param string $context login|register
+     */
+    private function render_social_login_buttons( $context = 'login' ) {
+        $redirect = self::get_contestant_dashboard_url();
+        // Prefer query redirect_to on login forms when present (and not an auth page).
+        if ( 'login' === $context && ! empty( $_REQUEST['redirect_to'] ) ) {
+            $candidate = esc_url_raw( wp_unslash( $_REQUEST['redirect_to'] ) );
+            $redirect  = self::sanitize_post_login_redirect( $candidate );
+        }
+        $redirect_attr = esc_attr( $redirect );
+        echo do_shortcode( '[nextend_social_login provider="google" redirect="' . $redirect_attr . '"]' );
+        echo do_shortcode( '[nextend_social_login provider="facebook" redirect="' . $redirect_attr . '"]' );
+    }
+
+    /**
+     * Fix Elementor/custom Nextend buttons that use data-redirect="current"
+     * on the login page (which sends users right back to /login/).
+     */
+    public function fix_social_login_button_redirects() {
+        if ( is_admin() || is_user_logged_in() ) {
+            return;
+        }
+        if ( ! ( is_page( 'login' ) || is_page( 'registration' ) || is_page( 'register' )
+            || $this->request_matches_path( [ '/login', '/registration', '/register' ] ) ) ) {
+            return;
+        }
+
+        $dest = esc_url( self::get_contestant_dashboard_url() );
+        ?>
+        <script>
+        (function () {
+            var dest = <?php echo wp_json_encode( $dest ); ?>;
+            if (!dest) return;
+            function fix(el) {
+                if (!el || !el.getAttribute) return;
+                var redirect = (el.getAttribute('data-redirect') || '').trim().toLowerCase();
+                if (redirect === 'current' || redirect === '' || /\/login\/?$/.test(redirect) || redirect.indexOf('/login') !== -1) {
+                    el.setAttribute('data-redirect', dest);
+                }
+                var href = el.getAttribute('href') || '';
+                if (href.indexOf('loginSocial=') !== -1 && href.indexOf('redirect=') === -1) {
+                    el.setAttribute('href', href + (href.indexOf('?') >= 0 ? '&' : '?') + 'redirect=' + encodeURIComponent(dest));
+                }
+            }
+            document.querySelectorAll('a[data-plugin="nsl"], a[data-provider], .nsl-button, .nsl-container a').forEach(fix);
+        })();
+        </script>
+        <?php
     }
 
     /* ==========================================================================
@@ -147,8 +276,7 @@ class CW_Auth {
                     <div class="cw-social-login-v2">
                         <div class="cw-divider-v2"><span>Or register with</span></div>
                         <div class="cw-social-btns-v2">
-                            <?php echo do_shortcode('[nextend_social_login provider="google" redirect="/"]'); ?>
-                            <?php echo do_shortcode('[nextend_social_login provider="facebook" redirect="/"]'); ?>
+                            <?php $this->render_social_login_buttons( 'register' ); ?>
                         </div>
                     </div>
                 </form>
@@ -206,8 +334,7 @@ class CW_Auth {
                     <div class="cw-social-login-v2">
                         <div class="cw-divider-v2"><span>Or sign in with</span></div>
                         <div class="cw-social-btns-v2">
-                            <?php echo do_shortcode('[nextend_social_login provider="google" redirect="/"]'); ?>
-                            <?php echo do_shortcode('[nextend_social_login provider="facebook" redirect="/"]'); ?>
+                            <?php $this->render_social_login_buttons( 'login' ); ?>
                         </div>
                     </div>
                 </form>
@@ -347,10 +474,11 @@ class CW_Auth {
 
             $user = new WP_User( $user_id );
             $user->set_role( 'contestant' ); 
+            self::mark_contestant_onboarded( $user_id );
 
             wp_set_current_user( $user_id );
             wp_set_auth_cookie( $user_id );
-            wp_redirect( home_url( '/get-started' ) );
+            wp_safe_redirect( self::get_contestant_dashboard_url() );
             exit;
         } else {
             $this->redirect_with_error( 'reg_error', 'generic' );
@@ -380,18 +508,22 @@ class CW_Auth {
         // --- NEW FIX: Read the Onboarding Complete Flag ---
         $is_onboarded = get_user_meta($user->ID, 'cw_onboarding_complete', true) === 'true';
         
-        // Business (incl. administrator) / Creator / ONBOARDED Contestant -> Dashboard
+        // Business (incl. administrator) / Creator / Contestant → Dashboard
+        // Contestants no longer use Get Started; creator/business onboarding is separate.
         if ( class_exists( 'CW_Roles' ) && CW_Roles::is_business_user( $user ) ) {
             return home_url( '/my-account' );
         }
 
-        if ( in_array( 'creator_role', $user->roles, true ) || $is_onboarded ) {
-            return home_url( '/my-account' ); // Allowed to go to the dashboard
+        if ( in_array( 'creator_role', (array) $user->roles, true ) ) {
+            return home_url( '/my-account' );
         }
 
-        // Contestant (NOT Onboarded) -> Force 'Get Started'
-        if ( in_array( 'contestant', $user->roles ) && ! $is_onboarded ) {
-            return home_url( '/get-started' ); // Redirect to onboarding page
+        if ( in_array( 'contestant', (array) $user->roles, true ) ) {
+            // Legacy contestants still mid Get Started: send them to dashboard and mark complete.
+            if ( ! $is_onboarded ) {
+                self::mark_contestant_onboarded( $user->ID );
+            }
+            return self::get_contestant_dashboard_url();
         }
 
         return home_url( '/my-account' ); // Fallback to dashboard
@@ -444,24 +576,25 @@ class CW_Auth {
         }
 
         // ── B) ROLE / ONBOARDING FLOW ──────────────────────────────────────────
-        $is_onboarded = get_user_meta($user->ID, 'cw_onboarding_complete', true) === 'true';
-        
-        // --- LOGIC 1: Enforce redirection TO /get-started/ ---
-        // If the user is a Contestant AND has NOT yet completed the onboarding (no flag set)
-        if ( in_array( 'contestant', (array) $user->roles, true ) && ! $is_onboarded
-            && ( ! class_exists( 'CW_Roles' ) || ! CW_Roles::is_business_user( $user ) ) ) {
-            // If they try to access the dashboard endpoint, send them to Get Started
-            if ( function_exists('is_account_page') && is_account_page() && ! is_wc_endpoint_url('customer-logout') ) {
-                wp_redirect( home_url( '/get-started' ) );
+        // Contestants skip Get Started. If they land on /get-started, send them to the dashboard.
+        if ( in_array( 'contestant', (array) $user->roles, true )
+            && ( ! class_exists( 'CW_Roles' ) || ! CW_Roles::is_business_user( $user ) )
+            && ! in_array( 'creator_role', (array) $user->roles, true ) ) {
+            if ( get_user_meta( $user->ID, 'cw_onboarding_complete', true ) !== 'true' ) {
+                self::mark_contestant_onboarded( $user->ID );
+            }
+            if ( is_page( 'get-started' ) || $this->request_matches_path( [ '/get-started' ] ) ) {
+                wp_safe_redirect( self::get_contestant_dashboard_url() );
                 exit;
             }
         }
 
-        // --- LOGIC 2: Enforce redirection FROM /get-started/ ---
-        // If the user has completed onboarding (by Skip, Creator, or Business)
+        $is_onboarded = get_user_meta( $user->ID, 'cw_onboarding_complete', true ) === 'true';
+
+        // Creator / business who finished onboarding should not sit on /get-started.
         if ( $is_onboarded ) {
-            if ( is_page( 'get-started' ) ) {
-                wp_redirect( home_url( '/my-account' ) );
+            if ( is_page( 'get-started' ) || $this->request_matches_path( [ '/get-started' ] ) ) {
+                wp_safe_redirect( home_url( '/my-account' ) );
                 exit;
             }
         }
@@ -692,14 +825,16 @@ class CW_Auth {
             update_user_meta( $user_id, 'cw_pdpa_consent_ip', isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '' );
         }
 
-        // Route the user onward: contestants without onboarding → /get-started, otherwise → /my-account
-        $is_onboarded = get_user_meta( $user_id, 'cw_onboarding_complete', true ) === 'true';
-        if ( in_array( 'contestant', (array) $user->roles, true ) && ! $is_onboarded
-            && ( ! class_exists( 'CW_Roles' ) || ! CW_Roles::is_business_user( $user ) ) ) {
-            wp_safe_redirect( home_url( '/get-started' ) );
-        } else {
-            wp_safe_redirect( home_url( '/my-account' ) );
+        // Route the user onward: contestants skip Get Started → dashboard
+        if ( in_array( 'contestant', (array) $user->roles, true )
+            && ( ! class_exists( 'CW_Roles' ) || ! CW_Roles::is_business_user( $user ) )
+            && ! in_array( 'creator_role', (array) $user->roles, true ) ) {
+            self::mark_contestant_onboarded( $user_id );
+            wp_safe_redirect( self::get_contestant_dashboard_url() );
+            exit;
         }
+
+        wp_safe_redirect( home_url( '/my-account' ) );
         exit;
     }
 
@@ -730,6 +865,16 @@ class CW_Auth {
     public function login_page_redirect() {
         global $pagenow;
         if ( 'wp-login.php' != $pagenow ) {
+            return;
+        }
+
+        // Never interrupt Nextend Social Login OAuth callbacks.
+        // Google/Facebook return to /wp-login.php?loginSocial=google (no action=).
+        // Redirecting those requests to /login/ aborts the handshake ("nothing happens").
+        if ( isset( $_REQUEST['loginSocial'] ) || isset( $_GET['loginSocial'] ) ) {
+            return;
+        }
+        if ( isset( $_REQUEST['loggedout'] ) || isset( $_GET['checkemail'] ) ) {
             return;
         }
 
@@ -1055,7 +1200,9 @@ class CW_Auth {
         }
 
         $email = sanitize_email( $order->get_billing_email() );
-        $name  = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
+        $name  = class_exists( 'CW_Guest_Join' )
+            ? CW_Guest_Join::get_order_full_name( $order )
+            : trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
         $dob   = (string) $order->get_meta( CW_Guest_Join::ORDER_META_DOB );
 
         if ( $email && email_exists( $email ) ) {
@@ -1271,7 +1418,9 @@ class CW_Auth {
             $back_to_form( 'pdpa_required' );
         }
 
-        $full_name = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
+        $full_name = class_exists( 'CW_Guest_Join' )
+            ? CW_Guest_Join::get_order_full_name( $order )
+            : trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
         $birthdate = sanitize_text_field( (string) $order->get_meta( CW_Guest_Join::ORDER_META_DOB ) );
 
         $username = explode( '@', $email )[0] . rand( 10, 999 );
@@ -1306,6 +1455,7 @@ class CW_Auth {
 
         $user = new WP_User( $user_id );
         $user->set_role( 'contestant' );
+        self::mark_contestant_onboarded( $user_id );
 
         if ( ! CW_Guest_Join::attach_order_to_user( $order_id, $user_id ) ) {
             wp_delete_user( $user_id );
@@ -1315,8 +1465,7 @@ class CW_Auth {
         wp_set_current_user( $user_id );
         wp_set_auth_cookie( $user_id );
 
-        $account_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url( '/my-account' );
-        wp_safe_redirect( $account_url );
+        wp_safe_redirect( self::get_contestant_dashboard_url() );
         exit;
     }
 
@@ -1497,11 +1646,93 @@ HTML;
        LOGIC: SOCIAL LOGIN
        ========================================================================== */
     public function social_register_metadata( $user_id, $provider_name, $user_data ) {
-        update_user_meta( $user_id, 'account_type', 'contestant' );
         update_user_meta( $user_id, 'social_provider', $provider_name );
-        
-        $user = new WP_User($user_id);
-        $user->set_role('contestant');
+        $user = new WP_User( $user_id );
+        $user->set_role( 'contestant' );
+        self::mark_contestant_onboarded( $user_id );
+    }
+
+    /**
+     * Nextend fires this after a brand-new social user is created.
+     *
+     * @param int    $user_id
+     * @param object $provider
+     */
+    public function on_nsl_register_new_user( $user_id, $provider = null ) {
+        $user = new WP_User( (int) $user_id );
+        if ( ! $user->exists() ) {
+            return;
+        }
+        // Keep existing elevated roles if somehow present; otherwise contestant.
+        if ( class_exists( 'CW_Roles' ) && CW_Roles::is_business_user( $user ) ) {
+            return;
+        }
+        if ( in_array( 'creator_role', (array) $user->roles, true ) ) {
+            return;
+        }
+        $user->set_role( 'contestant' );
+        self::mark_contestant_onboarded( (int) $user_id );
+        if ( $provider && is_object( $provider ) && method_exists( $provider, 'getId' ) ) {
+            update_user_meta( (int) $user_id, 'social_provider', $provider->getId() );
+        }
+    }
+
+    /**
+     * @param string[] $roles
+     * @param object   $provider
+     * @return string[]
+     */
+    public function filter_nsl_register_roles( $roles, $provider = null ) {
+        return [ 'contestant' ];
+    }
+
+    /**
+     * Force Google/Facebook login & register to land on the contestant dashboard.
+     *
+     * @param string $url
+     * @param mixed  $user_data
+     * @return string
+     */
+    public function filter_nsl_redirect_url( $url, $user_data = null ) {
+        if ( ! empty( $_REQUEST['redirect'] ) ) {
+            $candidate = esc_url_raw( wp_unslash( $_REQUEST['redirect'] ) );
+            return self::sanitize_post_login_redirect( $candidate );
+        }
+        if ( ! empty( $_REQUEST['redirect_to'] ) ) {
+            $candidate = esc_url_raw( wp_unslash( $_REQUEST['redirect_to'] ) );
+            return self::sanitize_post_login_redirect( $candidate );
+        }
+        return self::sanitize_post_login_redirect( is_string( $url ) ? $url : '' );
+    }
+
+    /**
+     * Do not auto-link Google/Facebook to an existing email/password account.
+     * User must log in with their password first (role stays unchanged).
+     *
+     * @param bool   $allowed
+     * @param object $provider
+     * @param int    $user_id
+     * @return bool
+     */
+    public function filter_nsl_auto_link_allowed( $allowed, $provider = null, $user_id = 0 ) {
+        return false;
+    }
+
+    /**
+     * @param string $message
+     * @return string
+     */
+    public function filter_nsl_already_linked_message( $message ) {
+        return __( 'This email is already registered. Please log in with your password, then you can link Google from your account.', 'creativewings-core' );
+    }
+
+    /**
+     * @param string $message
+     * @param object $provider
+     * @return string
+     */
+    public function filter_nsl_disabled_register_message( $message, $provider = null ) {
+        return __( 'This email is already registered. Please log in with your existing password.', 'creativewings-core' );
     }
 
     /* ==========================================================================
@@ -1530,6 +1761,10 @@ HTML;
 
         if ( isset( $_GET['login'] ) && $_GET['login'] === 'guest_email_exists' ) {
             echo '<div class="cw-alert error">' . esc_html__( 'This email already has an account. Please log in with your existing password.', 'creativewings-core' ) . '</div>';
+        }
+
+        if ( isset( $_GET['login'] ) && $_GET['login'] === 'social_email_exists' ) {
+            echo '<div class="cw-alert error">' . esc_html__( 'This email is already registered. Please log in with your existing password.', 'creativewings-core' ) . '</div>';
         }
 
         if ( isset( $_GET['reset'] ) ) {

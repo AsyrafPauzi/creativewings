@@ -185,6 +185,9 @@ class CW_Cache {
         // Entry created / deleted → bust org + business dashboard + reports.
         add_action( 'cw_entry_created',  [ __CLASS__, 'on_entry_changed' ],   20 );
         add_action( 'cw_entry_deleted',  [ __CLASS__, 'on_entry_changed' ],   20 );
+        add_action( 'save_post_cw_activity_entry', [ __CLASS__, 'on_map_entry_changed' ], 20 );
+        add_action( 'save_post_cw_competition_entry', [ __CLASS__, 'on_map_entry_changed' ], 20 );
+        add_action( 'before_delete_post', [ __CLASS__, 'on_map_entry_deleted' ], 20 );
 
         // Order status changes → bust revenue/chart caches.
         add_action( 'woocommerce_order_status_completed',  [ __CLASS__, 'on_order_completed' ], 20 );
@@ -196,6 +199,17 @@ class CW_Cache {
 
         // Badges: any award changes the public profile + directory.
         add_action( 'cw_badge_awarded',   [ __CLASS__, 'on_badge_awarded' ], 20 );
+
+        // Badge catalog edits → drop cached rule catalog.
+        add_action( 'save_post_cw_badge', [ __CLASS__, 'on_badge_catalog_changed' ], 20 );
+        add_action( 'trashed_post',       [ __CLASS__, 'on_badge_catalog_changed' ], 20 );
+    }
+
+    public static function on_badge_catalog_changed( $post_id ) {
+        if ( get_post_type( $post_id ) !== 'cw_badge' ) {
+            return;
+        }
+        self::bust_group( 'badges' );
     }
 
     public static function on_product_changed( $post_id ) {
@@ -211,6 +225,17 @@ class CW_Cache {
         self::bust_group( 'org_profile' );
         self::bust_group( 'reports' );
         self::bust_group( 'biz_dash' );
+        self::bust_group( 'map_gallery' );
+    }
+
+    public static function on_map_entry_changed() {
+        self::bust_group( 'map_gallery' );
+    }
+
+    public static function on_map_entry_deleted( $post_id ) {
+        if ( in_array( get_post_type( $post_id ), [ 'cw_activity_entry', 'cw_competition_entry' ], true ) ) {
+            self::bust_group( 'map_gallery' );
+        }
     }
 
     public static function on_order_completed() {

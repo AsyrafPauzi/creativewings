@@ -68,6 +68,9 @@ class CW_Dashboard_Manager {
                 'explore'          => ['icon' => 'fa-bolt',     'label' => 'Explore Opportunities'],
                 'link-submission'  => ['icon' => 'fa-link',     'label' => 'Link submission code'],
                 'activities'       => ['icon' => 'fa-running',  'label' => 'My Activities'],
+                'points'           => ['icon' => 'fa-coins',    'label' => 'Points'],
+                'leaderboard'      => ['icon' => 'fa-list-ol',  'label' => 'Leaderboard'],
+                'badges'           => ['icon' => 'fa-medal',    'label' => 'My Badges'],
                 'upgrade'          => ['icon' => 'fa-arrow-up', 'label' => 'Upgrade Account'],
                 'settings'         => ['icon' => 'fa-cog',      'label' => 'Settings'],
             ];
@@ -270,6 +273,15 @@ class CW_Dashboard_Manager {
                     break;
                 case 'activities': 
                     if ( $this->contestant_dashboard ) $this->contestant_dashboard->render_activities(); 
+                    break;
+                case 'points':
+                    if ( $this->contestant_dashboard ) $this->contestant_dashboard->render_points();
+                    break;
+                case 'leaderboard':
+                    if ( $this->contestant_dashboard ) $this->contestant_dashboard->render_leaderboard();
+                    break;
+                case 'badges':
+                    $this->render_badges_tab( 'contestant' );
                     break;
                 case 'upgrade': 
                     if ( $this->contestant_dashboard ) $this->contestant_dashboard->render_upgrade(); 

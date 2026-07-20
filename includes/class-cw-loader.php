@@ -12,6 +12,7 @@ class CW_Loader {
         require_once CW_PATH . 'includes/class-cw-activator.php';
         require_once CW_PATH . 'includes/class-cw-image-optimizer.php';
         require_once CW_PATH . 'includes/class-cw-cache.php';
+        require_once CW_PATH . 'includes/class-cw-map-coordinates.php';
         CW_Cache::register_invalidation_hooks();
 
         // Badges system (data model + engine).
@@ -19,6 +20,7 @@ class CW_Loader {
         require_once CW_PATH . 'includes/badges/class-cw-badges-cpt.php';
         require_once CW_PATH . 'includes/badges/class-cw-badges-engine.php';
         require_once CW_PATH . 'includes/badges/class-cw-badges-display.php';
+        require_once CW_PATH . 'includes/class-cw-points.php';
         require_once CW_PATH . 'includes/class-cw-security.php';
         require_once CW_PATH . 'includes/class-cw-flash-notices.php';
         require_once CW_PATH . 'includes/class-cw-audit-log.php';
@@ -27,6 +29,7 @@ class CW_Loader {
         require_once CW_PATH . 'includes/class-cw-post-types.php';
         require_once CW_PATH . 'includes/class-cw-submission-code.php';
         require_once CW_PATH . 'includes/class-cw-campaign-fields.php';
+        require_once CW_PATH . 'includes/class-cw-campaign-templates.php';
         require_once CW_PATH . 'includes/class-cw-staged-submissions.php';
         require_once CW_PATH . 'includes/class-cw-pending-parent-link.php';
         require_once CW_PATH . 'includes/class-cw-email.php';
@@ -48,6 +51,7 @@ class CW_Loader {
         require_once CW_PATH . 'includes/class-cw-sponsor-coupons.php';
         require_once CW_PATH . 'includes/class-cw-moderation.php';
         require_once CW_PATH . 'includes/class-cw-shop.php';
+        require_once CW_PATH . 'includes/class-cw-design-artwork-crop.php';
         require_once CW_PATH . 'includes/class-cw-design-submission.php';
         require_once CW_PATH . 'includes/class-cw-checkout.php';
         require_once CW_PATH . 'includes/class-cw-shortcodes.php';
@@ -69,6 +73,7 @@ class CW_Loader {
         require_once CW_PATH . 'includes/class-cw-school-upload.php';
         require_once CW_PATH . 'includes/class-cw-claim-flow.php';
         require_once CW_PATH . 'includes/class-cw-guest-join.php';
+        require_once CW_PATH . 'includes/class-cw-post-checkout.php';
 
         if ( is_admin() ) {
             require_once CW_PATH . 'includes/business/class-cw-campaign-import.php';

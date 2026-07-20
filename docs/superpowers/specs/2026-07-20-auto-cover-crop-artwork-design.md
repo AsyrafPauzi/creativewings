@@ -1,7 +1,7 @@
 # Auto Cover-Crop Artwork Upload — Design
 
 **Date:** 2026-07-20  
-**Status:** Approved — pending implementation  
+**Status:** Implemented in 11.0.90  
 **Scope:** All design-enabled campaigns (always on; no organizer toggle)
 
 ## Problem

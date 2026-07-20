@@ -81,6 +81,27 @@
     text-decoration: underline;
 }
 
+.cw-design-fit-preview {
+    margin-top: 10px;
+    max-width: 120px;
+}
+
+.cw-design-fit-preview canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.cw-design-fit-preview__hint {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: #64748b;
+    line-height: 1.35;
+}
+
 /* ────────────── Checkout: variant picker + canvas preview ────────────── */
 
 .cw-design-checkout-pickers {
@@ -487,8 +508,21 @@
 .cw-design-mockup__variant {
     font-weight: 700;
     color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
 }
-.cw-design-mockup__variant i { color: #2563eb; margin-right: 4px; }
+.cw-design-mockup__variant i { color: #2563eb; }
+/* "Casing color:" caption — readable secondary weight so the actual variant
+   name (in <strong>) still pops as the primary information. */
+.cw-design-mockup__variant-label {
+    font-weight: 500;
+    color: #475569;
+}
+.cw-design-mockup__variant-name {
+    color: #0f172a;
+}
 .cw-design-mockup__file {
     color: #64748b;
     overflow: hidden;

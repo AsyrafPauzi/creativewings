@@ -79,7 +79,7 @@ class CW_Business_Form {
 
         $mode = 'create'; $edit_id = 0; $campaign = null; $meta = []; $current_cat_id = 0;
         $existing_fields = []; $existing_faqs = []; $existing_prizes = []; $existing_addons = []; $selected_sdgs_bool = [];
-        $existing_age_brackets = []; $existing_schools = [];
+        $existing_age_brackets = []; $existing_schools = []; $existing_guest_checkout_fields = [];
         $term = null; $parent_term = null;
 
         $edit_id_param = isset($_GET['edit_id']) ? intval($_GET['edit_id']) : $external_edit_id;
@@ -125,8 +125,21 @@ class CW_Business_Form {
                 if ( ! is_array( $existing_schools ) ) {
                     $existing_schools = [];
                 }
+                $existing_guest_checkout_fields = get_post_meta( $edit_id, 'cw_guest_checkout_fields', true );
+                if ( ! is_array( $existing_guest_checkout_fields ) ) {
+                    $existing_guest_checkout_fields = [];
+                }
             }
         }
+        if ( ! isset( $existing_guest_checkout_fields ) || ! is_array( $existing_guest_checkout_fields ) ) {
+            $existing_guest_checkout_fields = [];
+        }
+        $guest_checkout_field_modes = class_exists( 'CW_Guest_Join' )
+            ? CW_Guest_Join::sanitize_checkout_field_modes( $existing_guest_checkout_fields )
+            : [];
+        $guest_checkout_catalogue = class_exists( 'CW_Guest_Join' )
+            ? CW_Guest_Join::get_profile_field_catalogue()
+            : [];
         $val     = function($k) use ($meta) { return isset($meta[$k][0]) ? $meta[$k][0] : ''; };
 
         $enable_addons = $val( 'cw_enable_addons' );
@@ -278,6 +291,7 @@ class CW_Business_Form {
                                 $kpi_show_val   = $val('cw_kpi_show_progress');
                                 $kpi_target_val = $val('cw_kpi_target');
                                 $kpi_label_val  = $val('cw_kpi_label');
+                                $kpi_boost_val  = $val('cw_kpi_display_boost');
                                 ?>
                                 <p class="cw-mini-head">Campaign KPI <small style="font-weight:400;color:var(--cw-text-soft);">(optional · public progress bar)</small></p>
                                 <div class="cw-toggle-box">
@@ -298,6 +312,14 @@ class CW_Business_Form {
                                         <input type="text" name="cw_kpi_label" class="cw-input-dark"
                                                value="<?php echo esc_attr( $kpi_label_val ); ?>" placeholder="e.g. submissions, participated">
                                     </div>
+                                </div>
+                                <div class="cw-field" style="padding-top:10px;">
+                                    <label for="cw_kpi_display_boost"><?php esc_html_e( 'Display boost (fake starting count)', 'creativewings-core' ); ?></label>
+                                    <input type="number" name="cw_kpi_display_boost" id="cw_kpi_display_boost" min="0" step="1" class="cw-input-dark"
+                                           value="<?php echo esc_attr( $kpi_boost_val ); ?>" placeholder="e.g. 100">
+                                    <small style="display:block;margin-top:6px;color:var(--cw-text-soft);">
+                                        <?php esc_html_e( 'Added to the public campaign count only. Example: boost 100 + 45 real joins = 145. Map pins stay real.', 'creativewings-core' ); ?>
+                                    </small>
                                 </div>
 
                                 <div class="cw-field full">
@@ -332,12 +354,18 @@ class CW_Business_Form {
                                     </div>
                                     <input type="file" id="cwGalleryFiles" name="cw_gallery_files[]" accept="image/*" multiple style="display:none;" onchange="cwPreviewGallery(this)">
                                     <input type="hidden" name="cw_gallery_keep" id="cwGalleryKeep" value="<?php echo esc_attr( implode( ',', $existing_gallery_ids ) ); ?>">
+                                    <input type="hidden" name="cw_gallery_order" id="cwGalleryOrder" value="<?php
+                                        echo esc_attr( implode( ',', array_map( static function ( $id ) {
+                                            return 'e:' . (int) $id;
+                                        }, $existing_gallery_ids ) ) );
+                                    ?>">
                                     <div id="cwGalleryGrid" class="cw-gallery-grid">
                                         <?php foreach ( $existing_gallery_ids as $aid ):
                                             $src = wp_get_attachment_image_url( $aid, 'thumbnail' );
                                             if ( ! $src ) continue;
                                         ?>
                                         <div class="cw-gallery-tile" data-attachment-id="<?php echo (int) $aid; ?>">
+                                            <span class="cw-gallery-drag" title="<?php esc_attr_e( 'Drag to reorder', 'creativewings-core' ); ?>" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
                                             <img src="<?php echo esc_url( $src ); ?>" alt="" loading="lazy">
                                             <button type="button" class="cw-gallery-remove" onclick="cwGalleryRemoveExisting(this, <?php echo (int) $aid; ?>)" aria-label="Remove">
                                                 <i class="fas fa-times"></i>
@@ -345,6 +373,7 @@ class CW_Business_Form {
                                         </div>
                                         <?php endforeach; ?>
                                     </div>
+                                    <small class="cw-gallery-sort-hint">Drag images to change gallery order on the campaign page.</small>
                                 </div>
 
                                 <div class="cw-field full cw-field-rich-text">
@@ -439,8 +468,43 @@ class CW_Business_Form {
                                                 </div>
                                             </div>
                                             <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 8px;">
-                                                Every participant uploads at this exact size. Each variant image you add below must also be the same dimensions so the artwork lines up pixel-perfect.
+                                                Participants can upload any PNG — we auto-fit (center cover-crop) to this size for print. Each variant image you add below must still match these dimensions so artwork lines up pixel-perfect.
                                             </p>
+
+                                            <?php
+                                            $design_print_x_val = (int) $val('cw_design_print_x');
+                                            $design_print_y_val = (int) $val('cw_design_print_y');
+                                            $design_print_w_val = (int) $val('cw_design_print_w');
+                                            $design_print_h_val = (int) $val('cw_design_print_h');
+                                            ?>
+                                            <p class="cw-mini-head">Print area on casing (optional)</p>
+                                            <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 8px;">
+                                                Only fill these if the visible front face of the casing is smaller than the full artwork sleeve. Example: customer uploads 3.6&nbsp;cm wide but only 2.7&nbsp;cm shows from the front &mdash; the remaining 0.9&nbsp;cm wraps around and should be cropped. Numbers are in pixels relative to your casing PNG. Leave all four at 0 to skip cropping.
+                                            </p>
+                                            <div class="cw-form-row-2" style="gap:12px;">
+                                                <div class="cw-field">
+                                                    <label>Print area X (px from left)</label>
+                                                    <input type="number" min="0" step="1" name="cw_design_print_x" class="cw-input-dark"
+                                                           value="<?php echo esc_attr($design_print_x_val ?: ''); ?>" placeholder="53">
+                                                </div>
+                                                <div class="cw-field">
+                                                    <label>Print area Y (px from top)</label>
+                                                    <input type="number" min="0" step="1" name="cw_design_print_y" class="cw-input-dark"
+                                                           value="<?php echo esc_attr($design_print_y_val ?: ''); ?>" placeholder="118">
+                                                </div>
+                                            </div>
+                                            <div class="cw-form-row-2" style="gap:12px;">
+                                                <div class="cw-field">
+                                                    <label>Print area width (px)</label>
+                                                    <input type="number" min="0" step="1" name="cw_design_print_w" class="cw-input-dark"
+                                                           value="<?php echo esc_attr($design_print_w_val ?: ''); ?>" placeholder="319">
+                                                </div>
+                                                <div class="cw-field">
+                                                    <label>Print area height (px)</label>
+                                                    <input type="number" min="0" step="1" name="cw_design_print_h" class="cw-input-dark"
+                                                           value="<?php echo esc_attr($design_print_h_val ?: ''); ?>" placeholder="2362">
+                                                </div>
+                                            </div>
 
                                             <p class="cw-mini-head">Product variants</p>
                                             <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 8px;">
@@ -594,78 +658,108 @@ class CW_Business_Form {
                                 </div>
                                 <button type="button" class="cww-rep-add" onclick="addPrizeRow()"><i class="fas fa-plus"></i> Add Prize</button>
 
-                                <!-- ── Downloadable participant template ──────────────
-                                     Lets organisers attach ONE source file (PSD / AI /
-                                     PDF / ZIP / PNG / SVG / etc.) that participants
-                                     download from the campaign page before submitting.
-                                     Stored as a single attachment id under
-                                     `cw_template_file_id`; the display label and the
-                                     direct URL surface on the public detail page. -->
+                                <!-- ── Downloadable participant templates ─────────────
+                                     Organisers can attach any number of source files
+                                     (PSD / AI / PDF / ZIP / PNG / SVG / etc.) that
+                                     participants download from the campaign page
+                                     before submitting. Stored as `cw_template_files`
+                                     (array of [id, label]); CW_Campaign_Templates
+                                     handles legacy single-file migration. -->
                                 <?php
-                                    $cw_tpl_id    = (int) $val('cw_template_file_id');
-                                    $cw_tpl_label = $val('cw_template_label');
-                                    if ( $cw_tpl_label === '' ) {
-                                        $cw_tpl_label = 'Download Template';
-                                    }
-                                    $cw_tpl_url   = $cw_tpl_id ? (string) wp_get_attachment_url( $cw_tpl_id ) : '';
-                                    $cw_tpl_name  = $cw_tpl_id ? basename( (string) get_attached_file( $cw_tpl_id ) ) : '';
-                                    $cw_tpl_size  = '';
-                                    if ( $cw_tpl_id ) {
-                                        $cw_tpl_path = (string) get_attached_file( $cw_tpl_id );
-                                        if ( $cw_tpl_path && file_exists( $cw_tpl_path ) ) {
-                                            $cw_tpl_size = size_format( (int) filesize( $cw_tpl_path ), 2 );
-                                        }
-                                    }
+                                    $cw_templates = class_exists( 'CW_Campaign_Templates' )
+                                        ? CW_Campaign_Templates::get_files_with_meta( (int) $edit_id )
+                                        : [];
                                 ?>
-                                <p class="cw-mini-head" style="margin-top:28px;">Participant Template <small style="font-weight:400;color:var(--cw-text-soft);">(optional)</small></p>
+                                <p class="cw-mini-head" style="margin-top:28px;">Participant Templates <small style="font-weight:400;color:var(--cw-text-soft);">(optional)</small></p>
                                 <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 8px;">
-                                    Attach a downloadable template participants can use before submitting their entry &mdash; e.g. a print-ready <strong>PSD / AI / EPS / PDF / SVG</strong> or a <strong>ZIP</strong> bundle of assets. Only one file per campaign.
+                                    Attach one or more downloadable templates participants can use before submitting their entry &mdash; e.g. a print-ready <strong>PSD / AI / EPS / PDF / SVG</strong> or a <strong>ZIP</strong> bundle of assets. Each file gets its own download button on the campaign page.
                                 </p>
-                                <div class="cw-field cw-template-field" id="cw-template-upload-box">
-                                    <div class="cw-form-row-2" style="gap:12px;align-items:end;">
-                                        <div class="cw-field" style="margin:0;">
-                                            <label>Download button label</label>
-                                            <input type="text" name="cw_template_label" class="cw-input-dark"
-                                                value="<?php echo esc_attr( $cw_tpl_label ); ?>"
-                                                placeholder="Download Template" maxlength="80">
+                                <div class="cw-templates-field" id="cw-templates-box">
+                                    <div id="cw-templates-list">
+                                        <?php
+                                        // Render one row per existing template. The
+                                        // numeric `data-idx` is used by the JS-side
+                                        // file input naming so PHP can match each
+                                        // row's upload to its label/id meta.
+                                        $tpl_idx = 0;
+                                        foreach ( $cw_templates as $tpl ) :
+                                            $row_id    = $tpl['id'];
+                                            $row_label = $tpl['label'];
+                                            $row_url   = $tpl['url'];
+                                            $row_name  = $tpl['name'];
+                                            $row_size  = $tpl['size'];
+                                        ?>
+                                        <div class="cw-template-row" data-idx="<?php echo (int) $tpl_idx; ?>" style="margin-bottom:14px;padding:12px;border:1px solid var(--cw-border);border-radius:10px;background:var(--cw-bg);">
+                                            <input type="hidden" name="cw_templates[<?php echo (int) $tpl_idx; ?>][id]" value="<?php echo (int) $row_id; ?>">
+                                            <input type="hidden" name="cw_templates[<?php echo (int) $tpl_idx; ?>][remove]" value="0" class="cw-template-remove-flag">
+                                            <div class="cw-form-row-2" style="gap:12px;align-items:end;">
+                                                <div class="cw-field" style="margin:0;">
+                                                    <label>Download button label</label>
+                                                    <input type="text" name="cw_templates[<?php echo (int) $tpl_idx; ?>][label]" class="cw-input-dark"
+                                                        value="<?php echo esc_attr( $row_label ); ?>"
+                                                        placeholder="Download Template" maxlength="80">
+                                                </div>
+                                                <div class="cw-field" style="margin:0;">
+                                                    <label>Replace file <small style="color:var(--cw-text-soft);font-weight:400;">(optional)</small></label>
+                                                    <input type="file" name="cw_template_file_<?php echo (int) $tpl_idx; ?>"
+                                                        accept=".zip,.png,.jpg,.jpeg,.pdf,.ai,.eps,.psd,.svg,application/zip,application/x-zip-compressed,application/pdf,image/png,image/jpeg,image/svg+xml,application/postscript,application/illustrator,image/vnd.adobe.photoshop">
+                                                </div>
+                                            </div>
+                                            <div class="cw-template-current" style="margin-top:10px;padding:10px 12px;border:1px dashed var(--cw-border);border-radius:8px;background:#fff;display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;">
+                                                <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+                                                    <i class="fas fa-paperclip" style="color:var(--cw-primary);"></i>
+                                                    <a href="<?php echo esc_url( $row_url ); ?>" target="_blank" rel="noopener" style="font-weight:600;color:var(--cw-text);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42ch;" title="<?php echo esc_attr( $row_name ); ?>">
+                                                        <?php echo esc_html( $row_name ?: 'Current template' ); ?>
+                                                    </a>
+                                                    <?php if ( $row_size ): ?>
+                                                    <small style="color:var(--cw-text-soft);font-size:11px;">(<?php echo esc_html( $row_size ); ?>)</small>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <button type="button" class="cw-template-remove-btn"
+                                                    onclick="(function(b){var r=b.closest('.cw-template-row');r.querySelector('.cw-template-remove-flag').value='1';r.style.opacity='.45';r.querySelectorAll('input,button:not(.cw-template-undo-btn)').forEach(function(el){if(!el.classList.contains('cw-template-remove-flag'))el.disabled=true;});b.parentNode.parentNode.querySelector('.cw-template-undo-wrap')?.removeAttribute('hidden');})(this)"
+                                                    style="background:#fff;border:1px solid var(--cw-border);border-radius:6px;padding:6px 10px;font-size:12px;color:#94a3b8;cursor:pointer;">
+                                                    <i class="fas fa-trash"></i> Remove
+                                                </button>
+                                            </div>
+                                            <div class="cw-template-undo-wrap" hidden style="margin-top:6px;font-size:11px;color:var(--cw-text-soft);">
+                                                Marked for deletion.
+                                                <button type="button" class="cw-template-undo-btn"
+                                                    onclick="(function(b){var r=b.closest('.cw-template-row');r.querySelector('.cw-template-remove-flag').value='0';r.style.opacity='';r.querySelectorAll('input,button').forEach(function(el){el.disabled=false;});b.closest('.cw-template-undo-wrap').setAttribute('hidden','');})(this)"
+                                                    style="background:transparent;border:0;color:var(--cw-primary);font-weight:600;cursor:pointer;">Undo</button>
+                                            </div>
                                         </div>
-                                        <div class="cw-field" style="margin:0;">
-                                            <label>Upload file (ZIP / PNG / JPG / PDF / AI / EPS / PSD / SVG)</label>
-                                            <input type="file" name="cw_template_file"
-                                                accept=".zip,.png,.jpg,.jpeg,.pdf,.ai,.eps,.psd,.svg,application/zip,application/x-zip-compressed,application/pdf,image/png,image/jpeg,image/svg+xml,application/postscript,application/illustrator,image/vnd.adobe.photoshop">
-                                        </div>
-                                    </div>
+                                        <?php $tpl_idx++; endforeach; ?>
 
-                                    <!-- Hidden ids let the save handler tell apart
-                                         "nothing changed" from "user pressed Remove" -->
-                                    <input type="hidden" name="cw_template_file_id_current" value="<?php echo (int) $cw_tpl_id; ?>">
-                                    <input type="hidden" name="cw_template_remove" id="cw_template_remove_flag" value="0">
-
-                                    <?php if ( $cw_tpl_id && $cw_tpl_url ): ?>
-                                    <div class="cw-template-current" style="margin-top:10px;padding:10px 12px;border:1px solid var(--cw-border);border-radius:8px;background:var(--cw-bg);display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;">
-                                        <div style="display:flex;align-items:center;gap:10px;min-width:0;">
-                                            <i class="fas fa-paperclip" style="color:var(--cw-primary);"></i>
-                                            <a href="<?php echo esc_url( $cw_tpl_url ); ?>" target="_blank" rel="noopener" style="font-weight:600;color:var(--cw-text);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42ch;" title="<?php echo esc_attr( $cw_tpl_name ); ?>">
-                                                <?php echo esc_html( $cw_tpl_name ?: 'Current template' ); ?>
-                                            </a>
-                                            <?php if ( $cw_tpl_size ): ?>
-                                            <small style="color:var(--cw-text-soft);font-size:11px;">(<?php echo esc_html( $cw_tpl_size ); ?>)</small>
-                                            <?php endif; ?>
+                                        <?php if ( empty( $cw_templates ) ): ?>
+                                        <div class="cw-template-row" data-idx="0" style="margin-bottom:14px;padding:12px;border:1px solid var(--cw-border);border-radius:10px;background:var(--cw-bg);">
+                                            <input type="hidden" name="cw_templates[0][id]" value="0">
+                                            <input type="hidden" name="cw_templates[0][remove]" value="0" class="cw-template-remove-flag">
+                                            <div class="cw-form-row-2" style="gap:12px;align-items:end;">
+                                                <div class="cw-field" style="margin:0;">
+                                                    <label>Download button label</label>
+                                                    <input type="text" name="cw_templates[0][label]" class="cw-input-dark"
+                                                        value="Download Template"
+                                                        placeholder="Download Template" maxlength="80">
+                                                </div>
+                                                <div class="cw-field" style="margin:0;">
+                                                    <label>Upload file (ZIP / PNG / JPG / PDF / AI / EPS / PSD / SVG)</label>
+                                                    <input type="file" name="cw_template_file_0"
+                                                        accept=".zip,.png,.jpg,.jpeg,.pdf,.ai,.eps,.psd,.svg,application/zip,application/x-zip-compressed,application/pdf,image/png,image/jpeg,image/svg+xml,application/postscript,application/illustrator,image/vnd.adobe.photoshop">
+                                                </div>
+                                            </div>
                                         </div>
-                                        <button type="button" class="cw-template-remove-btn"
-                                            onclick="document.getElementById('cw_template_remove_flag').value='1';this.closest('.cw-template-current').remove();"
-                                            style="background:#fff;border:1px solid var(--cw-border);border-radius:6px;padding:6px 10px;font-size:12px;color:#94a3b8;cursor:pointer;">
-                                            <i class="fas fa-trash"></i> Remove
-                                        </button>
+                                        <?php
+                                            // Make sure the JS counter starts above
+                                            // this seeded row so newly added rows
+                                            // don't collide with index 0.
+                                            $tpl_idx = 1;
+                                        endif;
+                                        ?>
                                     </div>
-                                    <small style="display:block;margin-top:6px;font-size:11px;color:var(--cw-text-soft);">
-                                        Tip: upload a new file above to replace this one, or hit Remove to delete it entirely.
+                                    <button type="button" id="cw-add-template-btn" class="cww-rep-add" data-next-idx="<?php echo (int) $tpl_idx; ?>"><i class="fas fa-plus"></i> Add Template</button>
+                                    <small style="display:block;margin-top:8px;font-size:11px;color:var(--cw-text-soft);">
+                                        Max ~25&nbsp;MB per file. Files are hosted in the WordPress media library and exposed as direct download links on the campaign page.
                                     </small>
-                                    <?php else: ?>
-                                    <small style="display:block;margin-top:6px;font-size:11px;color:var(--cw-text-soft);">
-                                        Max ~25&nbsp;MB. The file is hosted in the WordPress media library and exposed as a direct download link on the campaign page.
-                                    </small>
-                                    <?php endif; ?>
                                 </div>
                             </div>
 
@@ -738,7 +832,7 @@ class CW_Business_Form {
                                 </div>
 
                                 <div class="cw-toggle-box" style="margin-top:20px;">
-                                    <div><label for="cw_enable_checkout_message_toggle">Enable checkout message (claim flow)</label></div>
+                                    <div><label for="cw_enable_checkout_message_toggle">Enable checkout message</label><small>Optional message field at checkout for direct registration and claim flow.</small></div>
                                     <input type="checkbox" name="cw_enable_checkout_message" value="yes" id="cw_enable_checkout_message_toggle" onchange="toggleWizardSection('cw-section-checkout-message', this)" <?php checked( $val('cw_enable_checkout_message'), 'yes' ); ?>>
                                 </div>
                                 <div id="cw-section-checkout-message" class="cw-wizard-feature-panel" style="display:<?php echo $val('cw_enable_checkout_message') === 'yes' ? 'block' : 'none'; ?>;">
@@ -747,6 +841,23 @@ class CW_Business_Form {
                                     <input type="text" name="cw_checkout_message_label" class="cw-input-dark" value="<?php echo esc_attr( $val('cw_checkout_message_label') ); ?>" placeholder="Heartfelt message">
                                 </div>
                                 <label><input type="checkbox" name="cw_checkout_message_required" value="yes" <?php checked( $val('cw_checkout_message_required'), 'yes' ); ?>> Required</label>
+                                </div>
+
+                                <p class="cw-mini-head" style="margin-top:28px;"><?php esc_html_e( 'Guest checkout profile fields', 'creativewings-core' ); ?></p>
+                                <p class="cw-step-subtitle" style="margin-top:0;margin-bottom:12px;"><?php esc_html_e( 'Guests always enter Full name, Email, and Date of birth. Set each extra field to Hidden, Optional, or Required. Address uses WooCommerce billing fields (street, apartment, city, state, postcode, country). Order notes can also be hidden for this campaign.', 'creativewings-core' ); ?></p>
+                                <div class="cw-guest-checkout-fields-grid" style="display:grid;gap:10px;">
+                                    <?php foreach ( $guest_checkout_catalogue as $gkey => $gdef ) :
+                                        $gmode = $guest_checkout_field_modes[ $gkey ] ?? 'hidden';
+                                        ?>
+                                    <div class="cw-field" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between;padding:10px 12px;background:rgba(255,255,255,0.03);border-radius:8px;">
+                                        <label style="margin:0;font-weight:600;"><?php echo esc_html( $gdef['label'] ?? $gkey ); ?></label>
+                                        <select name="cw_guest_checkout_fields[<?php echo esc_attr( $gkey ); ?>]" class="cw-input-dark" style="min-width:140px;">
+                                            <option value="hidden" <?php selected( $gmode, 'hidden' ); ?>><?php esc_html_e( 'Hidden', 'creativewings-core' ); ?></option>
+                                            <option value="optional" <?php selected( $gmode, 'optional' ); ?>><?php esc_html_e( 'Optional', 'creativewings-core' ); ?></option>
+                                            <option value="required" <?php selected( $gmode, 'required' ); ?>><?php esc_html_e( 'Required', 'creativewings-core' ); ?></option>
+                                        </select>
+                                    </div>
+                                    <?php endforeach; ?>
                                 </div>
 
                                 <!-- FAQs -->
@@ -814,12 +925,20 @@ class CW_Business_Form {
 
                                 <p class="cw-mini-head">Additional custom fields</p>
                                 <div id="cw-fb-container">
-                                    <?php $fid=1000; if($existing_fields) foreach($existing_fields as $f):
+                                    <?php
+                                    // Field types that support a word-count constraint
+                                    // (these get the min/max words inputs shown).
+                                    $cw_word_types = [ 'text', 'textarea', 'wysiwyg' ];
+                                    $fid=1000;
+                                    if($existing_fields) foreach($existing_fields as $f):
                                         $ftype = isset($f['type']) ? strtolower(trim((string)$f['type'])) : 'text';
                                         if (!in_array($ftype, ['text','textarea','number','email','phone','file','media','select','wysiwyg'], true)) $ftype = 'text';
                                         $fopts = $f['opts']??'';
                                         $freq  = !empty($f['required']) ? 'checked' : '';
-                                        $show_opts = ($ftype==='select'||$ftype==='wysiwyg') ? '' : 'display:none;';
+                                        $fmin  = isset($f['min_words']) ? max(0, (int) $f['min_words']) : 0;
+                                        $fmax  = isset($f['max_words']) ? max(0, (int) $f['max_words']) : 0;
+                                        $show_opts  = ($ftype==='select'||$ftype==='wysiwyg') ? '' : 'display:none;';
+                                        $show_words = in_array($ftype, $cw_word_types, true) ? '' : 'display:none;';
                                     ?>
                                     <div class="cw-fb-row-wrap">
                                         <input type="text" name="custom_fields[<?php echo $fid; ?>][label]" value="<?php echo esc_attr($f['label']); ?>" required placeholder="Field Label (e.g. Phone Number)">
@@ -830,6 +949,16 @@ class CW_Business_Form {
                                         <button type="button" class="cw-fb-del" onclick="this.closest('.cw-fb-row-wrap').remove()"><i class="fas fa-times"></i></button>
                                         <div class="cw-fb-opts-wrap" style="<?php echo $show_opts; ?>">
                                             <input type="text" name="custom_fields[<?php echo $fid; ?>][opts]" value="<?php echo esc_attr($fopts); ?>" placeholder="Options: Option A, Option B, ...">
+                                        </div>
+                                        <div class="cw-fb-words-wrap" style="<?php echo $show_words; ?>display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;font-size:12px;color:var(--cw-text-soft);">
+                                            <span><i class="fas fa-text-width" aria-hidden="true"></i> Words:</span>
+                                            <label style="display:flex;align-items:center;gap:4px;">min
+                                                <input type="number" min="0" step="1" name="custom_fields[<?php echo $fid; ?>][min_words]" value="<?php echo esc_attr($fmin ?: ''); ?>" placeholder="0" style="width:70px;">
+                                            </label>
+                                            <label style="display:flex;align-items:center;gap:4px;">max
+                                                <input type="number" min="0" step="1" name="custom_fields[<?php echo $fid; ?>][max_words]" value="<?php echo esc_attr($fmax ?: ''); ?>" placeholder="0" style="width:70px;">
+                                            </label>
+                                            <span style="font-size:11px;opacity:.75;">Leave at 0 to skip the limit.</span>
                                         </div>
                                     </div>
                                     <?php $fid++; endforeach; ?>
@@ -927,13 +1056,41 @@ class CW_Business_Form {
                     </div>
 
                     <!-- ── Public submissions gallery toggle ─────────────────── -->
+                    <?php
+                    $gallery_layout_val = $val( 'cw_submissions_gallery_layout' );
+                    if ( ! in_array( $gallery_layout_val, [ 'grid', 'map' ], true ) ) {
+                        $gallery_layout_val = 'grid';
+                    }
+                    $show_gallery_panel = ( $val( 'cw_show_submissions_gallery' ) === 'yes' );
+                    ?>
                     <div class="cw-config-card" style="margin-top:16px;">
                         <div class="cw-toggle-box">
                             <div>
                                 <label for="cw_show_submissions_gallery" style="cursor:pointer;">Show Public Submissions Gallery</label>
                                 <small>Display approved entry artworks <strong>anonymously</strong> on this campaign's public page (image and optional checkout message only — no participant names or contact info).</small>
                             </div>
-                            <input type="checkbox" name="cw_show_submissions_gallery" value="yes" id="cw_show_submissions_gallery" <?php checked( $val('cw_show_submissions_gallery'), 'yes' ); ?>>
+                            <input type="checkbox" name="cw_show_submissions_gallery" value="yes" id="cw_show_submissions_gallery"
+                                onchange="toggleWizardSection('cw-section-gallery-layout', this)"
+                                <?php checked( $show_gallery_panel, true ); ?>>
+                        </div>
+                        <div id="cw-section-gallery-layout" class="cw-wizard-feature-panel" style="display:<?php echo $show_gallery_panel ? 'block' : 'none'; ?>;margin-top:14px;">
+                            <p class="cw-mini-head" style="margin-top:0;"><?php esc_html_e( 'Gallery layout', 'creativewings-core' ); ?></p>
+                            <div class="cw-field" style="display:flex;flex-direction:column;gap:10px;">
+                                <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin:0;">
+                                    <input type="radio" name="cw_submissions_gallery_layout" value="grid" <?php checked( $gallery_layout_val, 'grid' ); ?> style="margin-top:3px;">
+                                    <span>
+                                        <strong><?php esc_html_e( 'Basic gallery', 'creativewings-core' ); ?></strong><br>
+                                        <small><?php esc_html_e( 'Thumbnail grid with pagination — classic submission gallery.', 'creativewings-core' ); ?></small>
+                                    </span>
+                                </label>
+                                <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin:0;">
+                                    <input type="radio" name="cw_submissions_gallery_layout" value="map" <?php checked( $gallery_layout_val, 'map' ); ?> style="margin-top:3px;">
+                                    <span>
+                                        <strong><?php esc_html_e( 'World map', 'creativewings-core' ); ?></strong><br>
+                                        <small><?php esc_html_e( 'Pins on a world map with KPI progress fill (when a KPI target is set).', 'creativewings-core' ); ?></small>
+                                    </span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1195,6 +1352,15 @@ class CW_Business_Form {
                 if (!wrap) return;
                 const optsWrap = wrap.querySelector('.cw-fb-opts-wrap');
                 if (optsWrap) optsWrap.style.display = (s.value === 'select' || s.value === 'wysiwyg') ? 'block' : 'none';
+
+                // Word-count limits only make sense for free-text fields.
+                // Show them for text / textarea / wysiwyg and hide otherwise
+                // (numbers, files, dropdowns, etc.).
+                const wordsWrap = wrap.querySelector('.cw-fb-words-wrap');
+                if (wordsWrap) {
+                    const showWords = (s.value === 'text' || s.value === 'textarea' || s.value === 'wysiwyg');
+                    wordsWrap.style.display = showWords ? 'flex' : 'none';
+                }
             };
 
             window.cwPreviewBanner = function(input) {
@@ -1206,6 +1372,133 @@ class CW_Business_Form {
             };
 
             // ── Gallery uploader ──
+            window.cwGallerySyncOrder = function() {
+                const grid = document.getElementById('cwGalleryGrid');
+                const orderInput = document.getElementById('cwGalleryOrder');
+                const keep = document.getElementById('cwGalleryKeep');
+                if (!grid) return;
+
+                const order = [];
+                const keepIds = [];
+                let newIndex = 0;
+
+                grid.querySelectorAll('.cw-gallery-tile').forEach(function(tile) {
+                    const aid = tile.getAttribute('data-attachment-id');
+                    if (aid) {
+                        const id = parseInt(aid, 10);
+                        order.push('e:' + id);
+                        keepIds.push(id);
+                    } else if (tile.cwGalleryFile) {
+                        order.push('n:' + newIndex);
+                        newIndex++;
+                    }
+                });
+
+                if (orderInput) orderInput.value = order.join(',');
+                if (keep) keep.value = keepIds.join(',');
+            };
+
+            window.cwGallerySyncFiles = function() {
+                const grid = document.getElementById('cwGalleryGrid');
+                const fileInput = document.getElementById('cwGalleryFiles');
+                if (!grid || !fileInput) return;
+
+                const files = [];
+                grid.querySelectorAll('.cw-gallery-tile').forEach(function(tile) {
+                    if (tile.cwGalleryFile) files.push(tile.cwGalleryFile);
+                });
+
+                if (files.length && typeof DataTransfer !== 'undefined') {
+                    const dt = new DataTransfer();
+                    files.forEach(function(file) { dt.items.add(file); });
+                    fileInput.files = dt.files;
+                } else if (!files.length) {
+                    fileInput.value = '';
+                }
+            };
+
+            window.cwGalleryInitTile = function(tile) {
+                if (!tile || tile.dataset.cwSortable) return;
+                tile.dataset.cwSortable = '1';
+                tile.setAttribute('draggable', 'true');
+
+                tile.addEventListener('dragstart', function(e) {
+                    if (e.target.closest('.cw-gallery-remove')) {
+                        e.preventDefault();
+                        return;
+                    }
+                    window.cwGalleryDragTile = tile;
+                    tile.classList.add('is-dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', tile.getAttribute('data-attachment-id') || 'new');
+                });
+
+                tile.addEventListener('dragend', function() {
+                    tile.classList.remove('is-dragging');
+                    window.cwGalleryDragTile = null;
+                    document.querySelectorAll('#cwGalleryGrid .cw-gallery-tile').forEach(function(t) {
+                        t.classList.remove('is-drag-over');
+                    });
+                    window.cwGallerySyncOrder();
+                });
+
+                tile.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (window.cwGalleryDragTile && window.cwGalleryDragTile !== tile) {
+                        tile.classList.add('is-drag-over');
+                    }
+                });
+
+                tile.addEventListener('dragleave', function() {
+                    tile.classList.remove('is-drag-over');
+                });
+
+                tile.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    tile.classList.remove('is-drag-over');
+                    const dragTile = window.cwGalleryDragTile;
+                    if (!dragTile || dragTile === tile) return;
+
+                    const grid = document.getElementById('cwGalleryGrid');
+                    if (!grid) return;
+
+                    const tiles = Array.from(grid.querySelectorAll('.cw-gallery-tile'));
+                    const dragIdx = tiles.indexOf(dragTile);
+                    const dropIdx = tiles.indexOf(tile);
+                    if (dragIdx < 0 || dropIdx < 0) return;
+
+                    if (dragIdx < dropIdx) {
+                        tile.after(dragTile);
+                    } else {
+                        tile.before(dragTile);
+                    }
+                    window.cwGallerySyncOrder();
+                });
+            };
+
+            window.cwInitGallerySortable = function() {
+                const grid = document.getElementById('cwGalleryGrid');
+                if (!grid) return;
+
+                grid.querySelectorAll('.cw-gallery-tile').forEach(window.cwGalleryInitTile);
+
+                if (!grid.dataset.cwSortableInit) {
+                    grid.dataset.cwSortableInit = '1';
+                    new MutationObserver(function(mutations) {
+                        mutations.forEach(function(mutation) {
+                            mutation.addedNodes.forEach(function(node) {
+                                if (node.nodeType === 1 && node.classList && node.classList.contains('cw-gallery-tile')) {
+                                    window.cwGalleryInitTile(node);
+                                }
+                            });
+                        });
+                    }).observe(grid, { childList: true });
+                }
+
+                window.cwGallerySyncOrder();
+            };
+
             window.cwPreviewGallery = function(input) {
                 const grid = document.getElementById('cwGalleryGrid');
                 if (!grid || !input.files || !input.files.length) return;
@@ -1215,21 +1508,19 @@ class CW_Business_Form {
                     const tile = document.createElement('div');
                     tile.className = 'cw-gallery-tile is-new';
                     tile.innerHTML =
+                        '<span class="cw-gallery-drag" title="Drag to reorder" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>' +
                         '<img src="' + url + '" alt="" />' +
                         '<span class="cw-gallery-new-flag" aria-hidden="true">NEW</span>';
+                    tile.cwGalleryFile = file;
                     grid.appendChild(tile);
                 });
+                input.value = '';
+                window.cwGallerySyncOrder();
             };
             window.cwGalleryRemoveExisting = function(btn, attachmentId) {
                 const tile  = btn.closest('.cw-gallery-tile');
-                const keep  = document.getElementById('cwGalleryKeep');
                 if (tile) tile.remove();
-                if (keep) {
-                    const list = keep.value.split(',').filter(function(v) {
-                        return v && parseInt(v, 10) !== parseInt(attachmentId, 10);
-                    });
-                    keep.value = list.join(',');
-                }
+                window.cwGallerySyncOrder();
             };
 
             // ── Design Submission variants ──
@@ -1326,6 +1617,56 @@ class CW_Business_Form {
                     </div>`
                 );
             };
+
+            // ── Participant Template repeater ──
+            // Each new row needs its own NUMERIC index so the file input
+            // name (`cw_template_file_<idx>`) lines up with `cw_templates[<idx>]`
+            // on the server. We track the next available index on the Add
+            // button's `data-next-idx` (seeded by PHP based on how many rows
+            // were rendered) so a fresh row never collides with an existing
+            // one even after a save+reload round-trip.
+            window.addTemplateRow = function() {
+                var btn = document.getElementById('cw-add-template-btn');
+                var nextIdx = parseInt(btn && btn.getAttribute('data-next-idx'), 10);
+                if (isNaN(nextIdx) || nextIdx < 0) {
+                    // Defensive fallback — count existing rows and use that.
+                    nextIdx = document.querySelectorAll('#cw-templates-list .cw-template-row').length;
+                }
+                var idx = nextIdx;
+                if (btn) btn.setAttribute('data-next-idx', String(idx + 1));
+
+                var html =
+                    '<div class="cw-template-row" data-idx="' + idx + '" style="margin-bottom:14px;padding:12px;border:1px solid var(--cw-border);border-radius:10px;background:var(--cw-bg);">' +
+                        '<input type="hidden" name="cw_templates[' + idx + '][id]" value="0">' +
+                        '<input type="hidden" name="cw_templates[' + idx + '][remove]" value="0" class="cw-template-remove-flag">' +
+                        '<div class="cw-form-row-2" style="gap:12px;align-items:end;">' +
+                            '<div class="cw-field" style="margin:0;">' +
+                                '<label>Download button label</label>' +
+                                '<input type="text" name="cw_templates[' + idx + '][label]" class="cw-input-dark" value="Download Template" placeholder="Download Template" maxlength="80">' +
+                            '</div>' +
+                            '<div class="cw-field" style="margin:0;">' +
+                                '<label>Upload file (ZIP / PNG / JPG / PDF / AI / EPS / PSD / SVG)</label>' +
+                                '<input type="file" name="cw_template_file_' + idx + '" accept=".zip,.png,.jpg,.jpeg,.pdf,.ai,.eps,.psd,.svg,application/zip,application/x-zip-compressed,application/pdf,image/png,image/jpeg,image/svg+xml,application/postscript,application/illustrator,image/vnd.adobe.photoshop">' +
+                            '</div>' +
+                        '</div>' +
+                        '<div style="margin-top:8px;text-align:right;">' +
+                            '<button type="button" class="cw-template-del-btn" onclick="this.closest(\'.cw-template-row\').remove()" style="background:transparent;border:0;color:#94a3b8;font-size:12px;cursor:pointer;"><i class="fas fa-times"></i> Cancel</button>' +
+                        '</div>' +
+                    '</div>';
+                document.getElementById('cw-templates-list').insertAdjacentHTML('beforeend', html);
+            };
+
+            // Wire the Add Template button (idempotent — works in edit + new modes).
+            document.addEventListener('DOMContentLoaded', function () {
+                var addBtn = document.getElementById('cw-add-template-btn');
+                if (addBtn && !addBtn.getAttribute('data-bound')) {
+                    addBtn.setAttribute('data-bound', '1');
+                    addBtn.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        window.addTemplateRow();
+                    });
+                }
+            });
 
             window.addFaqRow = function() {
                 const id = Date.now();
@@ -1440,6 +1781,11 @@ class CW_Business_Form {
 
                 $('#cw-add-field').on('click', function() {
                     const id = Date.now();
+                    // New rows default to "Short Text" type. Word-count
+                    // limits start visible (text fits the criteria) so the
+                    // organiser sees them up-front; the toggleFbOptions
+                    // call below hides them again the moment they pick a
+                    // non-text type.
                     document.getElementById('cw-fb-container').insertAdjacentHTML('beforeend',
                         `<div class="cw-fb-row-wrap">
                             <input type="text" name="custom_fields[${id}][label]" placeholder="Field Label (e.g. Phone Number)" required>
@@ -1448,6 +1794,16 @@ class CW_Business_Form {
                             <button type="button" class="cw-fb-del" onclick="this.closest('.cw-fb-row-wrap').remove()"><i class="fas fa-times"></i></button>
                             <div class="cw-fb-opts-wrap" style="display:none;">
                                 <input type="text" name="custom_fields[${id}][opts]" placeholder="Options: Option A, Option B, ...">
+                            </div>
+                            <div class="cw-fb-words-wrap" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;font-size:12px;color:var(--cw-text-soft);">
+                                <span><i class="fas fa-text-width" aria-hidden="true"></i> Words:</span>
+                                <label style="display:flex;align-items:center;gap:4px;">min
+                                    <input type="number" min="0" step="1" name="custom_fields[${id}][min_words]" placeholder="0" style="width:70px;">
+                                </label>
+                                <label style="display:flex;align-items:center;gap:4px;">max
+                                    <input type="number" min="0" step="1" name="custom_fields[${id}][max_words]" placeholder="0" style="width:70px;">
+                                </label>
+                                <span style="font-size:11px;opacity:.75;">Leave at 0 to skip the limit.</span>
                             </div>
                         </div>`
                     );
@@ -1574,6 +1930,15 @@ class CW_Business_Form {
 
                 applyOverlayFromInputs();
             })();
+
+            window.cwInitGallerySortable();
+            const cwWizardForm = document.getElementById('cw_wizard_form');
+            if (cwWizardForm) {
+                cwWizardForm.addEventListener('submit', function() {
+                    window.cwGallerySyncOrder();
+                    window.cwGallerySyncFiles();
+                });
+            }
 
         }); // end DOMContentLoaded
         </script>

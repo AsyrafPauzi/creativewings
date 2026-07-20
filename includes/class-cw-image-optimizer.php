@@ -246,13 +246,14 @@ class CW_Image_Optimizer {
             return $result;
         }
 
-        // Regenerate sub-sizes if we shrank the original.
+        // Regenerate a lean thumbnail only if we shrank the original.
+        // Full WP sub-size sets (medium/large/…) spike memory under concurrent uploads.
         if ( ! empty( $result['dims_after'] ) && is_array( $result['dims_after'] )
             && ! empty( $result['dims_before'] ) && $result['dims_after'] !== $result['dims_before'] ) {
-            if ( ! function_exists( 'wp_create_image_subsizes' ) ) {
-                require_once ABSPATH . 'wp-admin/includes/image.php';
+            $lean = self::generate_lean_metadata( $attach_id, $path );
+            if ( ! empty( $lean ) ) {
+                wp_update_attachment_metadata( $attach_id, $lean );
             }
-            wp_create_image_subsizes( $path, $attach_id );
         }
 
         // Track WebP sibling URL on the attachment, if we made one.
@@ -391,5 +392,71 @@ class CW_Image_Optimizer {
         // Fallback sniff.
         $cached = ( function_exists( 'imagewebp' ) ) || ( class_exists( 'Imagick' ) && in_array( 'WEBP', Imagick::queryFormats( 'WEBP' ), true ) );
         return $cached;
+    }
+
+    /**
+     * Generate attachment metadata with only a small thumbnail.
+     *
+     * WordPress default creates medium/large/etc. for every upload. Concurrent
+     * campaign artwork uploads (large PNGs) load each size into memory and can
+     * exhaust PHP workers — this keeps a single 300px thumb instead.
+     *
+     * @param int    $attach_id Attachment ID.
+     * @param string $file      Absolute path to the uploaded file.
+     * @return array Attachment metadata (same shape as wp_generate_attachment_metadata).
+     */
+    public static function generate_lean_metadata( $attach_id, $file ) {
+        $attach_id = (int) $attach_id;
+        if ( $attach_id <= 0 || ! is_string( $file ) || $file === '' || ! file_exists( $file ) ) {
+            return [];
+        }
+
+        if ( ! function_exists( 'wp_generate_attachment_metadata' ) ) {
+            require_once ABSPATH . 'wp-admin/includes/image.php';
+        }
+
+        $filter = [ __CLASS__, 'lean_intermediate_sizes' ];
+        add_filter( 'intermediate_image_sizes_advanced', $filter, 999 );
+        add_filter( 'big_image_size_threshold', '__return_false', 999 );
+
+        $meta = wp_generate_attachment_metadata( $attach_id, $file );
+
+        remove_filter( 'intermediate_image_sizes_advanced', $filter, 999 );
+        remove_filter( 'big_image_size_threshold', '__return_false', 999 );
+
+        return is_array( $meta ) ? $meta : [];
+    }
+
+    /**
+     * Restrict WP sub-size generation to a single thumbnail.
+     *
+     * @param array $sizes
+     * @return array
+     */
+    public static function lean_intermediate_sizes( $sizes ) {
+        if ( ! is_array( $sizes ) ) {
+            return [];
+        }
+        // Keep only thumbnail if present; otherwise empty (original only).
+        if ( isset( $sizes['thumbnail'] ) ) {
+            return [ 'thumbnail' => $sizes['thumbnail'] ];
+        }
+        return [];
+    }
+
+    /**
+     * Soft bump for a single upload request when headroom is low.
+     * No-op when disable_functions blocks ini_set.
+     */
+    public static function maybe_raise_memory_for_upload() {
+        $limit = wp_convert_hr_to_bytes( (string) ini_get( 'memory_limit' ) );
+        if ( $limit <= 0 ) {
+            return;
+        }
+        $used = memory_get_usage( true );
+        // If more than ~60% of the limit is already used, try 256M.
+        if ( $used > ( $limit * 0.6 ) && $limit < ( 256 * 1024 * 1024 ) ) {
+            @ini_set( 'memory_limit', '256M' );
+        }
     }
 }

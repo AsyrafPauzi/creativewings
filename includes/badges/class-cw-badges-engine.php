@@ -74,6 +74,9 @@ class CW_Badges_Engine {
 
         // Email notification on award (opt-in via user meta cw_badge_email_opt_in = 1).
         add_action( 'cw_badge_awarded', [ __CLASS__, 'maybe_send_award_email' ], 40 );
+
+        // Deferred eval (avoids stacking badge queries during concurrent checkout).
+        add_action( 'cw_badge_evaluate_user', [ __CLASS__, 'run_deferred_evaluate' ], 10, 1 );
     }
 
     /**
@@ -128,11 +131,15 @@ class CW_Badges_Engine {
         if ( ! isset( $post->post_status ) || $post->post_status === 'auto-draft' ) {
             return;
         }
+        // Bulk entry creation during paid checkout — CW_Post_Checkout async evaluates badges.
+        if ( ! empty( $GLOBALS['cw_defer_badge_eval'] ) ) {
+            return;
+        }
         // Owner = customer_id meta (set by checkout) or post_author fallback.
         $uid = (int) get_post_meta( $post_id, 'customer_id', true );
         if ( ! $uid ) $uid = (int) $post->post_author;
         if ( $uid > 0 ) {
-            self::evaluate_user( $uid, [ 'event' => 'entry_saved', 'entry_id' => $post_id ] );
+            self::queue_or_evaluate( $uid, [ 'event' => 'entry_saved', 'entry_id' => $post_id ] );
         }
 
         // Also re-evaluate the campaign organizer (for participant_total / first_campaign etc.).
@@ -140,7 +147,7 @@ class CW_Badges_Engine {
         if ( $pid > 0 ) {
             $org = (int) get_post_field( 'post_author', $pid );
             if ( $org > 0 ) {
-                self::evaluate_user( $org, [ 'event' => 'entry_saved', 'role' => 'organizer', 'campaign_id' => $pid ] );
+                self::queue_or_evaluate( $org, [ 'event' => 'entry_saved', 'role' => 'organizer', 'campaign_id' => $pid ] );
             }
         }
     }
@@ -175,12 +182,16 @@ class CW_Badges_Engine {
     }
 
     public static function on_order_completed( $order_id ) {
+        // Badge eval for paid joins is handled by CW_Post_Checkout async.
+        if ( class_exists( 'CW_Post_Checkout' ) && CW_Post_Checkout::defers_side_effects() ) {
+            return;
+        }
         if ( ! function_exists( 'wc_get_order' ) ) return;
         $order = wc_get_order( $order_id );
         if ( ! $order ) return;
         $uid = (int) $order->get_user_id();
         if ( $uid > 0 ) {
-            self::evaluate_user( $uid, [ 'event' => 'order_completed', 'order_id' => $order_id ] );
+            self::queue_or_evaluate( $uid, [ 'event' => 'order_completed', 'order_id' => $order_id ] );
         }
     }
 
@@ -200,6 +211,51 @@ class CW_Badges_Engine {
             unset( self::$user_badge_cache[ (int) $args['user_id'] ] );
         } else {
             self::$user_badge_cache = [];
+        }
+    }
+
+    /**
+     * During bulk entry creation (checkout flood), queue badge eval for cron
+     * instead of running it inline on every wp_insert_post.
+     *
+     * @param int   $user_id
+     * @param array $event_context
+     */
+    public static function queue_or_evaluate( $user_id, $event_context = [] ) {
+        $user_id = (int) $user_id;
+        if ( $user_id <= 0 ) {
+            return;
+        }
+
+        $defer = ! empty( $GLOBALS['cw_defer_badge_eval'] );
+
+        if ( ! $defer ) {
+            self::evaluate_user( $user_id, $event_context );
+            return;
+        }
+
+        // Dedupe: one pending eval per user within a short window.
+        $lock_key = 'cw_badge_q_' . $user_id;
+        if ( get_transient( $lock_key ) ) {
+            return;
+        }
+        set_transient( $lock_key, 1, 2 * MINUTE_IN_SECONDS );
+
+        if ( ! wp_next_scheduled( 'cw_badge_evaluate_user', [ $user_id ] ) ) {
+            wp_schedule_single_event( time() + 45, 'cw_badge_evaluate_user', [ $user_id ] );
+        }
+    }
+
+    /**
+     * Cron callback for deferred evaluate_user.
+     *
+     * @param int $user_id
+     */
+    public static function run_deferred_evaluate( $user_id ) {
+        $user_id = (int) $user_id;
+        delete_transient( 'cw_badge_q_' . $user_id );
+        if ( $user_id > 0 ) {
+            self::evaluate_user( $user_id, [ 'event' => 'deferred' ] );
         }
     }
 
@@ -424,14 +480,27 @@ class CW_Badges_Engine {
         if ( self::$catalog_cache !== null ) {
             return self::$catalog_cache;
         }
+
+        // Cross-request cache — catalog rarely changes; avoids reloading every badge
+        // post + meta on each concurrent checkout entry insert.
+        if ( class_exists( 'CW_Cache' ) ) {
+            $cached = CW_Cache::get( 'catalog_v1', 'badges' );
+            if ( is_array( $cached ) ) {
+                self::$catalog_cache = $cached;
+                return self::$catalog_cache;
+            }
+        }
+
         $posts = get_posts( [
-            'post_type'      => CW_Badges_CPT::POST_TYPE,
-            'post_status'    => 'publish',
-            'posts_per_page' => -1,
-            'orderby'        => 'meta_value_num',
-            'meta_key'       => 'cw_badge_sort_order',
-            'order'          => 'ASC',
-            'no_found_rows'  => true,
+            'post_type'              => CW_Badges_CPT::POST_TYPE,
+            'post_status'            => 'publish',
+            'posts_per_page'         => 100,
+            'orderby'                => 'meta_value_num',
+            'meta_key'               => 'cw_badge_sort_order',
+            'order'                  => 'ASC',
+            'no_found_rows'          => true,
+            'update_post_meta_cache' => true,
+            'update_post_term_cache' => false,
         ] );
 
         $out = [];
@@ -439,6 +508,11 @@ class CW_Badges_Engine {
             $out[] = self::hydrate_badge( $p );
         }
         self::$catalog_cache = $out;
+
+        if ( class_exists( 'CW_Cache' ) ) {
+            CW_Cache::set( 'catalog_v1', 'badges', $out, 10 * MINUTE_IN_SECONDS );
+        }
+
         return $out;
     }
 

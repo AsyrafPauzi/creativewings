@@ -1818,13 +1818,26 @@ input.cw-input-text-v2 { padding-left: 42px !important; }
     line-height: 1.4;
 }
 
-/* ── Smaller prose for sidebar (Judging Criteria) ── */
-.cwd-prose-sm {
+/* ── Smaller prose for sidebar (Judging Criteria) ──────────────────
+   Same prose ruleset but ~85% scale so it sits comfortably inside
+   the narrower sidebar card. Lists keep the same 1.4em hanging
+   indent — the scale comes from `em`-based units inside the main
+   prose rules, so bullets re-align automatically against the
+   smaller body text. */
+.cwd-wrap .cwd-prose.cwd-prose-sm {
     font-size: 13px;
     line-height: 1.65;
-    color: #374151;
 }
-.cwd-prose-sm p:last-child { margin-bottom: 0; }
+.cwd-wrap .cwd-prose.cwd-prose-sm p { margin-bottom: .75em; }
+.cwd-wrap .cwd-prose.cwd-prose-sm ul,
+.cwd-wrap .cwd-prose.cwd-prose-sm ol { margin-bottom: .75em; padding-left: 1.3em; }
+.cwd-wrap .cwd-prose.cwd-prose-sm li { margin-bottom: .3em; }
+.cwd-wrap .cwd-prose.cwd-prose-sm h1,
+.cwd-wrap .cwd-prose.cwd-prose-sm h2,
+.cwd-wrap .cwd-prose.cwd-prose-sm h3,
+.cwd-wrap .cwd-prose.cwd-prose-sm h4,
+.cwd-wrap .cwd-prose.cwd-prose-sm h5,
+.cwd-wrap .cwd-prose.cwd-prose-sm h6 { margin: 1em 0 .35em; }
 
 /* ── Organiser no-info fallback ── */
 .cwd-org-no-info {
@@ -1927,9 +1940,132 @@ input.cw-input-text-v2 { padding-left: 42px !important; }
 }
 .cwd-section-title i { color: var(--cwd-primary); }
 
-/* Prose */
-.cwd-prose { font-size: 15px; line-height: 1.75; color: #374151; }
-.cwd-prose p:last-child { margin-bottom: 0; }
+/* ── Prose typography ────────────────────────────────────────────────
+   Unified rich-text styling for the WYSIWYG-driven sections (About
+   body + Judging Criteria sidebar card). Without these, every theme
+   that activates this plugin imposes its own ul/ol/h2 sizing and
+   bullet indent — which is exactly the "bullets bigger / not aligned
+   under the heading" inconsistency the brief flags.
+
+   `.cwd-wrap .cwd-prose ...` is the high-specificity scope so we win
+   against generic theme reset rules. `.cwd-prose-sm` scales the same
+   layout down for the sidebar (~85% of the main scale). */
+.cwd-wrap .cwd-prose {
+    font-size: 15px;
+    line-height: 1.75;
+    color: #374151;
+}
+.cwd-wrap .cwd-prose > :first-child { margin-top: 0; }
+.cwd-wrap .cwd-prose > :last-child  { margin-bottom: 0; }
+
+/* Paragraphs */
+.cwd-wrap .cwd-prose p {
+    margin: 0 0 1em;
+    font-size: inherit;
+    line-height: inherit;
+    color: inherit;
+}
+
+/* Headings — keep them visually distinct from .cwd-section-title but
+   noticeably smaller, so users can structure their long-form content
+   without it competing with the card chrome. */
+.cwd-wrap .cwd-prose h1,
+.cwd-wrap .cwd-prose h2,
+.cwd-wrap .cwd-prose h3,
+.cwd-wrap .cwd-prose h4,
+.cwd-wrap .cwd-prose h5,
+.cwd-wrap .cwd-prose h6 {
+    margin: 1.4em 0 .5em;
+    color: var(--cwd-text, #1e293b);
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: -.01em;
+}
+.cwd-wrap .cwd-prose h1 { font-size: 1.35em; }
+.cwd-wrap .cwd-prose h2 { font-size: 1.2em;  }
+.cwd-wrap .cwd-prose h3 { font-size: 1.1em;  }
+.cwd-wrap .cwd-prose h4 { font-size: 1em;    }
+.cwd-wrap .cwd-prose h5,
+.cwd-wrap .cwd-prose h6 { font-size: .95em; text-transform: uppercase; letter-spacing: .04em; color: var(--cwd-muted, #555); }
+
+/* Lists — the actual fix for the reported issue. Reset the default
+   ul/ol indentation to a predictable 1.4em so bullets align flush
+   under the heading they belong to, give the markers the brand
+   accent colour, and force list items to inherit the prose font
+   size (some themes set `li { font-size: 16px }` globally). */
+.cwd-wrap .cwd-prose ul,
+.cwd-wrap .cwd-prose ol {
+    margin: 0 0 1em;
+    padding-left: 1.4em;
+    list-style-position: outside;
+}
+.cwd-wrap .cwd-prose ul { list-style-type: disc; }
+.cwd-wrap .cwd-prose ol { list-style-type: decimal; }
+.cwd-wrap .cwd-prose li {
+    margin: 0 0 .35em;
+    padding: 0;
+    font-size: inherit;
+    line-height: inherit;
+    color: inherit;
+}
+.cwd-wrap .cwd-prose li::marker {
+    color: var(--cwd-primary, #125B9A);
+    font-weight: 600;
+}
+.cwd-wrap .cwd-prose li > p { margin: 0 0 .35em; }
+.cwd-wrap .cwd-prose li:last-child { margin-bottom: 0; }
+/* Nested lists collapse their outer margin so depth indent stays clean */
+.cwd-wrap .cwd-prose li > ul,
+.cwd-wrap .cwd-prose li > ol {
+    margin: .35em 0 .35em;
+}
+
+/* Inline text styles */
+.cwd-wrap .cwd-prose strong,
+.cwd-wrap .cwd-prose b { font-weight: 700; color: var(--cwd-text, #1e293b); }
+.cwd-wrap .cwd-prose em,
+.cwd-wrap .cwd-prose i { font-style: italic; }
+.cwd-wrap .cwd-prose a {
+    color: var(--cwd-primary, #125B9A);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.cwd-wrap .cwd-prose a:hover { text-decoration-thickness: 2px; }
+
+/* Blockquotes & dividers */
+.cwd-wrap .cwd-prose blockquote {
+    margin: 0 0 1em;
+    padding: .5em 0 .5em 14px;
+    border-left: 3px solid var(--cwd-primary, #125B9A);
+    color: var(--cwd-muted, #555);
+    font-style: italic;
+}
+.cwd-wrap .cwd-prose hr {
+    border: 0;
+    border-top: 1px solid var(--cwd-border, #e2e8f0);
+    margin: 1.4em 0;
+}
+
+/* Inline / block code */
+.cwd-wrap .cwd-prose code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .92em;
+    padding: 1px 6px;
+    background: #f1f5f9;
+    border-radius: 4px;
+    color: #0f172a;
+}
+.cwd-wrap .cwd-prose pre {
+    margin: 0 0 1em;
+    padding: 12px 14px;
+    background: #0f172a;
+    color: #f1f5f9;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: .92em;
+    line-height: 1.55;
+}
+.cwd-wrap .cwd-prose pre code { background: transparent; padding: 0; color: inherit; }
 
 /* ── Timeline ── */
 .cwd-timeline {
@@ -2235,6 +2371,13 @@ input.cw-input-text-v2 { padding-left: 42px !important; }
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+/* Stacked templates: any download after the first one inside the
+   Resources card gets a top margin so consecutive buttons (and the
+   space between a filename and the next button) breathe correctly. */
+.cwd-template-card .cwd-template-download + .cwd-template-download,
+.cwd-template-card .cwd-template-filename + .cwd-template-download {
+    margin-top: 12px;
+}
 
 /* ── Speaker Card ── */
 .cwd-speaker-card {
@@ -2526,6 +2669,37 @@ textarea.cwd-reg-input { resize: vertical; min-height: 64px; }
 input[type="file"].cwd-reg-input {
     padding: 6px 10px;
     cursor: pointer;
+}
+
+/* Live word-count widget shown below text/textarea fields when the
+   organiser sets min_words / max_words on the campaign builder. Colour
+   states are toggled by JS:
+     .is-ok    → current count is inside [min, max]
+     .is-under → below min (organiser wants more words)
+     .is-over  → above max (organiser wants fewer words)
+   Default (no class) is the neutral "0 words" pre-input state. */
+.cwd-reg-wordcount {
+    align-self: flex-end;
+    margin-top: 2px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--cwd-text-soft, #64748b);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.cwd-reg-wordcount__current { font-variant-numeric: tabular-nums; }
+.cwd-reg-wordcount__limits {
+    font-weight: 400;
+    color: var(--cwd-text-soft, #94a3b8);
+}
+.cwd-reg-wordcount.is-ok    { color: #16a34a; }
+.cwd-reg-wordcount.is-under { color: #f59e0b; }
+.cwd-reg-wordcount.is-over  { color: #dc2626; }
+.cwd-reg-wordcount.is-over .cwd-reg-wordcount__limits,
+.cwd-reg-wordcount.is-under .cwd-reg-wordcount__limits {
+    color: inherit;
+    opacity: .75;
 }
 
 /* Add row button */

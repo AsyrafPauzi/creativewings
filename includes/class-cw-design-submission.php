@@ -10,9 +10,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  *   - Organizer configures the campaign (artwork dimensions, picker label,
  *     an unbounded list of product variants — colours, sizes, casings, etc.)
  *     via the admin metabox or the create-campaign wizard.
- *   - Participant uploads a PNG artwork (dimensions enforced both client-
- *     and server-side) plus an optional vector source file on the campaign
- *     product page; attachment IDs flow into the cart-item-data.
+ *   - Participant uploads a PNG artwork (any size — center cover-cropped to
+ *     campaign W×H on the server) plus an optional vector source file on the
+ *     campaign product page; attachment IDs flow into the cart-item-data.
  *   - On the WooCommerce checkout page a per-line variant picker renders
  *     swatches + a live HTML5 canvas mockup. The chosen variant slug is
  *     stamped onto the order line at checkout and copied onto the resulting
@@ -27,6 +27,23 @@ class CW_Design_Submission {
     const META_HEIGHT          = 'cw_design_artwork_h';
     const META_VARIANTS        = 'cw_design_variants';
     const META_DEFAULT_VARIANT = 'cw_design_default_variant';
+
+    // ── Print area ───────────────────────────────────────────────────────
+    // Defines the visible window on the casing that actually shows the
+    // printed artwork. Customers upload full-sleeve artwork (e.g. 3.6 cm
+    // wide for ORBI Glide), but only the front-facing portion (~2.7 cm)
+    // is seen from the front. The remaining ~0.9 cm wraps around the
+    // sides and gets cropped from the preview / order mockups. These
+    // four fields locate that window in PIXEL coordinates inside the
+    // casing variant PNG. When all four are zero/unset the JS falls back
+    // to `contain` semantics (legacy behaviour — no crop).
+    //
+    // Per-campaign (not per-variant) because every colour swatch is the
+    // same physical case shape; only the colour changes.
+    const META_PRINT_X = 'cw_design_print_x';
+    const META_PRINT_Y = 'cw_design_print_y';
+    const META_PRINT_W = 'cw_design_print_w';
+    const META_PRINT_H = 'cw_design_print_h';
 
     const CART_FLAG        = 'cw_design_enabled';
     const CART_ARTWORK_ID  = 'cw_design_artwork_id';   // legacy singular (kept = artwork at slot 1)
@@ -151,13 +168,25 @@ class CW_Design_Submission {
             $label = __( 'Choose your option', 'creativewings-core' );
         }
 
+        // Print area: when any of the four fields is positive, we have
+        // a valid window. Otherwise expose null so the JS knows to fall
+        // back to contain-fit (no crop).
+        $px = (int) get_post_meta( $product_id, self::META_PRINT_X, true );
+        $py = (int) get_post_meta( $product_id, self::META_PRINT_Y, true );
+        $pw = (int) get_post_meta( $product_id, self::META_PRINT_W, true );
+        $ph = (int) get_post_meta( $product_id, self::META_PRINT_H, true );
+        $print_area = ( $pw > 0 && $ph > 0 )
+            ? [ 'x' => max( 0, $px ), 'y' => max( 0, $py ), 'w' => $pw, 'h' => $ph ]
+            : null;
+
         return [
-            'enabled'  => self::is_enabled( $product_id ),
-            'label'    => $label,
-            'width'    => max( 1, (int) get_post_meta( $product_id, self::META_WIDTH, true ) ),
-            'height'   => max( 1, (int) get_post_meta( $product_id, self::META_HEIGHT, true ) ),
-            'variants' => $variants,
-            'default'  => $default,
+            'enabled'    => self::is_enabled( $product_id ),
+            'label'      => $label,
+            'width'      => max( 1, (int) get_post_meta( $product_id, self::META_WIDTH, true ) ),
+            'height'     => max( 1, (int) get_post_meta( $product_id, self::META_HEIGHT, true ) ),
+            'variants'   => $variants,
+            'default'    => $default,
+            'print_area' => $print_area,
         ];
     }
 
@@ -223,6 +252,9 @@ class CW_Design_Submission {
             'variant_slug' => $slug,
             'width'        => max( 1, (int) $cfg['width'] ),
             'height'       => max( 1, (int) $cfg['height'] ),
+            // Print-area window on the casing PNG. Null when the campaign
+            // hasn't configured it — JS then falls back to contain-fit.
+            'print_area'   => $cfg['print_area'] ?? null,
         ];
     }
 
@@ -370,7 +402,67 @@ class CW_Design_Submission {
                 </span>
             </p>
             <p style="color:#555;font-size:12px;margin-top:-4px;">
-                <?php esc_html_e( 'Every participant uploads at this exact size. Each variant image you upload below must also be the same size so the artwork lines up pixel-perfect.', 'creativewings-core' ); ?>
+                <?php esc_html_e( 'Participants can upload any PNG — we auto-fit (center cover-crop) to this size for print. Each variant image you upload below must also be the same size so the artwork lines up pixel-perfect.', 'creativewings-core' ); ?>
+            </p>
+
+            <?php
+            // Print-area rectangle on the casing PNG. Participants upload
+            // full-sleeve artwork (e.g. 3.6 cm wide), but only the front
+            // face of the case is visible (e.g. 2.7 cm). These four fields
+            // locate that visible window in pixel coordinates relative to
+            // the casing variant images. When width or height is 0 the JS
+            // falls back to contain-fit (no horizontal crop) so legacy
+            // campaigns keep working.
+            $pa = $cfg['print_area'] ?? null;
+            $pa_x = $pa ? (int) $pa['x'] : 0;
+            $pa_y = $pa ? (int) $pa['y'] : 0;
+            $pa_w = $pa ? (int) $pa['w'] : 0;
+            $pa_h = $pa ? (int) $pa['h'] : 0;
+            ?>
+            <h4 style="margin:18px 0 4px;"><?php esc_html_e( 'Print area on casing (optional)', 'creativewings-core' ); ?></h4>
+            <p style="color:#555;font-size:12px;margin:0 0 8px;">
+                <?php esc_html_e( 'If your casing PNG has a visible "front face" smaller than the full artwork (e.g. customer uploads 3.6 cm wide but only 2.7 cm shows on the case), enter the visible rectangle here in PIXELS relative to the casing PNG. The wrap-around portion gets cropped automatically in the preview and order mockups. Leave at zero to disable cropping.', 'creativewings-core' ); ?>
+            </p>
+            <p style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
+                <span>
+                    <label for="cw_design_print_x" style="font-weight:600;font-size:12px;">
+                        <?php esc_html_e( 'X (px from left)', 'creativewings-core' ); ?>
+                    </label><br>
+                    <input type="number" min="0" step="1" id="cw_design_print_x"
+                           name="<?php echo esc_attr( self::META_PRINT_X ); ?>"
+                           value="<?php echo esc_attr( $pa_x ?: '' ); ?>"
+                           placeholder="53" style="width:120px;">
+                </span>
+                <span>
+                    <label for="cw_design_print_y" style="font-weight:600;font-size:12px;">
+                        <?php esc_html_e( 'Y (px from top)', 'creativewings-core' ); ?>
+                    </label><br>
+                    <input type="number" min="0" step="1" id="cw_design_print_y"
+                           name="<?php echo esc_attr( self::META_PRINT_Y ); ?>"
+                           value="<?php echo esc_attr( $pa_y ?: '' ); ?>"
+                           placeholder="118" style="width:120px;">
+                </span>
+                <span>
+                    <label for="cw_design_print_w" style="font-weight:600;font-size:12px;">
+                        <?php esc_html_e( 'Width (px)', 'creativewings-core' ); ?>
+                    </label><br>
+                    <input type="number" min="0" step="1" id="cw_design_print_w"
+                           name="<?php echo esc_attr( self::META_PRINT_W ); ?>"
+                           value="<?php echo esc_attr( $pa_w ?: '' ); ?>"
+                           placeholder="319" style="width:120px;">
+                </span>
+                <span>
+                    <label for="cw_design_print_h" style="font-weight:600;font-size:12px;">
+                        <?php esc_html_e( 'Height (px)', 'creativewings-core' ); ?>
+                    </label><br>
+                    <input type="number" min="0" step="1" id="cw_design_print_h"
+                           name="<?php echo esc_attr( self::META_PRINT_H ); ?>"
+                           value="<?php echo esc_attr( $pa_h ?: '' ); ?>"
+                           placeholder="2362" style="width:120px;">
+                </span>
+            </p>
+            <p style="color:#888;font-size:11px;margin-top:-2px;">
+                <?php esc_html_e( 'Example: artwork 425×2362, casing 425×2598, visible front face 2.7/3.6 of the width centered → X=53, Y=118, W=319, H=2362.', 'creativewings-core' ); ?>
             </p>
 
             <h4 style="margin:18px 0 4px;"><?php esc_html_e( 'Product variants', 'creativewings-core' ); ?></h4>
@@ -573,6 +665,15 @@ class CW_Design_Submission {
         update_post_meta( $post_id, self::META_WIDTH, $w );
         update_post_meta( $post_id, self::META_HEIGHT, $h );
 
+        // Print area on the casing PNG (the visible "front face" rectangle).
+        // Stored in PIXEL coords relative to the casing variant images. All
+        // four fields are persisted even when zero so an organiser can wipe
+        // them by clearing the inputs and re-saving.
+        update_post_meta( $post_id, self::META_PRINT_X, isset( $_POST[ self::META_PRINT_X ] ) ? max( 0, (int) $_POST[ self::META_PRINT_X ] ) : 0 );
+        update_post_meta( $post_id, self::META_PRINT_Y, isset( $_POST[ self::META_PRINT_Y ] ) ? max( 0, (int) $_POST[ self::META_PRINT_Y ] ) : 0 );
+        update_post_meta( $post_id, self::META_PRINT_W, isset( $_POST[ self::META_PRINT_W ] ) ? max( 0, (int) $_POST[ self::META_PRINT_W ] ) : 0 );
+        update_post_meta( $post_id, self::META_PRINT_H, isset( $_POST[ self::META_PRINT_H ] ) ? max( 0, (int) $_POST[ self::META_PRINT_H ] ) : 0 );
+
         $raw_variants = isset( $_POST[ self::META_VARIANTS ] ) && is_array( $_POST[ self::META_VARIANTS ] )
             ? wp_unslash( $_POST[ self::META_VARIANTS ] )
             : [];
@@ -653,7 +754,7 @@ class CW_Design_Submission {
 
         $ext = strtolower( pathinfo( (string) $file['name'], PATHINFO_EXTENSION ) );
 
-        // ── ROLE: artwork (PNG only, dimension-locked) ──
+        // ── ROLE: artwork (PNG only; size auto-fitted to campaign W×H) ──
         if ( $role === 'artwork' ) {
             if ( $ext !== 'png' ) {
                 wp_send_json_error( [ 'message' => __( 'Artwork must be a PNG file (.png).', 'creativewings-core' ) ] );
@@ -692,20 +793,19 @@ class CW_Design_Submission {
             wp_send_json_error( [ 'message' => __( 'Upload failed: ', 'creativewings-core' ) . ( $move['error'] ?? 'unknown' ) ] );
         }
 
-        // Artwork: enforce exact pixel dimensions via getimagesize() — the
-        // server-side gate the client validator can't be trusted to provide.
+        // Artwork: accept any PNG size; center cover-crop to campaign W×H so
+        // the stored print file is always exact. Exact match is a no-op.
         if ( $role === 'artwork' ) {
             $cfg = self::get_config( $product_id );
-            $info = @getimagesize( $move['file'] );
-            if ( ! is_array( $info ) || (int) $info[0] !== (int) $cfg['width'] || (int) $info[1] !== (int) $cfg['height'] ) {
+            $crop = class_exists( 'CW_Design_Artwork_Crop' )
+                ? CW_Design_Artwork_Crop::ensure_size( $move['file'], (int) $cfg['width'], (int) $cfg['height'] )
+                : 'Artwork crop helper unavailable.';
+            if ( $crop !== true ) {
                 @unlink( $move['file'] );
                 wp_send_json_error( [
-                    'message' => sprintf(
-                        /* translators: 1: required width, 2: required height */
-                        __( 'Artwork must be exactly %1$d x %2$d pixels.', 'creativewings-core' ),
-                        (int) $cfg['width'],
-                        (int) $cfg['height']
-                    ),
+                    'message' => is_string( $crop ) && $crop !== ''
+                        ? $crop
+                        : __( 'Could not prepare artwork for the case size. Please try another PNG.', 'creativewings-core' ),
                 ] );
             }
         }
@@ -725,8 +825,20 @@ class CW_Design_Submission {
             wp_send_json_error( [ 'message' => __( 'Could not register attachment.', 'creativewings-core' ) ] );
         }
 
-        $meta = wp_generate_attachment_metadata( $attachment_id, $move['file'] );
-        wp_update_attachment_metadata( $attachment_id, $meta );
+        // Lean thumbnail only — artwork is already exact W×H after cover-crop.
+        // Full WP size sets OOM when many large PNGs upload at once during join.
+        if ( class_exists( 'CW_Image_Optimizer' ) ) {
+            CW_Image_Optimizer::maybe_raise_memory_for_upload();
+            $meta = CW_Image_Optimizer::generate_lean_metadata( (int) $attachment_id, $move['file'] );
+        } else {
+            if ( ! function_exists( 'wp_generate_attachment_metadata' ) ) {
+                require_once ABSPATH . 'wp-admin/includes/image.php';
+            }
+            $meta = wp_generate_attachment_metadata( $attachment_id, $move['file'] );
+        }
+        if ( ! empty( $meta ) ) {
+            wp_update_attachment_metadata( $attachment_id, $meta );
+        }
 
         // Track in WC session so we can pull it into cart-item-data on
         // add-to-cart. Mirrors the pattern CW_Ajax::handle_dynamic_file_upload
@@ -788,8 +900,8 @@ class CW_Design_Submission {
                 <p class="cw-design-multi-banner__hint">
                     <?php
                     printf(
-                        /* translators: 1: width, 2: height */
-                        esc_html__( 'Use the upload field inside each participant row below. PNG only, exactly %1$d x %2$d pixels per design.', 'creativewings-core' ),
+                        /* translators: 1: width, 2: height (print size after auto-fit) */
+                        esc_html__( 'PNG only — we’ll fit each design to the case size (%1$d × %2$d).', 'creativewings-core' ),
                         (int) $cfg['width'],
                         (int) $cfg['height']
                     );
@@ -875,8 +987,8 @@ class CW_Design_Submission {
             <p class="cw-design-upload__intro">
                 <?php
                 printf(
-                    /* translators: 1: width, 2: height */
-                    esc_html__( 'Your artwork must be a PNG file at exactly %1$d x %2$d pixels.', 'creativewings-core' ),
+                    /* translators: 1: width, 2: height (print size after auto-fit) */
+                    esc_html__( 'Upload a PNG — we’ll fit it to the case (%1$d × %2$d).', 'creativewings-core' ),
                     (int) $cfg['width'],
                     (int) $cfg['height']
                 );
@@ -1279,20 +1391,29 @@ class CW_Design_Submission {
             $item->add_meta_data( '_' . self::CART_VARIANT,  $first_slug );
             $item->add_meta_data( '_' . self::CART_VARIANTS, wp_json_encode( $variants_arr ) );
 
-            // Human-readable label for the order admin UI.
+            // Human-readable label rendered on the order details page and in
+            // WC admin (WooCommerce auto-displays any non-underscored item
+            // meta via wc_display_item_meta). Always show as "Casing color"
+            // — generic, consistent, and clearer than the picker label
+            // (which is often a verbose call-to-action like "Choose your
+            // color" that reads awkwardly when reused as a meta key).
+            $casing_label = __( 'Casing color', 'creativewings-core' );
             if ( count( $variants_arr ) === 1 ) {
                 $v = self::get_variant( $product_id, $first_slug );
                 if ( $v && ! empty( $v['name'] ) ) {
-                    $item->add_meta_data( $cfg['label'], (string) $v['name'] );
+                    $item->add_meta_data( $casing_label, (string) $v['name'] );
                 }
             } else {
+                // Multi-design: list each participant's choice on its own line
+                // so the order admin can see at a glance which slot wanted
+                // which colour (e.g., "#1 Blue · #2 Red · #3 Green").
                 $parts = [];
                 foreach ( $variants_arr as $slot => $slug ) {
                     $v = self::get_variant( $product_id, $slug );
                     $name = ( $v && ! empty( $v['name'] ) ) ? (string) $v['name'] : $slug;
-                    $parts[] = '#' . (int) $slot . ' ' . $name;
+                    $parts[] = sprintf( '#%d %s', (int) $slot, $name );
                 }
-                $item->add_meta_data( $cfg['label'], implode( ' · ', $parts ) );
+                $item->add_meta_data( $casing_label, implode( ' · ', $parts ) );
             }
         }
     }
@@ -1402,6 +1523,10 @@ class CW_Design_Submission {
                         'height'    => $cfg['height'],
                         'artwork'   => $artwork_url,
                         'default'   => $chosen,
+                        // Print-area window (px). When null the JS uses
+                        // contain-fit. When present, the artwork is
+                        // cropped to fit this rectangle on the casing.
+                        'printArea' => $cfg['print_area'] ?? null,
                         'variants'  => [],
                     ];
                     foreach ( $cfg['variants'] as $v ) {
@@ -1679,6 +1804,9 @@ class CW_Design_Submission {
                         'variant'    => $chosen,
                         'variantUrl' => $vurl,
                         'variantName'=> $vname,
+                        // Print-area window so the order/thank-you mockup
+                        // matches what the participant saw at checkout.
+                        'printArea'  => $cfg['print_area'] ?? null,
                         'filename'   => sprintf( 'mockup-order-%d-item-%d-slot-%d.png', (int) $order->get_id(), (int) $item_id, $slot ),
                     ],
                 ];
@@ -1737,7 +1865,11 @@ class CW_Design_Submission {
                         </div>
 
                         <div class="cw-design-mockup__meta">
-                            <div class="cw-design-mockup__variant"><i class="fas fa-palette" aria-hidden="true"></i> <?php echo esc_html( $m['v_name'] ); ?></div>
+                            <div class="cw-design-mockup__variant">
+                                <i class="fas fa-palette" aria-hidden="true"></i>
+                                <span class="cw-design-mockup__variant-label"><?php esc_html_e( 'Casing color:', 'creativewings-core' ); ?></span>
+                                <strong class="cw-design-mockup__variant-name"><?php echo esc_html( $m['v_name'] ); ?></strong>
+                            </div>
                             <?php if ( $m['art_name'] ): ?>
                             <div class="cw-design-mockup__file" title="<?php echo esc_attr( $m['art_name'] ); ?>"><i class="fas fa-file-image" aria-hidden="true"></i> <?php echo esc_html( $m['art_name'] ); ?></div>
                             <?php endif; ?>
@@ -1912,8 +2044,8 @@ class CW_Design_Submission {
             $css_ver
         );
 
-        // JS — handles client-side PNG dimension validation, AJAX upload,
-        // and canvas mockup compositing. Vanilla, no jQuery dependency.
+        // JS — PNG upload + cover-crop preview + canvas mockup compositing.
+        // Vanilla, no jQuery dependency.
         $js_path = CW_PATH . 'assets/js/cw-design-preview.js';
         $js_ver  = file_exists( $js_path ) ? (string) filemtime( $js_path ) : ( defined( 'CW_VERSION' ) ? CW_VERSION : null );
         wp_enqueue_script(
@@ -1929,7 +2061,8 @@ class CW_Design_Submission {
             'action'     => self::AJAX_ACTION,
             'messages'   => [
                 'wrongExtension'  => __( 'Please choose a PNG file.', 'creativewings-core' ),
-                'wrongDimensions' => __( 'Artwork must be exactly %dpx × %dpx.', 'creativewings-core' ),
+                'fitting'         => __( 'PNG only — we’ll fit it to the case.', 'creativewings-core' ),
+                'exactFit'        => __( 'Exact case size — ready to upload.', 'creativewings-core' ),
                 'uploading'       => __( 'Uploading…', 'creativewings-core' ),
                 'uploaded'        => __( 'Uploaded ✓', 'creativewings-core' ),
                 'sourceUploaded'  => __( 'Source file uploaded ✓', 'creativewings-core' ),
