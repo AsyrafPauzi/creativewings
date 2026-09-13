@@ -13,6 +13,7 @@ class CW_Dashboard_Contestant {
 
         // 2. Form Handlers
         add_action( 'admin_post_cw_save_contestant_settings', [ $this, 'handle_save_settings' ] ); // Corrected handler name
+        add_action( 'admin_post_cw_redeem_points_reward', [ $this, 'handle_redeem_reward' ] );
     }
 
     /* ==========================================================================
@@ -892,6 +893,15 @@ class CW_Dashboard_Contestant {
         $lifetime = CW_Points::get_lifetime_earned( $uid );
         $expires  = CW_Points::get_expires_at( $uid );
         $rank     = CW_Points::get_user_rank( $uid );
+        $rm_value = CW_Points::points_to_rm( $balance );
+
+        $rewards     = class_exists( 'CW_Points_Rewards' ) ? CW_Points_Rewards::get_rewards( true ) : [];
+        $redemptions = class_exists( 'CW_Points_Rewards' ) ? CW_Points_Rewards::get_user_redemptions( $uid, 10 ) : [];
+
+        $flash = '';
+        if ( ! empty( $_GET['cw_points_msg'] ) ) {
+            $flash = sanitize_text_field( wp_unslash( $_GET['cw_points_msg'] ) );
+        }
 
         global $wpdb;
         $table = CW_Points::table();
@@ -902,12 +912,19 @@ class CW_Dashboard_Contestant {
             ),
             ARRAY_A
         );
+        $shop_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : home_url( '/' );
         ?>
         <div class="cw-content-wrapper">
             <div class="cw-dash-header">
                 <h2><?php esc_html_e( 'Your Points', 'creativewings-core' ); ?></h2>
-                <p><?php esc_html_e( 'Earn 1 point per RM1 of the original campaign price when you join. Points expire 12 months after your last join unless you join again.', 'creativewings-core' ); ?></p>
+                <p><?php esc_html_e( 'Earn 1 point per RM1 cash paid when you join a campaign (free or 100% coupon joins earn 0). 100 points = RM1.00 at checkout. Points expire 12 months after your last join unless you join again.', 'creativewings-core' ); ?></p>
             </div>
+
+            <?php if ( $flash !== '' ) : ?>
+                <div class="cw-points-flash" style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;border-radius:10px;padding:12px 14px;margin-bottom:18px;">
+                    <?php echo esc_html( $flash ); ?>
+                </div>
+            <?php endif; ?>
 
             <div class="cw-stats-container" style="margin-bottom:28px;">
                 <div class="cw-stat-box-v2">
@@ -916,6 +933,7 @@ class CW_Dashboard_Contestant {
                         <h3><?php echo number_format( $balance ); ?></h3>
                     </div>
                     <span><?php esc_html_e( 'Current balance', 'creativewings-core' ); ?></span>
+                    <small style="display:block;margin-top:6px;color:#64748b;">≈ RM<?php echo esc_html( number_format( $rm_value, 2 ) ); ?> checkout credit</small>
                 </div>
                 <div class="cw-stat-box-v2">
                     <div class="cw-stat-value-row">
@@ -949,12 +967,98 @@ class CW_Dashboard_Contestant {
                 </p>
             <?php endif; ?>
 
-            <div style="background:#fff;border:1px dashed #cbd5e1;border-radius:12px;padding:20px 22px;margin-bottom:28px;">
-                <h3 style="margin:0 0 8px;font-size:1.05rem;"><?php esc_html_e( 'Redeem points', 'creativewings-core' ); ?></h3>
+            <div class="cw-points-checkout-note" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;margin-bottom:24px;">
+                <h3 style="margin:0 0 6px;font-size:1.05rem;"><?php esc_html_e( 'Use points at checkout', 'creativewings-core' ); ?></h3>
                 <p style="margin:0;color:#64748b;font-size:14px;">
-                    <?php esc_html_e( 'Coming Soon — merchandise, coupons, and more rewards.', 'creativewings-core' ); ?>
+                    <?php esc_html_e( 'When joining your next campaign, apply points at checkout for entry-fee credit (100 pts = RM1.00).', 'creativewings-core' ); ?>
+                    <a href="<?php echo esc_url( $shop_url ); ?>" style="font-weight:600;"><?php esc_html_e( 'Browse campaigns', 'creativewings-core' ); ?></a>
                 </p>
             </div>
+
+            <div class="cw-points-merch" style="margin-bottom:28px;">
+                <h3 style="margin:0 0 12px;font-size:1.05rem;"><?php esc_html_e( 'Redeem merchandise', 'creativewings-core' ); ?></h3>
+                <?php if ( empty( $rewards ) ) : ?>
+                    <p style="margin:0;color:#64748b;font-size:14px;"><?php esc_html_e( 'No merchandise available right now. Check back soon.', 'creativewings-core' ); ?></p>
+                <?php else : ?>
+                    <div class="cw-points-merch-grid">
+                        <?php foreach ( $rewards as $reward ) :
+                            $cost   = (int) $reward['points_cost'];
+                            $stock  = $reward['stock'];
+                            $oos    = ( $stock !== null && (int) $stock <= 0 );
+                            $can    = ! $oos && $balance >= $cost;
+                            $img    = ! empty( $reward['image_id'] ) ? wp_get_attachment_image_url( (int) $reward['image_id'], 'medium' ) : '';
+                            ?>
+                            <div class="cw-points-merch-card">
+                                <div class="cw-points-merch-card__media">
+                                    <?php if ( $img ) : ?>
+                                        <img src="<?php echo esc_url( $img ); ?>" alt="" loading="lazy">
+                                    <?php else : ?>
+                                        <span class="cw-points-merch-card__placeholder"><i class="fas fa-gift"></i></span>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="cw-points-merch-card__body">
+                                    <h4><?php echo esc_html( $reward['title'] ); ?></h4>
+                                    <?php if ( ! empty( $reward['description'] ) ) : ?>
+                                        <p><?php echo esc_html( $reward['description'] ); ?></p>
+                                    <?php endif; ?>
+                                    <div class="cw-points-merch-card__meta">
+                                        <strong><?php echo number_format( $cost ); ?> pts</strong>
+                                        <span>
+                                            <?php
+                                            if ( $oos ) {
+                                                esc_html_e( 'Out of stock', 'creativewings-core' );
+                                            } elseif ( $stock === null ) {
+                                                esc_html_e( 'In stock', 'creativewings-core' );
+                                            } else {
+                                                printf(
+                                                    /* translators: %d: stock */
+                                                    esc_html__( '%d left', 'creativewings-core' ),
+                                                    (int) $stock
+                                                );
+                                            }
+                                            ?>
+                                        </span>
+                                    </div>
+                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                                        <input type="hidden" name="action" value="cw_redeem_points_reward">
+                                        <input type="hidden" name="reward_id" value="<?php echo (int) $reward['id']; ?>">
+                                        <?php wp_nonce_field( 'cw_redeem_points_reward_' . (int) $reward['id'] ); ?>
+                                        <button type="submit" class="button" <?php disabled( ! $can ); ?>>
+                                            <?php esc_html_e( 'Redeem', 'creativewings-core' ); ?>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <?php if ( ! empty( $redemptions ) ) : ?>
+                <h3 class="cw-recent-heading"><?php esc_html_e( 'Merchandise redemptions', 'creativewings-core' ); ?></h3>
+                <div class="cw-recent-table-wrap" style="margin-bottom:28px;">
+                    <table class="cw-recent-table">
+                        <thead>
+                            <tr>
+                                <th><?php esc_html_e( 'Date', 'creativewings-core' ); ?></th>
+                                <th><?php esc_html_e( 'Item', 'creativewings-core' ); ?></th>
+                                <th><?php esc_html_e( 'Points', 'creativewings-core' ); ?></th>
+                                <th><?php esc_html_e( 'Status', 'creativewings-core' ); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $redemptions as $red ) : ?>
+                            <tr>
+                                <td><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $red['created_at'] ) ) ); ?></td>
+                                <td><?php echo esc_html( $red['reward_title'] ?? ( '#' . $red['reward_id'] ) ); ?></td>
+                                <td><?php echo number_format( (int) $red['points_spent'] ); ?></td>
+                                <td><?php echo esc_html( ucfirst( (string) $red['status'] ) ); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
 
             <h3 class="cw-recent-heading"><?php esc_html_e( 'Recent activity', 'creativewings-core' ); ?></h3>
             <?php if ( empty( $rows ) ) : ?>
@@ -987,6 +1091,33 @@ class CW_Dashboard_Contestant {
             <?php endif; ?>
         </div>
         <?php
+    }
+
+    public function handle_redeem_reward() {
+        if ( ! is_user_logged_in() ) {
+            wp_safe_redirect( wp_login_url() );
+            exit;
+        }
+        $uid       = get_current_user_id();
+        $reward_id = absint( $_POST['reward_id'] ?? 0 );
+        check_admin_referer( 'cw_redeem_points_reward_' . $reward_id );
+
+        $base = get_permalink( wc_get_page_id( 'myaccount' ) );
+        $url  = add_query_arg( 'tab', 'points', $base );
+
+        if ( ! class_exists( 'CW_Points_Rewards' ) ) {
+            wp_safe_redirect( add_query_arg( 'cw_points_msg', rawurlencode( __( 'Rewards unavailable.', 'creativewings-core' ) ), $url ) );
+            exit;
+        }
+
+        $result = CW_Points_Rewards::redeem( $uid, $reward_id );
+        if ( is_wp_error( $result ) ) {
+            wp_safe_redirect( add_query_arg( 'cw_points_msg', rawurlencode( $result->get_error_message() ), $url ) );
+            exit;
+        }
+
+        wp_safe_redirect( add_query_arg( 'cw_points_msg', rawurlencode( __( 'Redeemed! We will fulfill your merchandise soon.', 'creativewings-core' ) ), $url ) );
+        exit;
     }
 
     public function render_leaderboard() {

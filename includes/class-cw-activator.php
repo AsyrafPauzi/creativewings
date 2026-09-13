@@ -27,11 +27,17 @@ class CW_Activator {
         if ( ! class_exists( 'CW_Points' ) && file_exists( CW_PATH . 'includes/class-cw-points.php' ) ) {
             require_once CW_PATH . 'includes/class-cw-points.php';
         }
+        if ( ! class_exists( 'CW_Points_Rewards' ) && file_exists( CW_PATH . 'includes/class-cw-points-rewards.php' ) ) {
+            require_once CW_PATH . 'includes/class-cw-points-rewards.php';
+        }
         if ( class_exists( 'CW_Badges_Installer' ) ) {
             CW_Badges_Installer::maybe_install();
         }
         if ( class_exists( 'CW_Points' ) ) {
             CW_Points::maybe_install();
+        }
+        if ( class_exists( 'CW_Points_Rewards' ) ) {
+            CW_Points_Rewards::maybe_install();
         }
 
         // 4. Add Rewrite Endpoints
@@ -78,6 +84,12 @@ class CW_Activator {
             if ( class_exists( 'CW_Points' ) ) {
                 CW_Points::maybe_install();
             }
+            if ( class_exists( 'CW_Points_Rewards' ) ) {
+                CW_Points_Rewards::maybe_install();
+            }
+            if ( class_exists( 'CW_Product_Categories' ) ) {
+                CW_Product_Categories::maybe_sync();
+            }
             return;
         }
         self::create_tables();
@@ -86,6 +98,9 @@ class CW_Activator {
         }
         if ( class_exists( 'CW_Points' ) ) {
             CW_Points::maybe_install();
+        }
+        if ( class_exists( 'CW_Points_Rewards' ) ) {
+            CW_Points_Rewards::maybe_install();
         }
         update_option( 'cw_db_version', $target );
         if ( ! get_option( 'cw_webhook_secret' ) ) {

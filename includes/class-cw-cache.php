@@ -219,6 +219,7 @@ class CW_Cache {
         self::bust_group( 'org_profile' );
         self::bust_group( 'directory' );
         self::bust_group( 'reports' );
+        self::bust_group( 'homepage_blocks' );
     }
 
     public static function on_entry_changed() {

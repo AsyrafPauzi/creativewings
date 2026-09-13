@@ -10,7 +10,7 @@ class CW_Business_Form {
         1 => ['label' => 'Classify',     'icon' => 'fa-tag'],
         2 => ['label' => 'Basic Details','icon' => 'fa-pen'],
         3 => ['label' => 'Specifics',    'icon' => 'fa-cog'],
-        4 => ['label' => 'SDG & Extras', 'icon' => 'fa-leaf'],
+        4 => ['label' => 'Page & Extras', 'icon' => 'fa-leaf'],
         5 => ['label' => 'Form & Publish','icon' => 'fa-rocket'],
     ];
 
@@ -77,6 +77,10 @@ class CW_Business_Form {
     public function render_form( $atts = [], $content = null, $is_modal = false, $external_edit_id = 0 ) {
         if ( ! current_user_can( 'edit_products' ) ) return '<div class="cw-alert error">Access Denied.</div>';
 
+        if ( function_exists( 'wp_enqueue_media' ) ) {
+            wp_enqueue_media();
+        }
+
         $mode = 'create'; $edit_id = 0; $campaign = null; $meta = []; $current_cat_id = 0;
         $existing_fields = []; $existing_faqs = []; $existing_prizes = []; $existing_addons = []; $selected_sdgs_bool = [];
         $existing_age_brackets = []; $existing_schools = []; $existing_guest_checkout_fields = [];
@@ -125,6 +129,12 @@ class CW_Business_Form {
                 if ( ! is_array( $existing_schools ) ) {
                     $existing_schools = [];
                 }
+                $existing_supporting_partners = class_exists( 'CW_Campaign_Showcase' )
+                    ? CW_Campaign_Showcase::get_partners( $edit_id )
+                    : [];
+                $existing_mentors = class_exists( 'CW_Campaign_Showcase' )
+                    ? CW_Campaign_Showcase::get_mentors( $edit_id )
+                    : [];
                 $existing_guest_checkout_fields = get_post_meta( $edit_id, 'cw_guest_checkout_fields', true );
                 if ( ! is_array( $existing_guest_checkout_fields ) ) {
                     $existing_guest_checkout_fields = [];
@@ -140,6 +150,12 @@ class CW_Business_Form {
         $guest_checkout_catalogue = class_exists( 'CW_Guest_Join' )
             ? CW_Guest_Join::get_profile_field_catalogue()
             : [];
+        if ( ! isset( $existing_supporting_partners ) || ! is_array( $existing_supporting_partners ) ) {
+            $existing_supporting_partners = [];
+        }
+        if ( ! isset( $existing_mentors ) || ! is_array( $existing_mentors ) ) {
+            $existing_mentors = [];
+        }
         $val     = function($k) use ($meta) { return isset($meta[$k][0]) ? $meta[$k][0] : ''; };
 
         $enable_addons = $val( 'cw_enable_addons' );
@@ -377,8 +393,31 @@ class CW_Business_Form {
                                 </div>
 
                                 <div class="cw-field full cw-field-rich-text">
-                                    <label>Description *</label>
-                                    <?php wp_editor($mode==='edit' ? $campaign->post_content : '', 'post_content', ['textarea_name'=>'post_content','media_buttons'=>false,'textarea_rows'=>4,'teeny'=>true,'quicktags'=>false,'editor_class'=>'cw-slim-editor-dark']); ?>
+                                    <label><?php esc_html_e( 'Description *', 'creativewings-core' ); ?></label>
+                                    <p style="font-size:12px;color:var(--cw-text-soft);margin:0 0 8px;">
+                                        <?php esc_html_e( 'Use Visual for formatting and images, or Text for HTML/code. Click Add Media to upload images into the description.', 'creativewings-core' ); ?>
+                                    </p>
+                                    <?php
+                                    wp_editor(
+                                        $mode === 'edit' ? $campaign->post_content : '',
+                                        'post_content',
+                                        [
+                                            'textarea_name' => 'post_content',
+                                            'media_buttons' => true,
+                                            'textarea_rows' => 12,
+                                            'teeny'         => false,
+                                            'quicktags'     => true,
+                                            'tinymce'       => [
+                                                'toolbar1' => 'formatselect,bold,italic,underline,bullist,numlist,blockquote,alignleft,aligncenter,alignright,link,unlink,wp_adv',
+                                                'toolbar2' => 'forecolor,pastetext,removeformat,charmap,outdent,indent,undo,redo,wp_help',
+                                                'block_formats' => 'Paragraph=p;Heading 2=h2;Heading 3=h3;Heading 4=h4',
+                                                'paste_as_text' => false,
+                                                'paste_auto_cleanup_on_paste' => true,
+                                            ],
+                                            'editor_class'  => 'cw-campaign-description-editor',
+                                        ]
+                                    );
+                                    ?>
                                 </div>
 
                                 <p class="cw-mini-head">Campaign Format</p>
@@ -508,7 +547,7 @@ class CW_Business_Form {
 
                                             <p class="cw-mini-head">Product variants</p>
                                             <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 8px;">
-                                                Add as many as you like (most campaigns use 3-6). Pick which one is the default pre-selected on checkout.
+                                                Add as many as you like (most campaigns use 3-6). Pick which one is the default pre-selected on checkout. Use <strong>Select image</strong> to reuse images you already uploaded, or choose a new file below.
                                             </p>
 
                                             <div id="cw-design-variants-list">
@@ -523,7 +562,7 @@ class CW_Business_Form {
                                                     $vurl  = $vaid ? wp_get_attachment_url($vaid) : '';
                                                     $is_default = ($vslug !== '' && $vslug === $design_default_val);
                                                 ?>
-                                                <div class="cww-rep-row cw-design-variant-row" data-idx="<?php echo (int) $idx; ?>" style="grid-template-columns: 80px 1fr 1fr auto auto;align-items:center;">
+                                                <div class="cww-rep-row cw-design-variant-row" data-idx="<?php echo (int) $idx; ?>" style="grid-template-columns: 80px 1fr 1.2fr auto auto;align-items:center;">
                                                     <div class="cw-design-variant-thumb" style="width:70px;height:46px;background:<?php echo $vurl ? '#fff' : '#f1f5f9'; ?>;border:1px <?php echo $vurl ? 'solid' : 'dashed'; ?> #cbd5e1;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:10px;text-align:center;overflow:hidden;">
                                                         <?php if ($vurl) : ?>
                                                             <img src="<?php echo esc_url($vurl); ?>" style="max-width:100%;max-height:100%;object-fit:contain;">
@@ -532,8 +571,13 @@ class CW_Business_Form {
                                                         <?php endif; ?>
                                                     </div>
                                                     <input type="text" name="cw_design_variants[<?php echo (int) $idx; ?>][name]" value="<?php echo esc_attr($vname); ?>" placeholder="Variant name (e.g. Midnight Blue)" class="cw-design-variant-name">
-                                                    <div>
-                                                        <input type="file" accept="image/png,image/jpeg,image/webp" class="cw-file-upload-input cw-design-variant-file" data-session-key="cw_design_wizard_variant_<?php echo (int) $idx; ?>" style="width:100%;font-size:12px;">
+                                                    <div class="cw-design-variant-media">
+                                                        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
+                                                            <button type="button" class="cww-rep-add cw-design-variant-pick" style="margin:0;padding:6px 10px;font-size:11px;">
+                                                                <i class="fas fa-images"></i> <?php echo $vurl ? esc_html__('Change image', 'creativewings-core') : esc_html__('Select image', 'creativewings-core'); ?>
+                                                            </button>
+                                                        </div>
+                                                        <input type="file" accept="image/png,image/jpeg,image/webp" name="cw_design_variant_file[<?php echo (int) $idx; ?>]" class="cw-file-upload-input cw-design-variant-file" data-session-key="cw_design_wizard_variant_<?php echo (int) $idx; ?>" style="width:100%;font-size:11px;">
                                                         <input type="hidden" name="cw_design_variants[<?php echo (int) $idx; ?>][attachment_id]" value="<?php echo esc_attr($vaid); ?>" class="cw-design-variant-aid">
                                                         <input type="hidden" name="cw_design_variants[<?php echo (int) $idx; ?>][slug]" value="<?php echo esc_attr($vslug); ?>" class="cw-design-variant-slug">
                                                     </div>
@@ -765,9 +809,99 @@ class CW_Business_Form {
 
                             <!-- ════════════ STEP 4: SDG & EXTRAS ════════════ -->
                             <div class="cw-wizard-step" data-step="4" style="display:none;">
-                                <h4 class="cw-step-title">SDG Goals &amp; Extras</h4>
-                                <p class="cw-step-subtitle">Select the Sustainable Development Goals your event supports, add FAQs, and optional add-ons.</p>
+                                <h4 class="cw-step-title">Campaign Page, SDG &amp; Extras</h4>
+                                <p class="cw-step-subtitle">Add supporting partners and mentors for the public campaign page, select SDG goals, then configure FAQs and optional add-ons.</p>
 
+                                <div id="cw-section-campaign-showcase" class="cw-config-card" style="margin-bottom:24px;">
+                                    <p class="cw-mini-head" style="margin-top:0;"><?php esc_html_e( 'Public campaign page', 'creativewings-core' ); ?></p>
+                                    <p style="font-size:13px;color:var(--cw-text-soft);margin:0 0 16px;">
+                                        <?php esc_html_e( 'These appear on the event detail page after About and before Gallery. Each row needs a name and image.', 'creativewings-core' ); ?>
+                                    </p>
+
+                                    <p class="cw-mini-head"><?php esc_html_e( 'Supporting Partners', 'creativewings-core' ); ?></p>
+                                    <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 10px;">
+                                        <?php esc_html_e( 'Logo row for schools, NGOs, and community partners.', 'creativewings-core' ); ?>
+                                    </p>
+                                    <div id="cw-supporting-partners-list">
+                                        <?php
+                                        $pidx = 0;
+                                        $partner_rows = ! empty( $existing_supporting_partners )
+                                            ? $existing_supporting_partners
+                                            : [ [ 'name' => '', 'attachment_id' => 0, 'url' => '' ] ];
+                                        foreach ( $partner_rows as $partner ) :
+                                            $pname = sanitize_text_field( $partner['name'] ?? '' );
+                                            $paid  = (int) ( $partner['attachment_id'] ?? 0 );
+                                            $purl  = isset( $partner['url'] ) ? (string) $partner['url'] : '';
+                                            $pimg  = $paid ? wp_get_attachment_url( $paid ) : '';
+                                        ?>
+                                        <div class="cww-rep-row cw-showcase-row cw-showcase-partner-row" data-idx="<?php echo (int) $pidx; ?>" style="grid-template-columns:80px 1fr 1fr 1.2fr auto;align-items:center;">
+                                            <div class="cw-showcase-thumb cw-design-variant-thumb" style="width:70px;height:46px;background:<?php echo $pimg ? '#fff' : '#f1f5f9'; ?>;border:1px <?php echo $pimg ? 'solid' : 'dashed'; ?> #cbd5e1;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+                                                <?php if ( $pimg ) : ?>
+                                                    <img src="<?php echo esc_url( $pimg ); ?>" style="max-width:100%;max-height:100%;object-fit:contain;" alt="">
+                                                <?php else : ?>
+                                                    <span style="font-size:10px;color:#94a3b8;">Logo</span>
+                                                <?php endif; ?>
+                                            </div>
+                                            <input type="text" name="cw_supporting_partners[<?php echo (int) $pidx; ?>][name]" value="<?php echo esc_attr( $pname ); ?>" placeholder="<?php esc_attr_e( 'Partner name', 'creativewings-core' ); ?>" class="cw-input-dark">
+                                            <input type="url" name="cw_supporting_partners[<?php echo (int) $pidx; ?>][url]" value="<?php echo esc_attr( $purl ); ?>" placeholder="<?php esc_attr_e( 'Website (optional)', 'creativewings-core' ); ?>" class="cw-input-dark">
+                                            <div>
+                                                <button type="button" class="cww-rep-add cw-showcase-media-pick" style="margin:0 0 6px;padding:6px 10px;font-size:11px;"><i class="fas fa-images"></i> <?php esc_html_e( 'Select logo', 'creativewings-core' ); ?></button>
+                                                <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" name="cw_supporting_partner_file[<?php echo (int) $pidx; ?>]" class="cw-showcase-media-file" style="width:100%;font-size:11px;">
+                                                <input type="hidden" name="cw_supporting_partners[<?php echo (int) $pidx; ?>][attachment_id]" value="<?php echo esc_attr( (string) $paid ); ?>" class="cw-showcase-aid">
+                                            </div>
+                                            <button type="button" class="cww-rep-del" onclick="this.closest('.cw-showcase-partner-row').remove()"><i class="fas fa-times"></i></button>
+                                        </div>
+                                        <?php $pidx++; endforeach; ?>
+                                    </div>
+                                    <button type="button" class="cww-rep-add" onclick="window.addSupportingPartnerRow()"><i class="fas fa-plus"></i> <?php esc_html_e( 'Add supporting partner', 'creativewings-core' ); ?></button>
+
+                                    <p class="cw-mini-head" style="margin-top:24px;"><?php esc_html_e( 'Mentors', 'creativewings-core' ); ?></p>
+                                    <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 10px;">
+                                        <?php esc_html_e( 'Advisory mentors shown as profile cards on the campaign page.', 'creativewings-core' ); ?>
+                                    </p>
+                                    <div id="cw-mentors-list">
+                                        <?php
+                                        $midx = 0;
+                                        $mentor_rows = ! empty( $existing_mentors )
+                                            ? $existing_mentors
+                                            : [ [ 'name' => '', 'title' => '', 'attachment_id' => 0, 'bio' => '', 'url' => '' ] ];
+                                        foreach ( $mentor_rows as $mentor ) :
+                                            $mname  = sanitize_text_field( $mentor['name'] ?? '' );
+                                            $mtitle = sanitize_text_field( $mentor['title'] ?? '' );
+                                            $mbid   = (int) ( $mentor['attachment_id'] ?? 0 );
+                                            $mbio   = sanitize_textarea_field( $mentor['bio'] ?? '' );
+                                            $murl   = isset( $mentor['url'] ) ? (string) $mentor['url'] : '';
+                                            $mimg   = $mbid ? wp_get_attachment_url( $mbid ) : '';
+                                        ?>
+                                        <div class="cw-showcase-mentor-row" data-idx="<?php echo (int) $midx; ?>" style="margin-bottom:12px;padding:12px;border:1px solid var(--cw-border);border-radius:10px;background:var(--cw-bg);">
+                                            <div class="cw-form-row-2" style="gap:12px;align-items:start;">
+                                                <div class="cw-showcase-thumb cw-design-variant-thumb" style="width:72px;height:72px;background:<?php echo $mimg ? '#fff' : '#f1f5f9'; ?>;border:1px <?php echo $mimg ? 'solid' : 'dashed'; ?> #cbd5e1;border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">
+                                                    <?php if ( $mimg ) : ?>
+                                                        <img src="<?php echo esc_url( $mimg ); ?>" style="width:100%;height:100%;object-fit:cover;" alt="">
+                                                    <?php else : ?>
+                                                        <span style="font-size:10px;color:#94a3b8;">Photo</span>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <div style="flex:1;display:grid;gap:8px;">
+                                                    <input type="text" name="cw_mentors[<?php echo (int) $midx; ?>][name]" value="<?php echo esc_attr( $mname ); ?>" placeholder="<?php esc_attr_e( 'Mentor name', 'creativewings-core' ); ?>" class="cw-input-dark">
+                                                    <input type="text" name="cw_mentors[<?php echo (int) $midx; ?>][title]" value="<?php echo esc_attr( $mtitle ); ?>" placeholder="<?php esc_attr_e( 'Title / expertise (e.g. Education Advisor)', 'creativewings-core' ); ?>" class="cw-input-dark">
+                                                    <input type="url" name="cw_mentors[<?php echo (int) $midx; ?>][url]" value="<?php echo esc_attr( $murl ); ?>" placeholder="<?php esc_attr_e( 'Personal link (website, LinkedIn, portfolio)', 'creativewings-core' ); ?>" class="cw-input-dark">
+                                                    <textarea name="cw_mentors[<?php echo (int) $midx; ?>][bio]" rows="2" placeholder="<?php esc_attr_e( 'Short bio (optional)', 'creativewings-core' ); ?>" class="cw-input-dark" style="resize:vertical;"><?php echo esc_textarea( $mbio ); ?></textarea>
+                                                </div>
+                                                <div style="min-width:180px;">
+                                                    <button type="button" class="cww-rep-add cw-showcase-media-pick" style="margin:0 0 6px;padding:6px 10px;font-size:11px;width:100%;"><i class="fas fa-images"></i> <?php esc_html_e( 'Select photo', 'creativewings-core' ); ?></button>
+                                                    <input type="file" accept="image/png,image/jpeg,image/webp" name="cw_mentor_photo_file[<?php echo (int) $midx; ?>]" class="cw-showcase-media-file" style="width:100%;font-size:11px;">
+                                                    <input type="hidden" name="cw_mentors[<?php echo (int) $midx; ?>][attachment_id]" value="<?php echo esc_attr( (string) $mbid ); ?>" class="cw-showcase-aid">
+                                                    <button type="button" class="cww-rep-del" style="margin-top:8px;width:100%;" onclick="this.closest('.cw-showcase-mentor-row').remove()"><i class="fas fa-times"></i> <?php esc_html_e( 'Remove', 'creativewings-core' ); ?></button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <?php $midx++; endforeach; ?>
+                                    </div>
+                                    <button type="button" class="cww-rep-add" onclick="window.addMentorRow()"><i class="fas fa-plus"></i> <?php esc_html_e( 'Add mentor', 'creativewings-core' ); ?></button>
+                                </div>
+
+                                <p class="cw-mini-head" style="margin-top:0;"><?php esc_html_e( 'SDG Goals', 'creativewings-core' ); ?></p>
                                 <!-- SDG icon grid (mirrors product detail page) -->
                                 <div class="cw-wiz-sdg-grid">
                                     <?php foreach($this->sdg_map as $id=>$name): $is_checked=(isset($selected_sdgs_bool[$name])&&$selected_sdgs_bool[$name]==='true'); ?>
@@ -809,6 +943,31 @@ class CW_Business_Form {
                                     <?php $sidx++; } ?>
                                 </div>
                                 <button type="button" class="cww-rep-add" onclick="addSchoolRow()"><i class="fas fa-plus"></i> Add school</button>
+                                </div>
+
+                                <div class="cw-wizard-feature-panel" style="margin-top:20px;">
+                                    <p class="cw-mini-head"><?php esc_html_e( 'Resident-only promo codes', 'creativewings-core' ); ?></p>
+                                    <p class="cw-step-subtitle" style="margin-top:0;margin-bottom:12px;"><?php esc_html_e( 'Restrict specific promo codes to billing addresses in an eligible area (e.g. U13 Setia Alam Impian). Address must be collected at checkout — set Address to Required in guest checkout fields below.', 'creativewings-core' ); ?></p>
+                                    <div class="cw-form-grid cw-form-grid-2">
+                                        <div class="cw-form-group">
+                                            <label><?php esc_html_e( 'Promo codes', 'creativewings-core' ); ?></label>
+                                            <input type="text" name="cw_address_promo_codes" value="<?php echo esc_attr( $val( 'cw_address_promo_codes' ) ); ?>" placeholder="ILOVEMALAYSIA">
+                                            <small><?php esc_html_e( 'Comma-separated WooCommerce coupon codes.', 'creativewings-core' ); ?></small>
+                                        </div>
+                                        <div class="cw-form-group">
+                                            <label><?php esc_html_e( 'Allowed postcodes', 'creativewings-core' ); ?></label>
+                                            <input type="text" name="cw_address_promo_postcodes" value="<?php echo esc_attr( $val( 'cw_address_promo_postcodes' ) ); ?>" placeholder="40170, 40180, 40190, 40470">
+                                        </div>
+                                        <div class="cw-form-group">
+                                            <label><?php esc_html_e( 'Address keywords', 'creativewings-core' ); ?></label>
+                                            <input type="text" name="cw_address_promo_keywords" value="<?php echo esc_attr( $val( 'cw_address_promo_keywords' ) ); ?>" placeholder="U13, Setia Alam Impian, Setia Alam">
+                                            <small><?php esc_html_e( 'Comma-separated phrases (spaces kept). Matched in street, city, or state. Postcode OR keyword may qualify.', 'creativewings-core' ); ?></small>
+                                        </div>
+                                        <div class="cw-form-group">
+                                            <label><?php esc_html_e( 'Rejection message (optional)', 'creativewings-core' ); ?></label>
+                                            <input type="text" name="cw_address_promo_message" value="<?php echo esc_attr( $val( 'cw_address_promo_message' ) ); ?>" placeholder="<?php esc_attr_e( 'This promo is for U13 (Setia Alam Impian) residents only.', 'creativewings-core' ); ?>">
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div class="cw-toggle-box" style="margin-top:20px;">
@@ -1086,8 +1245,8 @@ class CW_Business_Form {
                                 <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin:0;">
                                     <input type="radio" name="cw_submissions_gallery_layout" value="map" <?php checked( $gallery_layout_val, 'map' ); ?> style="margin-top:3px;">
                                     <span>
-                                        <strong><?php esc_html_e( 'World map', 'creativewings-core' ); ?></strong><br>
-                                        <small><?php esc_html_e( 'Pins on a world map with KPI progress fill (when a KPI target is set).', 'creativewings-core' ); ?></small>
+                                        <strong><?php esc_html_e( 'Malaysia smiley map', 'creativewings-core' ); ?></strong><br>
+                                        <small><?php esc_html_e( 'Smiley mosaic shaped like Malaysia with KPI progress (when a KPI target is set).', 'creativewings-core' ); ?></small>
                                     </span>
                                 </label>
                             </div>
@@ -1123,21 +1282,10 @@ class CW_Business_Form {
         <script>
         document.addEventListener('DOMContentLoaded', function() {
             <?php
-            $tree = [];
-            $parents_q = get_terms(['taxonomy'=>'product_cat','parent'=>0,'hide_empty'=>false]);
-            foreach ($parents_q as $p) {
-                $subs = get_terms(['taxonomy'=>'product_cat','parent'=>$p->term_id,'hide_empty'=>false]);
-                $child_data = [];
-                foreach ($subs as $s) {
-                    $child_data[] = ['id'=>$s->term_id,'name'=>$s->name,'slug'=>$s->slug];
-                }
-                $tree[$p->slug] = $child_data;
-            }
-            // Legacy alias kept so any cached front-end state from older
-            // versions of the wizard still resolves; the new card uses the
-            // real `talk-seminar` slug which is built from get_terms() above.
-            $tree['talks'] = isset( $tree['talk-seminar'] ) ? $tree['talk-seminar'] : ( $tree['activities'] ?? [] );
-            echo "const catTree = " . json_encode($tree) . ";";
+            $tree = class_exists( 'CW_Product_Categories' )
+                ? CW_Product_Categories::get_wizard_tree()
+                : [];
+            echo "const catTree = " . wp_json_encode( $tree ) . ";";
             echo "const preSelectedSub = " . intval($current_cat_id) . ";";
             echo "const editMode = " . json_encode($mode === 'edit') . ";";
             ?>
@@ -1253,7 +1401,7 @@ class CW_Business_Form {
 
                 document.querySelectorAll('#cw-conditional-section,#set-competition,#set-activity,#set-talk,#set-design').forEach(e => e.style.display = 'none');
 
-                if (type === 'competitions' || slug.includes('art') || slug.includes('design')) {
+                if (type === 'competitions' || slug.includes('art') || slug.includes('design') || slug.includes('drawing')) {
                     document.getElementById('cw-conditional-section').style.display = 'block';
                     document.getElementById('set-competition').style.display = 'block';
                     // Reveal the Design block only when the sub-category itself is design-flavoured.
@@ -1529,11 +1677,14 @@ class CW_Business_Form {
                 if (!list) return;
                 var idx = Date.now();
                 var html =
-                  '<div class="cww-rep-row cw-design-variant-row" data-idx="' + idx + '" style="grid-template-columns: 80px 1fr 1fr auto auto;align-items:center;">' +
+                  '<div class="cww-rep-row cw-design-variant-row" data-idx="' + idx + '" style="grid-template-columns: 80px 1fr 1.2fr auto auto;align-items:center;">' +
                     '<div class="cw-design-variant-thumb" style="width:70px;height:46px;background:#f1f5f9;border:1px dashed #cbd5e1;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:10px;text-align:center;overflow:hidden;">No image</div>' +
                     '<input type="text" name="cw_design_variants[' + idx + '][name]" placeholder="Variant name (e.g. Midnight Blue)" class="cw-design-variant-name">' +
-                    '<div>' +
-                      '<input type="file" accept="image/png,image/jpeg,image/webp" class="cw-file-upload-input cw-design-variant-file" data-session-key="cw_design_wizard_variant_' + idx + '" style="width:100%;font-size:12px;">' +
+                    '<div class="cw-design-variant-media">' +
+                      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">' +
+                        '<button type="button" class="cww-rep-add cw-design-variant-pick" style="margin:0;padding:6px 10px;font-size:11px;"><i class="fas fa-images"></i> Select image</button>' +
+                      '</div>' +
+                      '<input type="file" accept="image/png,image/jpeg,image/webp" name="cw_design_variant_file[' + idx + ']" class="cw-file-upload-input cw-design-variant-file" data-session-key="cw_design_wizard_variant_' + idx + '" style="width:100%;font-size:11px;">' +
                       '<input type="hidden" name="cw_design_variants[' + idx + '][attachment_id]" value="" class="cw-design-variant-aid">' +
                       '<input type="hidden" name="cw_design_variants[' + idx + '][slug]" value="" class="cw-design-variant-slug">' +
                     '</div>' +
@@ -1545,6 +1696,136 @@ class CW_Business_Form {
                   '</div>';
                 list.insertAdjacentHTML('beforeend', html);
             };
+
+            function cwDesignVariantSetThumb(row, url) {
+                var thumb = row.querySelector('.cw-design-variant-thumb');
+                if (!thumb) return;
+                thumb.style.background = '#fff';
+                thumb.style.border = '1px solid #cbd5e1';
+                thumb.innerHTML = '<img src="' + url + '" style="max-width:100%;max-height:100%;object-fit:contain;" alt="">';
+            }
+
+            function cwShowcaseSetThumb(row, url, cover) {
+                var thumb = row.querySelector('.cw-showcase-thumb') || row.querySelector('.cw-design-variant-thumb');
+                if (!thumb) return;
+                thumb.style.background = '#fff';
+                thumb.style.border = '1px solid #cbd5e1';
+                var style = cover
+                    ? 'width:100%;height:100%;object-fit:cover;'
+                    : 'max-width:100%;max-height:100%;object-fit:contain;';
+                thumb.innerHTML = '<img src="' + url + '" style="' + style + '" alt="">';
+            }
+
+            window.addSupportingPartnerRow = function() {
+                var list = document.getElementById('cw-supporting-partners-list');
+                if (!list) return;
+                var idx = Date.now();
+                list.insertAdjacentHTML('beforeend',
+                    '<div class="cww-rep-row cw-showcase-row cw-showcase-partner-row" data-idx="' + idx + '" style="grid-template-columns:80px 1fr 1fr 1.2fr auto;align-items:center;">' +
+                      '<div class="cw-showcase-thumb cw-design-variant-thumb" style="width:70px;height:46px;background:#f1f5f9;border:1px dashed #cbd5e1;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;"><span style="font-size:10px;color:#94a3b8;">Logo</span></div>' +
+                      '<input type="text" name="cw_supporting_partners[' + idx + '][name]" placeholder="Partner name" class="cw-input-dark">' +
+                      '<input type="url" name="cw_supporting_partners[' + idx + '][url]" placeholder="Website (optional)" class="cw-input-dark">' +
+                      '<div>' +
+                        '<button type="button" class="cww-rep-add cw-showcase-media-pick" style="margin:0 0 6px;padding:6px 10px;font-size:11px;"><i class="fas fa-images"></i> Select logo</button>' +
+                        '<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" name="cw_supporting_partner_file[' + idx + ']" class="cw-showcase-media-file" style="width:100%;font-size:11px;">' +
+                        '<input type="hidden" name="cw_supporting_partners[' + idx + '][attachment_id]" value="" class="cw-showcase-aid">' +
+                      '</div>' +
+                      '<button type="button" class="cww-rep-del" onclick="this.closest(\'.cw-showcase-partner-row\').remove()"><i class="fas fa-times"></i></button>' +
+                    '</div>'
+                );
+            };
+
+            window.addMentorRow = function() {
+                var list = document.getElementById('cw-mentors-list');
+                if (!list) return;
+                var idx = Date.now();
+                list.insertAdjacentHTML('beforeend',
+                    '<div class="cw-showcase-mentor-row" data-idx="' + idx + '" style="margin-bottom:12px;padding:12px;border:1px solid var(--cw-border);border-radius:10px;background:var(--cw-bg);">' +
+                      '<div class="cw-form-row-2" style="gap:12px;align-items:start;">' +
+                        '<div class="cw-showcase-thumb cw-design-variant-thumb" style="width:72px;height:72px;background:#f1f5f9;border:1px dashed #cbd5e1;border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;"><span style="font-size:10px;color:#94a3b8;">Photo</span></div>' +
+                        '<div style="flex:1;display:grid;gap:8px;">' +
+                          '<input type="text" name="cw_mentors[' + idx + '][name]" placeholder="Mentor name" class="cw-input-dark">' +
+                          '<input type="text" name="cw_mentors[' + idx + '][title]" placeholder="Title / expertise" class="cw-input-dark">' +
+                          '<input type="url" name="cw_mentors[' + idx + '][url]" placeholder="Personal link (website, LinkedIn, portfolio)" class="cw-input-dark">' +
+                          '<textarea name="cw_mentors[' + idx + '][bio]" rows="2" placeholder="Short bio (optional)" class="cw-input-dark" style="resize:vertical;"></textarea>' +
+                        '</div>' +
+                        '<div style="min-width:180px;">' +
+                          '<button type="button" class="cww-rep-add cw-showcase-media-pick" style="margin:0 0 6px;padding:6px 10px;font-size:11px;width:100%;"><i class="fas fa-images"></i> Select photo</button>' +
+                          '<input type="file" accept="image/png,image/jpeg,image/webp" name="cw_mentor_photo_file[' + idx + ']" class="cw-showcase-media-file" style="width:100%;font-size:11px;">' +
+                          '<input type="hidden" name="cw_mentors[' + idx + '][attachment_id]" value="" class="cw-showcase-aid">' +
+                          '<button type="button" class="cww-rep-del" style="margin-top:8px;width:100%;" onclick="this.closest(\'.cw-showcase-mentor-row\').remove()"><i class="fas fa-times"></i> Remove</button>' +
+                        '</div>' +
+                      '</div>' +
+                    '</div>'
+                );
+            };
+
+            jQuery(document).on('click', '.cw-design-variant-pick, .cw-showcase-media-pick', function(e) {
+                e.preventDefault();
+                if (typeof wp === 'undefined' || !wp.media) {
+                    alert('Media library is not available. Please upload a file instead.');
+                    return;
+                }
+                var row = jQuery(this).closest('.cw-design-variant-row, .cw-showcase-row, .cw-showcase-mentor-row');
+                var aidInput = row.find('.cw-design-variant-aid, .cw-showcase-aid');
+                var thumb = row.find('.cw-design-variant-thumb, .cw-showcase-thumb');
+                var userId = (window.cw_vars && cw_vars.user_id) ? parseInt(cw_vars.user_id, 10) : 0;
+                var frame = wp.media({
+                    title: 'Select variant image',
+                    button: { text: 'Use this image' },
+                    library: { type: 'image', author: userId > 0 ? userId : undefined },
+                    multiple: false
+                });
+                frame.on('select', function() {
+                    var att = frame.state().get('selection').first().toJSON();
+                    aidInput.val(att.id);
+                    var url = (att.sizes && att.sizes.thumbnail) ? att.sizes.thumbnail.url : att.url;
+                    thumb.css({ background: '#fff', border: '1px solid #cbd5e1' })
+                         .html('<img src="' + url + '" style="max-width:100%;max-height:100%;object-fit:contain;" alt="">');
+                    row.find('.cw-design-variant-file, .cw-showcase-media-file').val('');
+                });
+                frame.open();
+            });
+
+            jQuery(document).on('change', '.cw-design-variant-file, .cw-showcase-media-file', function(e) {
+                var fileInput = jQuery(this);
+                var file = fileInput[0].files[0];
+                if (!file) return;
+                var row = fileInput.closest('.cw-design-variant-row, .cw-showcase-row, .cw-showcase-mentor-row');
+                var aidInput = row.find('.cw-design-variant-aid, .cw-showcase-aid');
+                var thumb    = row.find('.cw-design-variant-thumb, .cw-showcase-thumb');
+                var isMentor = row.hasClass('cw-showcase-mentor-row');
+
+                if (window.URL && URL.createObjectURL) {
+                    cwShowcaseSetThumb(row[0], URL.createObjectURL(file), isMentor);
+                } else {
+                    thumb.html('<i class="fas fa-spinner fa-spin" style="color:#94a3b8;"></i>');
+                }
+
+                var sessionKey = fileInput.data('session-key') || ('cw_showcase_' + Date.now());
+                var fd = new FormData();
+                fd.append('action', 'cw_file_upload');
+                fd.append('security', cw_vars.nonce);
+                fd.append('file_data', file);
+                fd.append('session_key', sessionKey);
+
+                jQuery.ajax({
+                    url: cw_vars.ajax_url, type: 'POST', data: fd, processData: false, contentType: false,
+                    success: function(res) {
+                        if (res && res.success && res.data && res.data.attach_id) {
+                            aidInput.val(res.data.attach_id);
+                            if (res.data.url) {
+                                cwShowcaseSetThumb(row[0], res.data.url, isMentor);
+                            }
+                        } else {
+                            thumb.html('<span style="color:#b91c1c;font-size:10px;">Upload failed — save form to retry</span>');
+                        }
+                    },
+                    error: function() {
+                        thumb.html('<span style="color:#b91c1c;font-size:10px;">Upload failed — save form to retry</span>');
+                    }
+                });
+            });
 
             // Auto-slug from name + sync the "Default" radio's value so the
             // posted value matches the (auto-generated) slug.
@@ -1559,41 +1840,6 @@ class CW_Business_Form {
                 var radio     = row.querySelector('.cw-design-variant-default-radio');
                 if (slugInput) slugInput.value = slug;
                 if (radio) radio.value = slug;
-            });
-
-            // Variant file upload (re-uses the cw_file_upload AJAX endpoint
-            // that's already on the AJAX surface — same pattern as the
-            // banner / participant-field uploads).
-            jQuery(document).on('change', '.cw-design-variant-file', function(e) {
-                var fileInput = jQuery(this);
-                var file = fileInput[0].files[0];
-                if (!file) return;
-                var sessionKey = fileInput.data('session-key') || ('cw_design_wizard_variant_' + Date.now());
-                var fd = new FormData();
-                fd.append('action', 'cw_file_upload');
-                fd.append('security', cw_vars.nonce);
-                fd.append('file_data', file);
-                fd.append('session_key', sessionKey);
-                var row = fileInput.closest('.cw-design-variant-row');
-                var aidInput = row.find('.cw-design-variant-aid');
-                var thumb    = row.find('.cw-design-variant-thumb');
-                thumb.html('<i class="fas fa-spinner fa-spin" style="color:#94a3b8;"></i>');
-
-                jQuery.ajax({
-                    url: cw_vars.ajax_url, type: 'POST', data: fd, processData: false, contentType: false,
-                    success: function(res) {
-                        if (res && res.success && res.data && res.data.attach_id) {
-                            aidInput.val(res.data.attach_id);
-                            thumb.css({ background: '#fff', border: '1px solid #cbd5e1' })
-                                 .html('<img src="' + res.data.url + '" style="max-width:100%;max-height:100%;object-fit:contain;">');
-                        } else {
-                            thumb.html('<span style="color:#b91c1c;font-size:10px;">Failed</span>');
-                        }
-                    },
-                    error: function() {
-                        thumb.html('<span style="color:#b91c1c;font-size:10px;">Failed</span>');
-                    }
-                });
             });
 
             // ── Repeaters ──

@@ -16,28 +16,42 @@ function cw_assert( $condition, $message ) {
     }
 }
 
+$slots = CW_Map_Coordinates::get_all_slots();
+cw_assert( count( $slots ) >= 650, 'Malaysia slot data loads near 700 target' );
+cw_assert( count( $slots ) <= 850, 'slot grid stays uncrowded' );
+
+foreach ( array_slice( $slots, 0, 50 ) as $point ) {
+    cw_assert( $point[0] >= 0 && $point[0] <= 100, 'slot x stays within map' );
+    cw_assert( $point[1] >= 0 && $point[1] <= 100, 'slot y stays within map' );
+}
+
+cw_assert(
+    CW_Map_Coordinates::total_slots_for_display( 10000, 12 ) === CW_Map_Coordinates::max_slots(),
+    'KPI target does not inflate mosaic slots'
+);
+cw_assert(
+    CW_Map_Coordinates::total_slots_for_display( 0, 0 ) === CW_Map_Coordinates::max_slots(),
+    'empty campaign still renders the full readable grid'
+);
+cw_assert(
+    CW_Map_Coordinates::total_slots_for_display( 0, 42 ) === CW_Map_Coordinates::max_slots(),
+    'filled count does not shrink the land grid'
+);
+
+$display = CW_Map_Coordinates::slots_for_display( 120 );
+cw_assert( count( $display ) === 120, 'display slots trim to requested count' );
+
 $first  = CW_Map_Coordinates::point_for_entry( 12345 );
 $repeat = CW_Map_Coordinates::point_for_entry( 12345 );
+cw_assert( $first === $repeat, 'deprecated point_for_entry stays stable' );
+cw_assert( $first['country'] === 'Malaysia', 'deprecated country is Malaysia' );
 
-cw_assert( $first === $repeat, 'same entry must map to the same point' );
-cw_assert( isset( $first['country'], $first['x'], $first['y'] ), 'point shape is complete' );
-cw_assert( $first['country'] !== '', 'country is named' );
-cw_assert( $first['x'] >= 0 && $first['x'] <= 100, 'x stays within map' );
-cw_assert( $first['y'] >= 0 && $first['y'] <= 100, 'y stays within map' );
+$assign_a = CW_Map_Coordinates::random_slot_assignments( [ 10, 20, 30 ], 100, 42 );
+$assign_b = CW_Map_Coordinates::random_slot_assignments( [ 10, 20, 30 ], 100, 42 );
+cw_assert( $assign_a === $assign_b, 'random slot assignment is stable per campaign seed' );
+cw_assert( count( array_unique( array_values( $assign_a ) ) ) === 3, 'random slots are unique' );
 
-$countries = [];
-for ( $id = 1; $id <= 250; $id++ ) {
-    $point = CW_Map_Coordinates::point_for_entry( $id );
-    $countries[ $point['country'] ] = true;
-}
-cw_assert( count( $countries ) >= 30, 'entries distribute across many countries' );
-
-$ids    = range( 1, 12000 );
-$points = CW_Map_Coordinates::points_for_entries( $ids );
-cw_assert( count( $points ) === 10000, 'default canvas point cap is 10,000' );
-cw_assert( count( $points[0] ) === 2, 'compact points contain x and y only' );
-
-$five_thousand = CW_Map_Coordinates::points_for_entries( range( 1, 5000 ) );
-cw_assert( count( $five_thousand ) === 5000, 'KPI-sized submission set keeps one point per entry' );
+$points = CW_Map_Coordinates::points_for_entries( range( 1, 12000 ) );
+cw_assert( count( $points ) === CW_Map_Coordinates::max_slots(), 'deprecated points_for_entries caps to slots' );
 
 echo "PASS: CW map coordinates\n";

@@ -1,9 +1,11 @@
 <?php
 /**
- * Stable decorative country coordinates for the public world-map gallery.
+ * Malaysia smiley-mosaic gallery — fixed land slot positions for the public map.
  *
- * Coordinates are country centroids in longitude/latitude. They do not represent
- * a participant's real location.
+ * Slots are precomputed in assets/data/malaysia-smiley-slots.json from
+ * assets/data/malaysia-boundary.geojson (Natural Earth 1:50m).
+ * Submissions fill slots in join order (oldest first). Decorative only — not
+ * real participant locations.
  *
  * @package CreativeWings
  */
@@ -14,108 +16,202 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CW_Map_Coordinates {
 
-    const MAX_POINTS = 10000;
+    const MAX_SLOTS = 900;
+
+    /** @var array{viewBox:array,count:int,slots:array}|null */
+    private static $slot_cache = null;
 
     /**
-     * Country name => [longitude, latitude].
-     *
-     * Kept to populated land areas and spread across all continents. Tiny island
-     * states are omitted because even small visual jitter can move a dot offshore.
-     *
-     * @return array<string, array{0:float,1:float}>
+     * @return array{viewBox:array<int>,count:int,slots:array<int,array{0:float,1:float}>}
      */
-    private static function countries() {
-        return [
-            'Argentina' => [ -64.0, -34.0 ], 'Australia' => [ 134.0, -25.0 ],
-            'Austria' => [ 14.1, 47.6 ], 'Bangladesh' => [ 90.3, 23.7 ],
-            'Belgium' => [ 4.7, 50.8 ], 'Bolivia' => [ -64.7, -16.7 ],
-            'Botswana' => [ 24.7, -22.3 ], 'Brazil' => [ -51.9, -14.2 ],
-            'Bulgaria' => [ 25.5, 42.7 ], 'Cambodia' => [ 104.9, 12.6 ],
-            'Cameroon' => [ 12.4, 7.4 ], 'Canada' => [ -106.3, 56.1 ],
-            'Chile' => [ -71.5, -35.7 ], 'China' => [ 104.2, 35.9 ],
-            'Colombia' => [ -74.3, 4.6 ], 'Costa Rica' => [ -84.0, 9.7 ],
-            'Croatia' => [ 15.2, 45.1 ], 'Czechia' => [ 15.5, 49.8 ],
-            'Denmark' => [ 9.5, 56.3 ], 'Ecuador' => [ -78.2, -1.8 ],
-            'Egypt' => [ 30.8, 26.8 ], 'Ethiopia' => [ 40.5, 9.1 ],
-            'Finland' => [ 25.7, 61.9 ], 'France' => [ 2.2, 46.2 ],
-            'Germany' => [ 10.5, 51.2 ], 'Ghana' => [ -1.0, 7.9 ],
-            'Greece' => [ 21.8, 39.1 ], 'Guatemala' => [ -90.2, 15.8 ],
-            'Hungary' => [ 19.5, 47.2 ], 'India' => [ 78.9, 20.6 ],
-            'Indonesia' => [ 113.9, -0.8 ], 'Iran' => [ 53.7, 32.4 ],
-            'Iraq' => [ 43.7, 33.2 ], 'Ireland' => [ -8.0, 53.4 ],
-            'Italy' => [ 12.6, 42.8 ], 'Japan' => [ 138.3, 36.2 ],
-            'Jordan' => [ 36.2, 30.6 ], 'Kazakhstan' => [ 66.9, 48.0 ],
-            'Kenya' => [ 37.9, 0.0 ], 'Laos' => [ 102.5, 19.9 ],
-            'Madagascar' => [ 46.9, -18.8 ], 'Malaysia' => [ 102.0, 4.2 ],
-            'Mexico' => [ -102.6, 23.6 ], 'Mongolia' => [ 103.8, 46.9 ],
-            'Morocco' => [ -7.1, 31.8 ], 'Mozambique' => [ 35.5, -18.7 ],
-            'Myanmar' => [ 96.0, 21.9 ], 'Namibia' => [ 18.5, -22.6 ],
-            'Nepal' => [ 84.1, 28.4 ], 'Netherlands' => [ 5.3, 52.1 ],
-            'New Zealand' => [ 174.9, -40.9 ], 'Nigeria' => [ 8.7, 9.1 ],
-            'Norway' => [ 8.5, 60.5 ], 'Pakistan' => [ 69.3, 30.4 ],
-            'Panama' => [ -80.8, 8.5 ], 'Papua New Guinea' => [ 143.9, -6.3 ],
-            'Paraguay' => [ -58.4, -23.4 ], 'Peru' => [ -75.0, -9.2 ],
-            'Philippines' => [ 121.8, 12.9 ], 'Poland' => [ 19.1, 51.9 ],
-            'Portugal' => [ -8.2, 39.4 ], 'Romania' => [ 24.9, 45.9 ],
-            'Saudi Arabia' => [ 45.1, 23.9 ], 'Senegal' => [ -14.5, 14.5 ],
-            'Serbia' => [ 21.0, 44.0 ], 'South Africa' => [ 22.9, -30.6 ],
-            'South Korea' => [ 127.8, 35.9 ], 'Spain' => [ -3.7, 40.5 ],
-            'Sri Lanka' => [ 80.8, 7.9 ], 'Sudan' => [ 30.2, 12.9 ],
-            'Sweden' => [ 18.6, 60.1 ], 'Switzerland' => [ 8.2, 46.8 ],
-            'Tanzania' => [ 34.9, -6.4 ], 'Thailand' => [ 100.9, 15.9 ],
-            'Tunisia' => [ 9.5, 33.9 ], 'Turkey' => [ 35.2, 39.0 ],
-            'Uganda' => [ 32.3, 1.4 ], 'Ukraine' => [ 31.2, 48.4 ],
-            'United Kingdom' => [ -3.4, 55.4 ], 'United States' => [ -99.0, 39.5 ],
-            'Uruguay' => [ -55.8, -32.5 ], 'Uzbekistan' => [ 64.6, 41.4 ],
-            'Venezuela' => [ -66.6, 6.4 ], 'Vietnam' => [ 108.3, 14.1 ],
-            'Zambia' => [ 27.8, -13.1 ], 'Zimbabwe' => [ 29.2, -19.0 ],
+    public static function get_slot_data() {
+        if ( null !== self::$slot_cache ) {
+            return self::$slot_cache;
+        }
+
+        $path = defined( 'CW_PATH' )
+            ? CW_PATH . 'assets/data/malaysia-smiley-slots.json'
+            : dirname( __DIR__ ) . '/assets/data/malaysia-smiley-slots.json';
+
+        $default = [
+            'viewBox' => [ 1000, 750 ],
+            'count'   => 0,
+            'slots'   => [],
         ];
+
+        if ( ! is_readable( $path ) ) {
+            self::$slot_cache = $default;
+            return self::$slot_cache;
+        }
+
+        $raw = json_decode( (string) file_get_contents( $path ), true );
+        if ( ! is_array( $raw ) || empty( $raw['slots'] ) || ! is_array( $raw['slots'] ) ) {
+            self::$slot_cache = $default;
+            return self::$slot_cache;
+        }
+
+        $slots = [];
+        foreach ( $raw['slots'] as $point ) {
+            if ( ! is_array( $point ) || count( $point ) < 2 ) {
+                continue;
+            }
+            $x = (float) $point[0];
+            $y = (float) $point[1];
+            if ( $x < 0 || $x > 100 || $y < 0 || $y > 100 ) {
+                continue;
+            }
+            $slots[] = [ round( $x, 2 ), round( $y, 2 ) ];
+        }
+
+        self::$slot_cache = [
+            'viewBox'    => array_map( 'intval', (array) ( $raw['viewBox'] ?? [ 1000, 750 ] ) ),
+            'gridStep'   => (float) ( $raw['gridStep'] ?? 6.2 ),
+            'radiusRatio'=> (float) ( $raw['radiusRatio'] ?? 0.4 ),
+            'count'      => count( $slots ),
+            'slots'      => $slots,
+        ];
+
+        return self::$slot_cache;
     }
 
     /**
-     * @param int $entry_id
-     * @return array{x:float,y:float,country:string}
-     */
-    public static function point_for_entry( $entry_id ) {
-        $entry_id = max( 1, (int) $entry_id );
-        $countries = self::countries();
-        $names     = array_keys( $countries );
-        $hash      = (int) sprintf( '%u', crc32( 'cw-country-' . $entry_id ) );
-        $country   = $names[ $hash % count( $names ) ];
-        list( $longitude, $latitude ) = $countries[ $country ];
-
-        // Tiny deterministic jitter makes repeated-country dots visible while
-        // keeping them visually anchored to the selected country.
-        $jitter_hash = (int) sprintf( '%u', crc32( 'cw-jitter-' . $entry_id ) );
-        $jx = ( ( $jitter_hash % 101 ) - 50 ) / 100;
-        $jy = ( ( (int) ( $jitter_hash / 101 ) % 101 ) - 50 ) / 100;
-
-        $x = ( ( $longitude + 180 ) / 360 ) * 100 + ( $jx * 0.7 );
-        $y = ( ( 90 - $latitude ) / 180 ) * 100 + ( $jy * 0.5 );
-
-        return [
-            'x'       => round( max( 0, min( 100, $x ) ), 2 ),
-            'y'       => round( max( 0, min( 100, $y ) ), 2 ),
-            'country' => $country,
-        ];
-    }
-
-    /**
-     * Compact points for the canvas layer.
-     *
-     * @param int[] $entry_ids
-     * @param int   $limit
      * @return array<int, array{0:float,1:float}>
      */
-    public static function points_for_entries( $entry_ids, $limit = self::MAX_POINTS ) {
+    public static function get_all_slots() {
+        $data = self::get_slot_data();
+        return is_array( $data['slots'] ?? null ) ? $data['slots'] : [];
+    }
+
+    /**
+     * How many mosaic slots to render.
+     *
+     * KPI progress is shown in the toolbar only — it does not inflate the
+     * on-map grid (dense grids make smileys unreadable).
+     *
+     * @param int $kpi_target Unused; kept for call-site compatibility.
+     * @param int $filled     Real successful submission count.
+     */
+    public static function total_slots_for_display( $kpi_target, $filled ) {
+        unset( $kpi_target );
+        $max    = self::max_slots();
+        $filled = max( 0, (int) $filled );
+
+        return $max;
+    }
+
+    /**
+     * Deterministic random slot indices for submissions (stable per campaign).
+     *
+     * @param int[] $entry_ids
+     * @param int   $display_slots
+     * @param int   $seed Campaign product ID.
+     * @return array<int,int> entry_id => slot_index
+     */
+    public static function random_slot_assignments( $entry_ids, $display_slots, $seed ) {
+        $display_slots = max( 0, (int) $display_slots );
+        $entry_ids     = array_values( array_map( 'intval', (array) $entry_ids ) );
+        if ( $display_slots <= 0 || empty( $entry_ids ) ) {
+            return [];
+        }
+
+        $pool = range( 0, $display_slots - 1 );
+        $pool = self::seeded_shuffle_array( $pool, (int) $seed );
+
+        $assignments = [];
+        $take          = min( count( $entry_ids ), count( $pool ) );
+        for ( $i = 0; $i < $take; $i++ ) {
+            $assignments[ (int) $entry_ids[ $i ] ] = (int) $pool[ $i ];
+        }
+
+        return $assignments;
+    }
+
+    /**
+     * @param array<int,int|string> $items
+     * @return array<int,int|string>
+     */
+    private static function seeded_shuffle_array( array $items, $seed ) {
+        $n     = count( $items );
+        $state = (int) sprintf( '%u', crc32( 'cw-map:' . (string) $seed ) );
+        for ( $i = $n - 1; $i > 0; $i-- ) {
+            $state = self::prng_next( $state );
+            $j     = $state % ( $i + 1 );
+            $tmp   = $items[ $i ];
+            $items[ $i ] = $items[ $j ];
+            $items[ $j ] = $tmp;
+        }
+        return $items;
+    }
+
+    private static function prng_next( $state ) {
+        return (int) ( ( $state * 1103515245 + 12345 ) & 0x7fffffff );
+    }
+
+    public static function max_slots() {
+        $data = self::get_slot_data();
+        $count = (int) ( $data['count'] ?? 0 );
+        if ( $count > 0 ) {
+            return min( self::MAX_SLOTS, $count );
+        }
+        return self::MAX_SLOTS;
+    }
+
+    /**
+     * @return array{viewBox:array<int>,gridStep:float,radiusRatio:float,count:int,slots:array}
+     */
+    public static function get_mosaic_meta() {
+        $data = self::get_slot_data();
+        return [
+            'viewBox'     => $data['viewBox'] ?? [ 1000, 750 ],
+            'gridStep'    => (float) ( $data['gridStep'] ?? 6.2 ),
+            'radiusRatio' => (float) ( $data['radiusRatio'] ?? 0.4 ),
+            'count'       => (int) ( $data['count'] ?? 0 ),
+        ];
+    }
+
+    /**
+     * Slots used for the mosaic (trimmed to display count).
+     *
+     * @param int $display_count
+     * @return array<int, array{0:float,1:float}>
+     */
+    public static function slots_for_display( $display_count ) {
+        $display_count = max( 0, min( self::max_slots(), (int) $display_count ) );
+        return array_slice( self::get_all_slots(), 0, $display_count );
+    }
+
+    /**
+     * @deprecated World-map country points removed — kept for test compatibility.
+     */
+    public static function point_for_entry( $entry_id ) {
+        $slots = self::get_all_slots();
+        if ( empty( $slots ) ) {
+            return [ 'x' => 50.0, 'y' => 50.0, 'country' => 'Malaysia' ];
+        }
+        $index = max( 0, (int) $entry_id - 1 ) % count( $slots );
+        return [
+            'x'       => (float) $slots[ $index ][0],
+            'y'       => (float) $slots[ $index ][1],
+            'country' => 'Malaysia',
+        ];
+    }
+
+    /**
+     * @deprecated
+     * @param int[] $entry_ids
+     */
+    public static function points_for_entries( $entry_ids, $limit = self::MAX_SLOTS ) {
+        unset( $limit );
         if ( ! is_array( $entry_ids ) ) {
             return [];
         }
-        $limit = max( 0, min( self::MAX_POINTS, (int) $limit ) );
+        $slots = self::get_all_slots();
         $out   = [];
-        foreach ( array_slice( $entry_ids, 0, $limit ) as $entry_id ) {
-            $point = self::point_for_entry( (int) $entry_id );
-            $out[] = [ $point['x'], $point['y'] ];
+        foreach ( array_values( $entry_ids ) as $i => $entry_id ) {
+            if ( ! isset( $slots[ $i ] ) ) {
+                break;
+            }
+            $out[] = [ (float) $slots[ $i ][0], (float) $slots[ $i ][1] ];
         }
         return $out;
     }

@@ -23,6 +23,11 @@ class CW_Points {
     const EXPIRY_MONTHS    = 12;
     const LEADERBOARD_SIZE = 50;
     const TOP_CONTRIBUTOR  = 10;
+    /** Points per RM1 of redeem value (15 pts = RM0.15). */
+    const PTS_PER_RM = 100;
+    /** Minimum points that can be applied at checkout. */
+    const MIN_CHECKOUT_SPEND = 10;
+    const ORDER_META_SPENT = '_cw_points_spent';
 
     public static function register_hooks() {
         add_action( 'init', [ __CLASS__, 'maybe_install' ], 5 );
@@ -163,9 +168,9 @@ class CW_Points {
             $lifetime = self::get_lifetime_earned( $user_id ) + $points;
             update_user_meta( $user_id, self::META_BALANCE, $balance );
             update_user_meta( $user_id, self::META_LIFETIME, $lifetime );
-            self::add_ledger_row( $user_id, $points, 'earn', 'order', $order_id, 'Paid campaign join' );
+            self::add_ledger_row( $user_id, $points, 'earn', 'order', $order_id, 'Cash-paid campaign join' );
         } else {
-            self::add_ledger_row( $user_id, 0, 'earn', 'order', $order_id, 'Free campaign join (expiry refreshed)' );
+            self::add_ledger_row( $user_id, 0, 'earn', 'order', $order_id, 'Free / coupon join (no points; expiry refreshed)' );
         }
 
         update_user_meta( $user_id, self::META_LAST_JOIN, $now );
@@ -274,7 +279,8 @@ class CW_Points {
     }
 
     /**
-     * Floor of original (regular) line prices for CW campaign products.
+     * Points earned = floor of cash actually paid for CW campaign lines.
+     * Free / 100% coupon joins → 0. RM15 cash → 15 points.
      *
      * @param WC_Order $order
      * @return int|null Null when order has no CW campaign lines.
@@ -284,8 +290,8 @@ class CW_Points {
             return null;
         }
 
-        $total   = 0;
-        $has_cw  = false;
+        $cash_paid = 0.0;
+        $has_cw    = false;
 
         foreach ( $order->get_items() as $item ) {
             if ( ! ( $item instanceof WC_Order_Item_Product ) ) {
@@ -296,27 +302,101 @@ class CW_Points {
                 continue;
             }
             $has_cw = true;
-
-            $qty     = max( 1, (int) $item->get_quantity() );
-            $product = $item->get_product();
-            $unit    = 0.0;
-
-            if ( $product ) {
-                $regular = $product->get_regular_price();
-                if ( '' !== $regular && null !== $regular ) {
-                    $unit = (float) $regular;
-                }
-            }
-
-            // Fallback: line subtotal before coupons (still better than paid total).
-            if ( $unit <= 0 ) {
-                $unit = (float) $item->get_subtotal() / $qty;
-            }
-
-            $total += (int) floor( max( 0, $unit ) * $qty );
+            // Line total after coupons/discounts (cash attributed to this campaign line).
+            $cash_paid += (float) $item->get_total();
         }
 
-        return $has_cw ? $total : null;
+        if ( ! $has_cw ) {
+            return null;
+        }
+
+        // Negative fees (e.g. points credit) reduce cash paid on CW-only carts.
+        foreach ( $order->get_fees() as $fee ) {
+            if ( ! ( $fee instanceof WC_Order_Item_Fee ) ) {
+                continue;
+            }
+            $name = strtolower( (string) $fee->get_name() );
+            if ( false !== strpos( $name, 'points' ) ) {
+                $cash_paid += (float) $fee->get_total(); // fee total is negative for credits
+            }
+        }
+
+        return (int) floor( max( 0, $cash_paid ) );
+    }
+
+    /**
+     * Convert points to RM credit (100 pts = RM1.00).
+     */
+    public static function points_to_rm( $points ) {
+        return round( max( 0, (int) $points ) / self::PTS_PER_RM, 2 );
+    }
+
+    /**
+     * Convert RM to points needed (ceil so credit never exceeds balance intent).
+     */
+    public static function rm_to_points( $rm ) {
+        return (int) ceil( max( 0, (float) $rm ) * self::PTS_PER_RM );
+    }
+
+    /**
+     * Debit points from balance atomically. Returns false if insufficient funds.
+     *
+     * @param int    $user_id
+     * @param int    $points   Absolute amount to spend
+     * @param string $type     redeem_merch|spend_checkout|adjust
+     */
+    public static function debit( $user_id, $points, $type, $ref_type = '', $ref_id = 0, $note = '' ) {
+        global $wpdb;
+        $user_id = (int) $user_id;
+        $points  = abs( (int) $points );
+        if ( $user_id <= 0 || $points <= 0 ) {
+            return false;
+        }
+
+        // Atomic compare-and-subtract — prevents concurrent double-spend.
+        $updated = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$wpdb->usermeta}
+                 SET meta_value = CAST(meta_value AS SIGNED) - %d
+                 WHERE user_id = %d
+                   AND meta_key = %s
+                   AND CAST(meta_value AS SIGNED) >= %d",
+                $points,
+                $user_id,
+                self::META_BALANCE,
+                $points
+            )
+        );
+
+        if ( ! $updated ) {
+            return false;
+        }
+
+        clean_user_cache( $user_id );
+        wp_cache_delete( $user_id, 'user_meta' );
+
+        self::add_ledger_row( $user_id, -1 * $points, $type, $ref_type, $ref_id, $note );
+        self::recompute_top_contributors();
+
+        return true;
+    }
+
+    /**
+     * Refund previously spent points (e.g. cancelled order).
+     */
+    public static function credit_refund( $user_id, $points, $ref_type = '', $ref_id = 0, $note = '' ) {
+        $user_id = (int) $user_id;
+        $points  = abs( (int) $points );
+        if ( $user_id <= 0 || $points <= 0 ) {
+            return false;
+        }
+
+        $balance = self::get_balance( $user_id ) + $points;
+        update_user_meta( $user_id, self::META_BALANCE, $balance );
+        self::add_ledger_row( $user_id, $points, 'adjust', $ref_type, $ref_id, $note !== '' ? $note : 'Points refund' );
+        self::recompute_top_contributors();
+
+        return true;
     }
 
     /**

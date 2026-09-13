@@ -38,4 +38,29 @@ assert.deepEqual(
 );
 assert.equal(window.CWMapGalleryTest.normalizePoint(['x', 1]), null);
 
+assert.equal(
+  window.CWMapGalleryTest.findFilledSlotAt(
+    [[50, 50], [10, 10]],
+    window.CWMapGalleryTest.buildFilledLookup([{ slot: 0 }]),
+    100,
+    100,
+    50,
+    50,
+    4
+  ),
+  0
+);
+
+assert.equal(
+  Math.round(window.CWMapGalleryTest.smileyRadius(800, 1000, 7, 0.48) * 100) / 100,
+  2.69
+);
+
+const mapped = window.CWMapGalleryTest.screenToMapCoords(60, 40, 100, 100, 0, 0, 2);
+assert.equal(mapped.x, 55);
+assert.equal(mapped.y, 45);
+
+const clamped = window.CWMapGalleryTest.clampPan(120, 0, 2, 100, 100);
+assert.equal(clamped.tx, 50);
+
 console.log('PASS: canvas map helpers');

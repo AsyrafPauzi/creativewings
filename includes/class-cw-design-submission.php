@@ -324,6 +324,212 @@ class CW_Design_Submission {
         return $out;
     }
 
+    /**
+     * Whether the current organiser may attach this media item to a campaign
+     * variant (own uploads, or already on one of their campaigns).
+     */
+    public static function user_can_use_attachment( $attachment_id, $user_id, $campaign_id = 0 ) {
+        $attachment_id = (int) $attachment_id;
+        $user_id       = (int) $user_id;
+        $campaign_id   = (int) $campaign_id;
+
+        if ( $attachment_id <= 0 || $user_id <= 0 ) {
+            return false;
+        }
+
+        $att = get_post( $attachment_id );
+        if ( ! $att || 'attachment' !== $att->post_type ) {
+            return false;
+        }
+
+        if ( (int) $att->post_author === $user_id ) {
+            return true;
+        }
+
+        if ( $campaign_id > 0 && (int) $att->post_parent === $campaign_id ) {
+            return true;
+        }
+
+        return self::attachment_used_on_user_campaign( $attachment_id, $user_id );
+    }
+
+    /**
+     * @param int $attachment_id
+     * @param int $user_id
+     */
+    private static function attachment_used_on_user_campaign( $attachment_id, $user_id ) {
+        $campaigns = get_posts(
+            [
+                'post_type'      => 'product',
+                'post_status'    => 'any',
+                'author'         => $user_id,
+                'posts_per_page' => 200,
+                'fields'         => 'ids',
+                'meta_query'     => [
+                    [
+                        'key'     => self::META_VARIANTS,
+                        'compare' => 'EXISTS',
+                    ],
+                ],
+            ]
+        );
+
+        foreach ( $campaigns as $campaign_id ) {
+            $variants = get_post_meta( (int) $campaign_id, self::META_VARIANTS, true );
+            if ( ! is_array( $variants ) ) {
+                continue;
+            }
+            foreach ( $variants as $variant ) {
+                if ( (int) ( $variant['attachment_id'] ?? 0 ) === (int) $attachment_id ) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Keep existing variant images when the organiser edits a campaign but does
+     * not re-pick files (hidden attachment_id can be dropped by the browser).
+     *
+     * @param array $raw      posted repeater rows
+     * @param array $existing stored variants from post meta
+     * @return array
+     */
+    public static function preserve_existing_attachments( array $raw, array $existing ) {
+        if ( empty( $existing ) ) {
+            return $raw;
+        }
+
+        $by_slug = [];
+        $by_name = [];
+        foreach ( $existing as $row ) {
+            if ( ! is_array( $row ) ) {
+                continue;
+            }
+            $aid = (int) ( $row['attachment_id'] ?? 0 );
+            if ( $aid <= 0 ) {
+                continue;
+            }
+            $slug = sanitize_title( (string) ( $row['slug'] ?? '' ) );
+            $name = sanitize_text_field( (string) ( $row['name'] ?? '' ) );
+            if ( $slug !== '' ) {
+                $by_slug[ $slug ] = $aid;
+            }
+            if ( $name !== '' ) {
+                $by_name[ strtolower( $name ) ] = $aid;
+            }
+        }
+
+        foreach ( $raw as $idx => $row ) {
+            if ( ! is_array( $row ) ) {
+                continue;
+            }
+            if ( (int) ( $row['attachment_id'] ?? 0 ) > 0 ) {
+                continue;
+            }
+            $slug = sanitize_title( (string) ( $row['slug'] ?? '' ) );
+            $name = sanitize_text_field( (string) ( $row['name'] ?? '' ) );
+            if ( $slug !== '' && isset( $by_slug[ $slug ] ) ) {
+                $raw[ $idx ]['attachment_id'] = $by_slug[ $slug ];
+            } elseif ( $name !== '' && isset( $by_name[ strtolower( $name ) ] ) ) {
+                $raw[ $idx ]['attachment_id'] = $by_name[ strtolower( $name ) ];
+            }
+        }
+
+        return $raw;
+    }
+
+    /**
+     * Campaign wizard save path: accept library picks, AJAX uploads, and plain
+     * form file inputs; validate ownership; return sanitised variants.
+     *
+     * @param int   $campaign_id product ID
+     * @param int   $user_id     organiser
+     * @param array $raw         posted `cw_design_variants` rows
+     * @return array
+     */
+    public static function persist_wizard_variants( $campaign_id, $user_id, array $raw ) {
+        $campaign_id = (int) $campaign_id;
+        $user_id     = (int) $user_id;
+
+        if ( $campaign_id > 0 ) {
+            $existing = get_post_meta( $campaign_id, self::META_VARIANTS, true );
+            if ( is_array( $existing ) && ! empty( $existing ) ) {
+                $raw = self::preserve_existing_attachments( $raw, $existing );
+            }
+        }
+
+        if (
+            ! empty( $_FILES['cw_design_variant_file']['name'] )
+            && is_array( $_FILES['cw_design_variant_file']['name'] )
+        ) {
+            if ( ! function_exists( 'media_handle_upload' ) ) {
+                require_once ABSPATH . 'wp-admin/includes/image.php';
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+                require_once ABSPATH . 'wp-admin/includes/media.php';
+            }
+
+            foreach ( array_keys( $_FILES['cw_design_variant_file']['name'] ) as $idx ) {
+                if ( empty( $_FILES['cw_design_variant_file']['name'][ $idx ] ) ) {
+                    continue;
+                }
+                if ( (int) ( $_FILES['cw_design_variant_file']['error'][ $idx ] ?? UPLOAD_ERR_NO_FILE ) !== UPLOAD_ERR_OK ) {
+                    continue;
+                }
+
+                $single = [
+                    'name'     => $_FILES['cw_design_variant_file']['name'][ $idx ],
+                    'type'     => $_FILES['cw_design_variant_file']['type'][ $idx ],
+                    'tmp_name' => $_FILES['cw_design_variant_file']['tmp_name'][ $idx ],
+                    'error'    => $_FILES['cw_design_variant_file']['error'][ $idx ],
+                    'size'     => $_FILES['cw_design_variant_file']['size'][ $idx ],
+                ];
+                $_FILES['cw_design_variant_one'] = $single;
+                $aid = media_handle_upload( 'cw_design_variant_one', $campaign_id );
+                unset( $_FILES['cw_design_variant_one'] );
+
+                if ( is_wp_error( $aid ) ) {
+                    continue;
+                }
+
+                $aid = (int) $aid;
+                wp_update_post(
+                    [
+                        'ID'          => $aid,
+                        'post_author' => $user_id,
+                    ]
+                );
+                if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                    CW_Image_Optimizer::optimize_attachment( $aid, 'campaign_thumb' );
+                }
+
+                $key = is_numeric( $idx ) ? (int) $idx : (string) $idx;
+                if ( isset( $raw[ $key ] ) && is_array( $raw[ $key ] ) ) {
+                    $raw[ $key ]['attachment_id'] = $aid;
+                } elseif ( isset( $raw[ (string) $idx ] ) && is_array( $raw[ (string) $idx ] ) ) {
+                    $raw[ (string) $idx ]['attachment_id'] = $aid;
+                }
+            }
+        }
+
+        foreach ( $raw as $idx => $row ) {
+            if ( ! is_array( $row ) ) {
+                continue;
+            }
+            $aid = (int) ( $row['attachment_id'] ?? 0 );
+            if ( $aid <= 0 ) {
+                continue;
+            }
+            if ( ! self::user_can_use_attachment( $aid, $user_id, $campaign_id ) ) {
+                $raw[ $idx ]['attachment_id'] = 0;
+            }
+        }
+
+        return self::sanitize_variants( $raw );
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // ADMIN METABOX
     // ─────────────────────────────────────────────────────────────────────

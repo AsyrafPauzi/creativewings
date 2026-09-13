@@ -19,6 +19,7 @@ class CW_Guest_Join {
         add_filter( 'pre_option_woocommerce_enable_guest_checkout', [ $this, 'filter_enable_guest_checkout_option' ] );
         add_filter( 'woocommerce_checkout_registration_required', [ $this, 'filter_checkout_registration_required' ] );
         add_filter( 'woocommerce_checkout_fields', [ $this, 'filter_checkout_fields' ], 99 );
+        add_filter( 'woocommerce_enable_order_notes_field', [ $this, 'filter_enable_order_notes_field' ] );
         add_filter( 'woocommerce_checkout_posted_data', [ $this, 'filter_checkout_posted_data' ], 20 );
         add_filter( 'woocommerce_checkout_get_value', [ $this, 'filter_checkout_get_value' ], 10, 2 );
         add_filter( 'woocommerce_order_button_text', [ $this, 'filter_order_button_text' ], 20 );
@@ -85,7 +86,7 @@ class CW_Guest_Join {
                 'type'     => 'textarea',
                 'group'    => 'order',
                 'wc_key'   => 'order_comments',
-                'default'  => 'optional',
+                'default'  => 'hidden',
             ],
         ];
     }
@@ -369,6 +370,19 @@ class CW_Guest_Join {
         }
 
         return $fields;
+    }
+
+    /**
+     * Hide WooCommerce "Additional information" order notes on campaign checkout.
+     *
+     * @param bool $enabled
+     * @return bool
+     */
+    public function filter_enable_order_notes_field( $enabled ) {
+        if ( self::cart_has_cw_campaign() ) {
+            return false;
+        }
+        return $enabled;
     }
 
     /**
@@ -1037,7 +1051,6 @@ class CW_Guest_Join {
             $attrs['readonly'] = 'readonly';
         }
 
-        $age_cfg = self::get_cart_age_bracket_config();
         $classes = [ 'form-row-wide', 'cw-guest-dob-field' ];
         if ( $locked ) {
             $classes[] = 'cw-identity-readonly';
@@ -1070,20 +1083,6 @@ class CW_Guest_Join {
             ? esc_html__( 'Using the date of birth saved on your account.', 'creativewings-core' )
             : esc_html__( 'Enter your date of birth (dd/mm/yyyy) to check eligibility.', 'creativewings-core' );
         echo '</p>';
-
-        if ( ! empty( $age_cfg['enabled'] ) && ! empty( $age_cfg['brackets'] ) ) {
-            echo '<div class="cw-guest-age-brackets" aria-label="' . esc_attr__( 'Age categories', 'creativewings-core' ) . '">';
-            foreach ( $age_cfg['brackets'] as $bracket ) {
-                printf(
-                    '<span class="cw-guest-age-chip" data-key="%s" data-min="%d" data-max="%d">%s</span>',
-                    esc_attr( $bracket['key'] ),
-                    (int) $bracket['min_age'],
-                    (int) $bracket['max_age'],
-                    esc_html( $bracket['label'] )
-                );
-            }
-            echo '</div>';
-        }
 
         echo '</div>';
     }

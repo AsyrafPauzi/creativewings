@@ -1,4 +1,4 @@
-/* World-map public submissions gallery ([cw_event_detail]) */
+/* Malaysia smiley-mosaic public submissions gallery ([cw_event_detail]) */
 
 .cwd-map-gallery-section .cwd-section-title i {
     color: var(--cwd-accent, #F05A7E);
@@ -46,20 +46,27 @@
     width: 100%;
     border-radius: 14px;
     overflow: hidden;
-    background: #dbeafe;
-    border: 1px solid #bfdbfe;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     aspect-ratio: 2 / 1;
     min-height: 0;
+    touch-action: none;
+    cursor: grab;
+}
+
+.cwd-map-stage.is-dragging {
+    cursor: grabbing;
+}
+
+.cwd-map-viewport {
+    position: absolute;
+    inset: 0;
+    transform-origin: center center;
+    will-change: transform;
 }
 
 .cwd-map-bg {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: fill;
-    object-position: center;
-    pointer-events: none;
-    user-select: none;
+    display: none;
 }
 
 .cwd-map-canvas {
@@ -76,90 +83,121 @@
     position: absolute;
     inset: 0;
     z-index: 1;
-    background: radial-gradient(ellipse at center, rgba(16, 185, 129, 0.45), transparent 70%);
+    background: radial-gradient(ellipse at center, rgba(240, 90, 126, 0.08), transparent 72%);
     pointer-events: none;
     transition: opacity 0.6s ease;
 }
 
-.cwd-map-pins {
+.cwd-map-zoom-controls {
     position: absolute;
-    inset: 0;
-    z-index: 3;
+    top: 10px;
+    right: 10px;
+    z-index: 6;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.1);
 }
 
-.cwd-map-pin {
-    position: absolute;
-    transform: translate(-50%, -100%);
-    width: 22px;
-    height: 28px;
+.cwd-map-zoom-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
     padding: 0;
     border: 0;
+    border-radius: 50%;
     background: transparent;
+    color: #334155;
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1;
     cursor: pointer;
-    z-index: 4;
 }
 
-.cwd-map-pin-dot {
-    display: block;
-    width: 14px;
-    height: 14px;
-    margin: 0 auto;
-    border-radius: 50% 50% 50% 0;
-    transform: rotate(-45deg);
-    background: #F05A7E;
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.28);
-    border: 2px solid #fff;
+.cwd-map-zoom-btn:hover {
+    background: #f1f5f9;
 }
 
-.cwd-map-pin.has-msg .cwd-map-pin-dot {
-    background: #125B9A;
+.cwd-map-zoom-btn:focus-visible {
+    outline: 2px solid #125B9A;
+    outline-offset: 1px;
 }
 
-.cwd-map-pin:hover .cwd-map-pin-dot,
-.cwd-map-pin:focus-visible .cwd-map-pin-dot {
-    transform: rotate(-45deg) scale(1.18);
-    outline: none;
+.cwd-map-zoom-btn--reset {
+    font-size: 0.82rem;
 }
 
-.cwd-map-pin:focus-visible {
-    outline: none;
+.cwd-map-legend {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.88);
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    font-size: 0.72rem;
+    color: #475569;
+    pointer-events: none;
 }
 
-.cwd-map-pin-enter {
-    animation: cwdMapPinIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+.cwd-map-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
 }
 
-@keyframes cwdMapPinIn {
-    from {
-        opacity: 0;
-        transform: translate(-50%, -120%) scale(0.6);
-    }
-    to {
-        opacity: 1;
-        transform: translate(-50%, -100%) scale(1);
-    }
+.cwd-map-legend-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.cwd-map-legend-swatch--filled {
+    background: linear-gradient(135deg, #f05a7e, #fbbf24 45%, #34d399 70%, #60a5fa);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+}
+
+.cwd-map-legend-swatch--empty {
+    background: transparent;
+    border: 1.5px solid #94a3b8;
 }
 
 .cwd-map-empty {
     position: absolute;
-    inset: 0;
-    z-index: 4;
+    left: 50%;
+    top: 50%;
+    z-index: 7;
+    transform: translate(-50%, -50%);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 12px;
-    padding: 24px;
+    padding: 18px 22px;
+    max-width: min(92%, 320px);
     text-align: center;
-    background: rgba(248, 250, 252, 0.72);
-    backdrop-filter: blur(2px);
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    pointer-events: auto;
 }
 
 .cwd-map-empty p {
     margin: 0;
     color: #475569;
     font-size: 0.95rem;
-    max-width: 28ch;
 }
 
 .cwd-map-empty-cta {
@@ -181,15 +219,8 @@
     background: #0e4a7c;
 }
 
-.cwd-map-more {
-    margin: 10px 0 0;
-    font-size: 0.85rem;
-    color: #64748b;
-    text-align: center;
-}
-
 .cwd-map-note {
-    margin: 6px auto 0;
+    margin: 10px auto 0;
     max-width: 62ch;
     color: #64748b;
     font-size: 0.78rem;
@@ -199,24 +230,30 @@
 
 @media (max-width: 640px) {
     .cwd-map-stage {
-        min-height: 0;
         border-radius: 12px;
     }
-    .cwd-map-pin {
-        width: 20px;
-        height: 26px;
+
+    .cwd-map-zoom-controls {
+        top: 8px;
+        right: 8px;
     }
-    .cwd-map-pin-dot {
-        width: 12px;
-        height: 12px;
+
+    .cwd-map-zoom-btn {
+        width: 30px;
+        height: 30px;
+    }
+
+    .cwd-map-legend {
+        right: 8px;
+        bottom: 8px;
+        font-size: 0.68rem;
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .cwd-map-kpi-fill,
     .cwd-map-fill-overlay,
-    .cwd-map-pin-enter {
+    .cwd-map-viewport {
         transition: none !important;
-        animation: none !important;
     }
 }

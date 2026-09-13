@@ -2,7 +2,7 @@
 /**
  * Plugin Name: CreativeWings Core Platform
  * Description: Complete ecosystem: Auth, Onboarding, Campaigns, Tournaments, and Business Logic.
- * Version: 11.0.90
+ * Version: 11.1.4
  * Author: CreativeWings Dev
  * Text Domain: creativewings-core
  * Domain Path: /languages
@@ -69,7 +69,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
         private function define_constants() {
             define( 'CW_PATH', plugin_dir_path( __FILE__ ) );
             define( 'CW_URL', plugin_dir_url( __FILE__ ) );
-            define( 'CW_VERSION', '11.0.90' );
+            define( 'CW_VERSION', '11.1.4' );
         }
 
         /**
@@ -254,6 +254,12 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             if ( class_exists( 'CW_Points' ) ) {
                 CW_Points::register_hooks();
             }
+            if ( class_exists( 'CW_Security' ) ) {
+                CW_Security::register_hooks();
+            }
+            if ( class_exists( 'CW_Points_Rewards' ) ) {
+                CW_Points_Rewards::register_hooks();
+            }
             if ( class_exists( 'CW_Post_Checkout' ) ) {
                 CW_Post_Checkout::register_hooks();
             }
@@ -265,8 +271,15 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             $this->shop       = new CW_Shop();
             new CW_Design_Submission();
             new CW_Checkout();
+            if ( class_exists( 'CW_Points_Checkout' ) ) {
+                new CW_Points_Checkout();
+            }
+            if ( is_admin() && class_exists( 'CW_Points_Rewards_Admin' ) ) {
+                new CW_Points_Rewards_Admin();
+            }
             new CW_Guest_Join();
             $this->shortcodes = new CW_Shortcodes();
+            new CW_Homepage_Blocks();
             new CW_Organizer_Profile();
             new CW_Directory();
             $this->ajax       = new CW_Ajax();
@@ -452,7 +465,8 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
                 'ajax_url'   => admin_url( 'admin-ajax.php' ),
                 'popup_msg'  => $reg_msg,
                 'popup_type' => $reg_type,
-                'nonce'      => wp_create_nonce( 'cw_core_nonce' )
+                'nonce'      => wp_create_nonce( 'cw_core_nonce' ),
+                'user_id'    => get_current_user_id(),
             ]);
         }
         

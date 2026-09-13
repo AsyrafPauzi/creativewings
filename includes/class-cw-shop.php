@@ -27,6 +27,12 @@ class CW_Shop {
         add_action( 'woocommerce_payment_complete', [ $this, 'create_entries_from_order' ], 10, 1 );
         add_action( 'woocommerce_order_status_completed', [ $this, 'create_entries_from_order' ], 10, 1 );
         add_action( 'woocommerce_order_status_processing', [ $this, 'create_entries_from_order' ], 10, 1 );
+
+        // Campaign products are virtual registrations — paid orders should complete, not stay Processing.
+        add_filter( 'woocommerce_order_item_needs_processing', [ $this, 'virtual_item_needs_processing' ], 10, 3 );
+        add_action( 'woocommerce_payment_complete', [ $this, 'maybe_complete_campaign_order' ], 20, 1 );
+        add_action( 'woocommerce_order_status_processing', [ $this, 'maybe_complete_campaign_order' ], 5, 1 );
+        add_action( 'woocommerce_thankyou', [ $this, 'maybe_complete_campaign_order' ], 1, 1 );
         
         // UI
         add_filter('woocommerce_add_to_cart_redirect', [ $this, 'redirect_to_checkout' ]);
@@ -969,6 +975,95 @@ class CW_Shop {
         }
 
         return 'cw_competition_entry';
+    }
+
+    /**
+     * Virtual campaign products are registrations — WooCommerce should not
+     * treat them as items that need fulfilment ("Processing").
+     *
+     * @param bool               $needs_processing
+     * @param WC_Product|null    $product
+     * @param int                $order_id
+     * @return bool
+     */
+    public function virtual_item_needs_processing( $needs_processing, $product, $order_id ) {
+        if ( $product && is_a( $product, 'WC_Product' ) && $product->is_virtual() ) {
+            return false;
+        }
+        return $needs_processing;
+    }
+
+    /**
+     * After payment, move virtual-only campaign orders from Processing → Completed.
+     * CommercePay (and similar gateways) often force Processing even for virtual items.
+     *
+     * @param int $order_id
+     */
+    public function maybe_complete_campaign_order( $order_id ) {
+        $order_id = absint( $order_id );
+        if ( ! $order_id ) {
+            return;
+        }
+
+        $order = wc_get_order( $order_id );
+        if ( ! $order instanceof WC_Order ) {
+            return;
+        }
+
+        $status = $order->get_status();
+        if ( $status === 'completed' || $status === 'cancelled' || $status === 'refunded' || $status === 'failed' ) {
+            return;
+        }
+
+        // Only bump paid / free checkouts that landed in processing (or on-hold after capture).
+        if ( ! in_array( $status, [ 'processing', 'on-hold' ], true ) ) {
+            return;
+        }
+
+        if ( (float) $order->get_total() > 0 && ! $order->is_paid() ) {
+            return;
+        }
+
+        if ( ! $this->order_is_virtual_only( $order ) ) {
+            return;
+        }
+
+        // Guard against re-entrancy while update_status fires nested hooks.
+        $guard_key = '_cw_auto_completing';
+        if ( $order->get_meta( $guard_key ) ) {
+            return;
+        }
+        $order->update_meta_data( $guard_key, '1' );
+        $order->save();
+
+        $order->update_status(
+            'completed',
+            __( 'Creative Wings: campaign registration auto-completed after successful payment.', 'creativewings-core' )
+        );
+
+        $order->delete_meta_data( $guard_key );
+        $order->save();
+    }
+
+    /**
+     * @param WC_Order $order
+     * @return bool
+     */
+    private function order_is_virtual_only( $order ) {
+        $items = $order->get_items();
+        if ( empty( $items ) ) {
+            return false;
+        }
+        foreach ( $items as $item ) {
+            if ( ! is_a( $item, 'WC_Order_Item_Product' ) ) {
+                continue;
+            }
+            $product = $item->get_product();
+            if ( ! $product || ! $product->is_virtual() ) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // 6. CREATE ENTRIES (Logic for Certificates vs Artworks)

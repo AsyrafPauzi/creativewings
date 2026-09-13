@@ -24,6 +24,50 @@
         return dt;
     }
 
+    function formatDobDigits(digits) {
+        digits = String(digits || '').replace(/\D/g, '').slice(0, 8);
+        if (digits.length <= 2) {
+            return digits;
+        }
+        if (digits.length <= 4) {
+            return digits.slice(0, 2) + '/' + digits.slice(2);
+        }
+        return digits.slice(0, 2) + '/' + digits.slice(2, 4) + '/' + digits.slice(4);
+    }
+
+    function caretAfterDigitCount(count) {
+        if (count <= 2) {
+            return count;
+        }
+        if (count <= 4) {
+            return count + 1;
+        }
+        return count + 2;
+    }
+
+    function autoFormatDobField() {
+        var $field = $('#cw_guest_dob');
+        if (!$field.length || $field.prop('readonly')) {
+            return;
+        }
+
+        var el = $field[0];
+        var raw = el.value || '';
+        var digitPos = raw.slice(0, el.selectionStart).replace(/\D/g, '').length;
+        var digits = raw.replace(/\D/g, '').slice(0, 8);
+        var formatted = formatDobDigits(digits);
+
+        if (formatted === raw) {
+            return;
+        }
+
+        el.value = formatted;
+        var newCaret = caretAfterDigitCount(Math.min(digitPos, digits.length));
+        if (typeof el.setSelectionRange === 'function') {
+            el.setSelectionRange(newCaret, newCaret);
+        }
+    }
+
     function ageFromDate(born) {
         var today = new Date();
         var age = today.getFullYear() - born.getFullYear();
@@ -66,34 +110,6 @@
         }
     }
 
-    function clearChipStates() {
-        $('.cw-guest-age-chip').removeClass('is-active is-muted');
-    }
-
-    function markMatchedChip(match) {
-        var $chips = $('.cw-guest-age-chip');
-        if (!$chips.length) {
-            return;
-        }
-        $chips.addClass('is-muted').removeClass('is-active');
-        if (!match) {
-            return;
-        }
-        var key = match.key || '';
-        var $active = key
-            ? $chips.filter('[data-key="' + key.replace(/"/g, '\\"') + '"]')
-            : $();
-        if (!$active.length && typeof match.min_age !== 'undefined') {
-            $active = $chips.filter(function () {
-                return String($(this).data('min')) === String(match.min_age)
-                    && String($(this).data('max')) === String(match.max_age);
-            });
-        }
-        if ($active.length) {
-            $active.removeClass('is-muted').addClass('is-active');
-        }
-    }
-
     function updateEligibility() {
         var $field = $('#cw_guest_dob');
         var $status = $('#cw-guest-age-status');
@@ -105,7 +121,6 @@
         var born = parseDob(dob);
 
         $status.removeClass('is-ok is-error is-pending');
-        clearChipStates();
 
         if (!born) {
             $status.addClass('is-pending').text(cfg.i18n.enterDob || '');
@@ -133,7 +148,6 @@
 
         var match = matchBracket(age);
         if (match) {
-            markMatchedChip(match);
             $status
                 .addClass('is-ok')
                 .text((cfg.i18n.eligibleCategory || '').replace('%s', match.label || ''));
@@ -141,9 +155,13 @@
             return;
         }
 
-        $('.cw-guest-age-chip').addClass('is-muted');
         $status.addClass('is-error').text(cfg.i18n.notEligible || '');
         setPlaceOrderEnabled(false);
+    }
+
+    function onDobInput() {
+        autoFormatDobField();
+        updateEligibility();
     }
 
     function boot() {
@@ -152,7 +170,8 @@
 
     $(boot);
     $(document.body).on('updated_checkout', boot);
-    $(document).on('change input', '#cw_guest_dob', updateEligibility);
+    $(document).on('input', '#cw_guest_dob', onDobInput);
+    $(document).on('change', '#cw_guest_dob', updateEligibility);
 
     $(document.body).on('checkout_place_order', function () {
         var $btn = $('#place_order');

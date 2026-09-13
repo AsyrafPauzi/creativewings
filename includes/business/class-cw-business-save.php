@@ -84,6 +84,38 @@ class CW_Business_Save {
         $pid           = (int) $result;
         $is_new_campaign = ! isset( $_POST['campaign_id'] ) || ! (int) $_POST['campaign_id'];
 
+        // Design variant images — library picks, AJAX uploads, and form file
+        // inputs are merged here so variants are not lost on submit.
+        if (
+            class_exists( 'CW_Design_Submission' )
+            && ! empty( $_POST['cw_enable_design'] )
+        ) {
+            $raw_variants = isset( $_POST['cw_design_variants'] ) && is_array( $_POST['cw_design_variants'] )
+                ? wp_unslash( $_POST['cw_design_variants'] )
+                : [];
+            $variants     = CW_Design_Submission::persist_wizard_variants( $pid, $uid, $raw_variants );
+            update_post_meta( $pid, 'cw_design_variants', $variants );
+
+            $default = isset( $_POST['cw_design_default_variant'] )
+                ? sanitize_title( (string) wp_unslash( $_POST['cw_design_default_variant'] ) )
+                : '';
+            $valid_default = '';
+            foreach ( $variants as $variant ) {
+                if ( ( $variant['slug'] ?? '' ) === $default ) {
+                    $valid_default = $default;
+                    break;
+                }
+            }
+            if ( $valid_default === '' && ! empty( $variants ) ) {
+                $valid_default = (string) $variants[0]['slug'];
+            }
+            update_post_meta( $pid, 'cw_design_default_variant', $valid_default );
+        }
+
+        if ( class_exists( 'CW_Campaign_Showcase' ) ) {
+            CW_Campaign_Showcase::persist_from_wizard( $pid, $uid );
+        }
+
         if ( ! empty( $_FILES['campaign_image']['name'] ) ) {
             $aid = media_handle_upload( 'campaign_image', $pid );
             if ( ! is_wp_error( $aid ) ) {

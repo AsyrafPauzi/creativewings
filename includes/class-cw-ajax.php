@@ -26,6 +26,96 @@ class CW_Ajax {
         // 6. Public Voting (logged-in and guests)
         add_action('wp_ajax_cw_cast_vote',        [ $this, 'handle_cast_vote' ]);
         add_action('wp_ajax_nopriv_cw_cast_vote', [ $this, 'handle_cast_vote' ]);
+
+        // 7. Campaign title suggestions for homepage search
+        add_action( 'wp_ajax_cw_campaign_suggest',        [ $this, 'handle_campaign_suggest' ] );
+        add_action( 'wp_ajax_nopriv_cw_campaign_suggest', [ $this, 'handle_campaign_suggest' ] );
+    }
+
+    /**
+     * Title autocomplete for [custom_search_form].
+     * Expects: q, scope=activities|competitions, optional tab (subcategory slug).
+     */
+    public function handle_campaign_suggest() {
+        if ( class_exists( 'CW_Security' ) ) {
+            $rl = CW_Security::rate_limit( 'cw_rate_suggest_', 60, 300 );
+            if ( is_wp_error( $rl ) ) {
+                wp_send_json_error( [ 'message' => $rl->get_error_message() ], 429 );
+            }
+        }
+
+        $q     = sanitize_text_field( wp_unslash( $_GET['q'] ?? $_POST['q'] ?? '' ) );
+        $scope = sanitize_text_field( wp_unslash( $_GET['scope'] ?? $_POST['scope'] ?? 'activities' ) );
+        $tab   = sanitize_text_field( wp_unslash( $_GET['tab'] ?? $_POST['tab'] ?? '' ) );
+
+        if ( strlen( $q ) < 2 ) {
+            wp_send_json_success( [ 'items' => [] ] );
+        }
+
+        $parent_slugs = ( $scope === 'competitions' )
+            ? [ 'competitions' ]
+            : [ 'activities', 'talk-seminar' ];
+
+        $term_ids = [];
+        if ( $tab !== '' ) {
+            $term = get_term_by( 'slug', $tab, 'product_cat' );
+            if ( $term && ! is_wp_error( $term ) ) {
+                $term_ids[] = (int) $term->term_id;
+                foreach ( get_term_children( $term->term_id, 'product_cat' ) as $cid ) {
+                    $term_ids[] = (int) $cid;
+                }
+            }
+        } else {
+            foreach ( $parent_slugs as $slug ) {
+                $term = get_term_by( 'slug', $slug, 'product_cat' );
+                if ( ! $term || is_wp_error( $term ) ) {
+                    continue;
+                }
+                $term_ids[] = (int) $term->term_id;
+                foreach ( get_term_children( $term->term_id, 'product_cat' ) as $cid ) {
+                    $term_ids[] = (int) $cid;
+                }
+            }
+        }
+
+        if ( empty( $term_ids ) ) {
+            wp_send_json_success( [ 'items' => [] ] );
+        }
+
+        $query = new WP_Query(
+            [
+                'post_type'              => 'product',
+                'post_status'            => 'publish',
+                'posts_per_page'         => 8,
+                'no_found_rows'          => true,
+                'update_post_meta_cache' => false,
+                'update_post_term_cache' => true,
+                'tax_query'              => [
+                    [
+                        'taxonomy' => 'product_cat',
+                        'field'    => 'term_id',
+                        'terms'    => array_unique( $term_ids ),
+                    ],
+                ],
+                '_cw_search'             => $q,
+            ]
+        );
+
+        $items = [];
+        foreach ( $query->posts as $post ) {
+            $deadline  = (string) get_post_meta( $post->ID, 'submission_deadline', true );
+            $is_closed = $deadline !== '' && strtotime( $deadline ) < current_time( 'timestamp' );
+            $items[]   = [
+                'id'     => $post->ID,
+                'title'  => html_entity_decode( get_the_title( $post ), ENT_QUOTES, 'UTF-8' ),
+                'url'    => get_permalink( $post ),
+                'open'   => ! $is_closed,
+                'thumb'  => get_the_post_thumbnail_url( $post, 'thumbnail' ) ?: '',
+            ];
+        }
+        wp_reset_postdata();
+
+        wp_send_json_success( [ 'items' => $items ] );
     }
 
     /**
@@ -108,7 +198,8 @@ class CW_Ajax {
             wp_send_json_error('File type not allowed. Accepted: ' . implode(', ', $allowed_extensions));
         }
 
-        if (!in_array($file_type, $allowed_types)) {
+        $image_exts = [ 'jpg', 'jpeg', 'png', 'gif', 'webp' ];
+        if ( ! in_array( $file_ext, $image_exts, true ) && ! in_array( $file_type, $allowed_types, true ) ) {
             wp_send_json_error('Invalid MIME type.');
         }
 
@@ -134,6 +225,16 @@ class CW_Ajax {
                 'post_status'    => 'inherit'
             );
             $attach_id = wp_insert_attachment( $attachment, $move_file['file'] );
+            if ( is_wp_error( $attach_id ) ) {
+                wp_send_json_error( 'Could not create attachment.' );
+            }
+
+            wp_update_post(
+                [
+                    'ID'          => (int) $attach_id,
+                    'post_author' => get_current_user_id(),
+                ]
+            );
 
             // Lean metadata (thumbnail only) — full WP size sets OOM under concurrent joins.
             if ( class_exists( 'CW_Image_Optimizer' ) ) {
@@ -154,11 +255,13 @@ class CW_Ajax {
                 CW_Image_Optimizer::optimize_attachment( (int) $attach_id, 'attachment' );
             }
 
-            // Save Attachment ID to WooCommerce Session
-            $session_key = sanitize_text_field($_POST['session_key']);
-            WC()->session->set($session_key, $attach_id);
+            // Optional WooCommerce session stash (legacy custom-field uploads).
+            $session_key = sanitize_text_field( $_POST['session_key'] );
+            if ( function_exists( 'WC' ) && WC()->session ) {
+                WC()->session->set( $session_key, $attach_id );
+            }
 
-            wp_send_json_success( ['url' => wp_get_attachment_url($attach_id), 'attach_id' => $attach_id] );
+            wp_send_json_success( [ 'url' => wp_get_attachment_url( $attach_id ), 'attach_id' => (int) $attach_id ] );
         } else {
             wp_send_json_error( 'Upload failed: ' . ($move_file['error'] ?? 'Unknown error') );
         }

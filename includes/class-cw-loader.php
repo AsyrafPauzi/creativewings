@@ -21,7 +21,9 @@ class CW_Loader {
         require_once CW_PATH . 'includes/badges/class-cw-badges-engine.php';
         require_once CW_PATH . 'includes/badges/class-cw-badges-display.php';
         require_once CW_PATH . 'includes/class-cw-points.php';
+        require_once CW_PATH . 'includes/class-cw-points-rewards.php';
         require_once CW_PATH . 'includes/class-cw-security.php';
+        require_once CW_PATH . 'includes/class-cw-page-cache.php';
         require_once CW_PATH . 'includes/class-cw-flash-notices.php';
         require_once CW_PATH . 'includes/class-cw-audit-log.php';
         require_once CW_PATH . 'includes/class-cw-campaign-resolver.php';
@@ -34,6 +36,8 @@ class CW_Loader {
         require_once CW_PATH . 'includes/class-cw-pending-parent-link.php';
         require_once CW_PATH . 'includes/class-cw-email.php';
         require_once CW_PATH . 'includes/class-cw-cron.php';
+        require_once CW_PATH . 'includes/class-cw-structured-data.php';
+        CW_Structured_Data::register_hooks();
     }
 
     public static function init_woocommerce() {
@@ -49,12 +53,16 @@ class CW_Loader {
         require_once CW_PATH . 'includes/business/class-cw-business-reports.php';
         require_once CW_PATH . 'includes/business/class-cw-report-export.php';
         require_once CW_PATH . 'includes/class-cw-sponsor-coupons.php';
+        require_once CW_PATH . 'includes/class-cw-product-categories.php';
         require_once CW_PATH . 'includes/class-cw-moderation.php';
         require_once CW_PATH . 'includes/class-cw-shop.php';
         require_once CW_PATH . 'includes/class-cw-design-artwork-crop.php';
         require_once CW_PATH . 'includes/class-cw-design-submission.php';
+        require_once CW_PATH . 'includes/class-cw-campaign-showcase.php';
         require_once CW_PATH . 'includes/class-cw-checkout.php';
+        require_once CW_PATH . 'includes/class-cw-points-checkout.php';
         require_once CW_PATH . 'includes/class-cw-shortcodes.php';
+        require_once CW_PATH . 'includes/class-cw-homepage-blocks.php';
         require_once CW_PATH . 'includes/class-cw-organizer-profile.php';
         require_once CW_PATH . 'includes/class-cw-directory.php';
         require_once CW_PATH . 'includes/class-cw-ajax.php';
@@ -79,6 +87,7 @@ class CW_Loader {
             require_once CW_PATH . 'includes/business/class-cw-campaign-import.php';
             require_once CW_PATH . 'includes/admin/class-cw-image-bulk-optimizer.php';
             require_once CW_PATH . 'includes/admin/class-cw-badges-admin.php';
+            require_once CW_PATH . 'includes/admin/class-cw-points-rewards-admin.php';
             require_once CW_PATH . 'includes/admin/class-cw-sync-center.php';
         }
 

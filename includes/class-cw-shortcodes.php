@@ -15,6 +15,7 @@ class CW_Shortcodes {
         // 2. Homepage Stats
         add_shortcode('product_count', [ $this, 'count_products' ]);
         add_shortcode('total_prize_money', [ $this, 'total_prize_money' ]);
+        add_shortcode('cw_kpi_carousel', [ $this, 'render_kpi_carousel' ]);
 
         // 3. Search Form
         add_shortcode('custom_search_form', [ $this, 'render_search_form' ]);
@@ -285,148 +286,405 @@ class CW_Shortcodes {
         return number_format( (float) $total, 2 );
     }
 
-    /* ==========================================================================
-       3. SEARCH FORM — Redesigned, parent-only categories, uses ?cw_q= param
-       ========================================================================== */
-    public function render_search_form() {
-        // Only top-level (parent) product categories
-        $categories = get_terms([
-            'taxonomy'   => 'product_cat',
-            'hide_empty' => true,
-            'parent'     => 0,
-        ]);
+    /**
+     * Homepage KPI carousel — `[cw_kpi_carousel]`.
+     *
+     * Shows progress for every published campaign with KPI enabled and still open
+     * (deadline empty or not past). Desktop shows 3 cards; auto-loops.
+     *
+     * Attrs: heading="Campaign Progress" per_view="3" autoplay="yes" interval="4500"
+     */
+    public function render_kpi_carousel( $atts = [] ) {
+        $atts = shortcode_atts(
+            [
+                'heading'  => __( 'Campaign Progress', 'creativewings-core' ),
+                'title'    => '', // alias of heading (legacy)
+                'per_view' => '3',
+                'autoplay' => 'yes',
+                'interval' => '4500',
+                'limit'    => '24',
+            ],
+            $atts,
+            'cw_kpi_carousel'
+        );
 
-        $cw_search_val = sanitize_text_field( $_GET['cw_q'] ?? '' );
-        $cw_active_cat = sanitize_text_field( $_GET['product_category'] ?? ($_GET['tab'] ?? '') );
+        $per_view = max( 1, min( 6, (int) $atts['per_view'] ) );
+        $limit    = max( 1, min( 50, (int) $atts['limit'] ) );
+        $today    = current_time( 'Y-m-d' );
 
-        // Category icon map for the pill buttons
-        $cat_icons = [
-            'activities'   => 'fa-calendar-check',
-            'competitions' => 'fa-trophy',
-            'talk-seminar' => 'fa-microphone-alt',
-        ];
+        $query = new WP_Query(
+            [
+                'post_type'              => 'product',
+                'post_status'            => 'publish',
+                'posts_per_page'         => $limit,
+                'orderby'                => 'date',
+                'order'                  => 'DESC',
+                'no_found_rows'          => true,
+                'update_post_term_cache' => false,
+                'meta_query'             => [
+                    'relation' => 'AND',
+                    [
+                        'key'   => 'cw_kpi_show_progress',
+                        'value' => 'yes',
+                    ],
+                    [
+                        'key'     => 'cw_kpi_target',
+                        'value'   => 0,
+                        'compare' => '>',
+                        'type'    => 'NUMERIC',
+                    ],
+                ],
+            ]
+        );
+
+        if ( ! $query->have_posts() ) {
+            return '';
+        }
+
+        $cards = [];
+        while ( $query->have_posts() ) {
+            $query->the_post();
+            $pid      = get_the_ID();
+            $deadline = (string) get_post_meta( $pid, 'submission_deadline', true );
+            if ( $deadline !== '' && $deadline < $today ) {
+                continue;
+            }
+
+            $target = (int) get_post_meta( $pid, 'cw_kpi_target', true );
+            if ( $target <= 0 ) {
+                continue;
+            }
+
+            $label = trim( (string) get_post_meta( $pid, 'cw_kpi_label', true ) );
+            if ( $label === '' ) {
+                $label = __( 'Participated', 'creativewings-core' );
+            }
+
+            $count = 0;
+            if ( class_exists( 'CW_Campaign_Admin' ) ) {
+                $count = (int) CW_Campaign_Admin::get_public_participant_count( $pid );
+            }
+
+            $percent      = $target > 0 ? round( ( $count / $target ) * 100, 1 ) : 0;
+            $fill_percent = max( 0, min( 100, $percent ) );
+            $state        = $percent > 100 ? 'over' : ( $percent >= 100 ? 'done' : ( $percent >= 50 ? 'mid' : 'start' ) );
+
+            $display_percent = (int) round( $percent );
+            if ( $count > 0 && $percent > 0 && $display_percent === 0 ) {
+                $percent_label = '<1%';
+            } else {
+                $percent_label = $display_percent . '%';
+            }
+
+            // SVG ring: r=46 → circumference ≈ 289.027
+            $ring_c      = 289.027;
+            $ring_offset = $ring_c * ( 1 - ( $fill_percent / 100 ) );
+
+            $cards[] = [
+                'id'            => $pid,
+                'title'         => get_the_title( $pid ),
+                'url'           => get_permalink( $pid ),
+                'count'         => $count,
+                'target'        => $target,
+                'label'         => $label,
+                'percent'       => $percent,
+                'fill'          => $fill_percent,
+                'percent_label' => $percent_label,
+                'state'         => $state,
+                'ring_offset'   => round( $ring_offset, 2 ),
+                'ring_c'        => $ring_c,
+            ];
+        }
+        wp_reset_postdata();
+
+        if ( empty( $cards ) ) {
+            return '';
+        }
+
+        $js = class_exists( 'CW_Core_Platform' )
+            ? CW_Core_Platform::asset( 'assets/js/cw-carousel.js' )
+            : [ 'url' => CW_URL . 'assets/js/cw-carousel.js', 'version' => defined( 'CW_VERSION' ) ? CW_VERSION : null ];
+
+        wp_enqueue_script(
+            'cw-carousel',
+            $js['url'],
+            [],
+            $js['version'] ?? ( defined( 'CW_VERSION' ) ? CW_VERSION : null ),
+            true
+        );
+
+        $heading = trim( (string) $atts['heading'] );
+        if ( $heading === '' && trim( (string) $atts['title'] ) !== '' ) {
+            $heading = trim( (string) $atts['title'] );
+        }
+        $uid = 'cw-kpi-carousel-' . wp_unique_id();
 
         ob_start();
         ?>
-        <div class="cws-wrap">
-            <form class="cws-form" id="cw_main_search_form" role="search">
+        <section class="cw-kpi-carousel"
+                 id="<?php echo esc_attr( $uid ); ?>"
+                 data-cw-carousel
+                 data-per-view="<?php echo esc_attr( (string) $per_view ); ?>"
+                 data-autoplay="<?php echo esc_attr( $atts['autoplay'] === 'no' ? 'no' : 'yes' ); ?>"
+                 data-interval="<?php echo esc_attr( (string) max( 2000, (int) $atts['interval'] ) ); ?>"
+                 data-gap="18"
+                 aria-roledescription="carousel"
+                 aria-label="<?php echo esc_attr( $heading !== '' ? $heading : __( 'Campaign Progress', 'creativewings-core' ) ); ?>">
+            <div class="cw-kpi-carousel__head">
+                <?php if ( $heading !== '' ) : ?>
+                    <h2 class="cw-kpi-carousel__title cw-home-section-heading"><?php echo esc_html( $heading ); ?></h2>
+                <?php else : ?>
+                    <span class="cw-kpi-carousel__title-spacer" aria-hidden="true"></span>
+                <?php endif; ?>
+                <div class="cw-kpi-carousel__nav">
+                    <button type="button" class="cw-kpi-carousel__btn" data-cw-carousel-prev aria-label="<?php esc_attr_e( 'Previous', 'creativewings-core' ); ?>">
+                        <i class="fas fa-chevron-left" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="cw-kpi-carousel__btn" data-cw-carousel-next aria-label="<?php esc_attr_e( 'Next', 'creativewings-core' ); ?>">
+                        <i class="fas fa-chevron-right" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
 
-                <!-- Category pill buttons -->
-                <div class="cws-cats">
-                    <button type="button" class="cws-cat-btn <?php echo ! $cw_active_cat ? 'active' : ''; ?>" data-slug="">
-                        <i class="fas fa-th"></i> All
+            <div class="cw-kpi-carousel__viewport">
+                <div class="cw-kpi-carousel__track" data-cw-carousel-track>
+                    <?php foreach ( $cards as $card ) : ?>
+                        <article class="cw-kpi-carousel__slide">
+                            <a class="cw-kpi-stat cw-kpi-stat--<?php echo esc_attr( $card['state'] ); ?>"
+                               href="<?php echo esc_url( $card['url'] ); ?>"
+                               aria-label="<?php echo esc_attr( sprintf(
+                                   /* translators: 1: count, 2: target, 3: label, 4: campaign title */
+                                   __( '%1$s of %2$s %3$s — %4$s', 'creativewings-core' ),
+                                   number_format_i18n( $card['count'] ),
+                                   number_format_i18n( $card['target'] ),
+                                   $card['label'],
+                                   $card['title']
+                               ) ); ?>">
+                                <div class="cw-kpi-stat__ring-wrap"
+                                     role="progressbar"
+                                     aria-valuenow="<?php echo esc_attr( (string) (int) round( $card['percent'] ) ); ?>"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100"
+                                     aria-hidden="true">
+                                    <svg class="cw-kpi-stat__ring" viewBox="0 0 120 120" focusable="false">
+                                        <circle class="cw-kpi-stat__ring-track" cx="60" cy="60" r="46" />
+                                        <circle class="cw-kpi-stat__ring-fill"
+                                                cx="60" cy="60" r="46"
+                                                stroke-dasharray="<?php echo esc_attr( (string) $card['ring_c'] ); ?>"
+                                                stroke-dashoffset="<?php echo esc_attr( (string) $card['ring_offset'] ); ?>"
+                                                style="--cw-kpi-ring-offset: <?php echo esc_attr( (string) $card['ring_offset'] ); ?>" />
+                                    </svg>
+                                    <div class="cw-kpi-stat__ring-center">
+                                        <span class="cw-kpi-stat__count"><?php echo esc_html( number_format_i18n( $card['count'] ) ); ?></span>
+                                        <span class="cw-kpi-stat__pct"><?php echo esc_html( $card['percent_label'] ); ?></span>
+                                    </div>
+                                </div>
+                                <div class="cw-kpi-stat__meta">
+                                    <p class="cw-kpi-stat__ratio">
+                                        <strong><?php echo esc_html( number_format_i18n( $card['count'] ) ); ?></strong>
+                                        <span>/ <?php echo esc_html( number_format_i18n( $card['target'] ) ); ?></span>
+                                        <em><?php echo esc_html( $card['label'] ); ?></em>
+                                    </p>
+                                    <h3 class="cw-kpi-stat__title"><?php echo esc_html( $card['title'] ); ?></h3>
+                                    <span class="cw-kpi-stat__cta"><?php esc_html_e( 'View campaign', 'creativewings-core' ); ?> <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
+                                </div>
+                            </a>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </section>
+        <?php
+        return (string) ob_get_clean();
+    }
+
+    /* ==========================================================================
+       3. SEARCH FORM — [custom_search_form]
+          Activities → /activities/ | Competitions → /competitions/
+          Title search via ?cw_q=
+       ========================================================================== */
+    public function render_search_form( $atts = [] ) {
+        $atts = shortcode_atts(
+            [
+                'theme' => 'glass', // glass | solid
+            ],
+            $atts,
+            'custom_search_form'
+        );
+
+        $activities_page   = get_page_by_path( 'activities' );
+        $competitions_page = get_page_by_path( 'competitions' );
+        $activities_url    = $activities_page ? get_permalink( $activities_page ) : home_url( '/activities/' );
+        $competitions_url  = $competitions_page ? get_permalink( $competitions_page ) : home_url( '/competitions/' );
+
+        $cw_search_val = sanitize_text_field( wp_unslash( $_GET['cw_q'] ?? '' ) );
+
+        $scope = 'activities';
+        if ( is_page( 'competitions' ) || is_page( 'list-competitions' ) ) {
+            $scope = 'competitions';
+        } elseif ( is_page( 'activities' ) ) {
+            $scope = 'activities';
+        }
+
+        $uid         = 'cws-' . wp_unique_id();
+        $theme_class = $atts['theme'] === 'solid' ? 'cws-wrap--solid' : 'cws-wrap--glass';
+        $ajax_url    = admin_url( 'admin-ajax.php' );
+
+        ob_start();
+        ?>
+        <div class="cws-wrap <?php echo esc_attr( $theme_class ); ?>" data-cws-root id="<?php echo esc_attr( $uid ); ?>">
+            <form class="cws-form" role="search" action="<?php echo esc_url( $scope === 'competitions' ? $competitions_url : $activities_url ); ?>" method="get" data-cws-form>
+                <div class="cws-scope" role="group" aria-label="<?php esc_attr_e( 'Search in', 'creativewings-core' ); ?>">
+                    <button type="button"
+                            class="cws-scope-btn <?php echo $scope === 'activities' ? 'is-active' : ''; ?>"
+                            data-cws-scope="activities"
+                            data-url="<?php echo esc_url( $activities_url ); ?>"
+                            aria-pressed="<?php echo $scope === 'activities' ? 'true' : 'false'; ?>">
+                        <i class="fas fa-calendar-check" aria-hidden="true"></i>
+                        <span><?php esc_html_e( 'Activities', 'creativewings-core' ); ?></span>
                     </button>
-                    <?php if ( $categories && ! is_wp_error( $categories ) ): foreach ( $categories as $cat ):
-                        $icon = $cat_icons[ $cat->slug ] ?? 'fa-tag';
-                        $is_active = ( $cw_active_cat === $cat->slug );
-                    ?>
-                    <button type="button" class="cws-cat-btn <?php echo $is_active ? 'active' : ''; ?>" data-slug="<?php echo esc_attr( $cat->slug ); ?>">
-                        <i class="fas <?php echo esc_attr( $icon ); ?>"></i>
-                        <?php echo esc_html( $cat->name ); ?>
+                    <button type="button"
+                            class="cws-scope-btn <?php echo $scope === 'competitions' ? 'is-active' : ''; ?>"
+                            data-cws-scope="competitions"
+                            data-url="<?php echo esc_url( $competitions_url ); ?>"
+                            aria-pressed="<?php echo $scope === 'competitions' ? 'true' : 'false'; ?>">
+                        <i class="fas fa-trophy" aria-hidden="true"></i>
+                        <span><?php esc_html_e( 'Competitions', 'creativewings-core' ); ?></span>
                     </button>
-                    <?php endforeach; endif; ?>
                 </div>
 
-                <!-- Search input row -->
                 <div class="cws-input-row">
                     <div class="cws-input-wrap">
-                        <i class="fas fa-search cws-input-icon"></i>
-                        <input type="text" id="cw_search_input" class="cws-input"
-                               placeholder="Search campaigns, competitions, activities…"
-                               value="<?php echo esc_attr( $cw_search_val ); ?>" autocomplete="off">
+                        <i class="fas fa-search cws-input-icon" aria-hidden="true"></i>
+                        <input type="search"
+                               name="cw_q"
+                               class="cws-input"
+                               data-cws-input
+                               placeholder="<?php esc_attr_e( 'Search by campaign title…', 'creativewings-core' ); ?>"
+                               value="<?php echo esc_attr( $cw_search_val ); ?>"
+                               autocomplete="off"
+                               aria-autocomplete="list"
+                               aria-controls="<?php echo esc_attr( $uid ); ?>-suggest"
+                               aria-expanded="false">
+                        <div class="cws-suggest" id="<?php echo esc_attr( $uid ); ?>-suggest" data-cws-suggest hidden role="listbox"></div>
                     </div>
                     <button type="submit" class="cws-submit">
-                        <i class="fas fa-search"></i>
-                        <span>Search</span>
+                        <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                        <span data-cws-submit-label><?php echo esc_html( $scope === 'competitions' ? __( 'Search competitions', 'creativewings-core' ) : __( 'Search activities', 'creativewings-core' ) ); ?></span>
                     </button>
                 </div>
-
             </form>
         </div>
-
         <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const form   = document.getElementById('cw_main_search_form');
-            const input  = document.getElementById('cw_search_input');
-            const catBtns = form.querySelectorAll('.cws-cat-btn');
-            let activeCat = '<?php echo esc_js( $cw_active_cat ); ?>';
+        (function () {
+          var root = document.getElementById(<?php echo wp_json_encode( $uid ); ?>);
+          if (!root || root.dataset.ready === '1') return;
+          root.dataset.ready = '1';
 
-            <?php
-            $fn_tree = function( $slug ) {
-                $t = get_term_by('slug', $slug, 'product_cat');
-                $out = [ $slug ];
-                if ( $t ) foreach ( get_term_children( $t->term_id, 'product_cat' ) as $cid ) {
-                    $ct = get_term( $cid, 'product_cat' );
-                    if ( $ct && ! is_wp_error($ct) ) $out[] = $ct->slug;
-                }
-                return $out;
-            };
-            $comp_slugs = $fn_tree('competitions');
-            echo 'const compSlugs = ' . json_encode( array_values($comp_slugs) ) . ';';
-            echo 'const siteUrl = "' . home_url() . '";';
-            ?>
+          var form = root.querySelector('[data-cws-form]');
+          var input = root.querySelector('[data-cws-input]');
+          var suggest = root.querySelector('[data-cws-suggest]');
+          var submitLabel = root.querySelector('[data-cws-submit-label]');
+          var scopeBtns = root.querySelectorAll('[data-cws-scope]');
+          var ajaxUrl = <?php echo wp_json_encode( $ajax_url ); ?>;
+          var labels = {
+            activities: <?php echo wp_json_encode( __( 'Search activities', 'creativewings-core' ) ); ?>,
+            competitions: <?php echo wp_json_encode( __( 'Search competitions', 'creativewings-core' ) ); ?>
+          };
+          var scope = <?php echo wp_json_encode( $scope ); ?>;
+          var timer = null;
+          var ctrl = null;
 
-            // Toggle active category button
-            catBtns.forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    catBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    activeCat = btn.dataset.slug;
-                });
+          function setScope(next, url) {
+            scope = next;
+            scopeBtns.forEach(function (btn) {
+              var on = btn.getAttribute('data-cws-scope') === scope;
+              btn.classList.toggle('is-active', on);
+              btn.setAttribute('aria-pressed', on ? 'true' : 'false');
             });
+            form.setAttribute('action', url);
+            if (submitLabel) submitLabel.textContent = labels[scope] || labels.activities;
+            hideSuggest();
+          }
 
-            form.addEventListener('submit', function(e) {
-                e.preventDefault();
-                const keyword = input.value.trim();
-
-                // Determine destination
-                const targetUrl = compSlugs.includes(activeCat)
-                    ? siteUrl + '/competitions/'
-                    : siteUrl + '/activities/';
-
-                const params = new URLSearchParams();
-                if (keyword)   params.append('cw_q', keyword);            // custom param — avoids WP 404
-                if (activeCat) params.append('product_category', activeCat);
-
-                const qs = params.toString();
-                window.location.href = qs ? targetUrl + '?' + qs : targetUrl;
+          scopeBtns.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+              setScope(btn.getAttribute('data-cws-scope'), btn.getAttribute('data-url'));
             });
-        });
+          });
+
+          function hideSuggest() {
+            suggest.hidden = true;
+            suggest.innerHTML = '';
+            input.setAttribute('aria-expanded', 'false');
+          }
+
+          function renderSuggest(items) {
+            if (!items || !items.length) {
+              hideSuggest();
+              return;
+            }
+            suggest.innerHTML = items.map(function (item, i) {
+              var status = item.open ? '<span class="cws-suggest-open">Open</span>' : '<span class="cws-suggest-closed">Closed</span>';
+              var thumb = item.thumb
+                ? '<img src="' + String(item.thumb).replace(/"/g, '&quot;') + '" alt="" width="40" height="40" loading="lazy">'
+                : '<span class="cws-suggest-ph"><i class="fas fa-flag"></i></span>';
+              return '<button type="button" class="cws-suggest-item" role="option" data-url="' + String(item.url).replace(/"/g, '&quot;') + '" id="' + <?php echo wp_json_encode( $uid ); ?> + '-opt-' + i + '">' +
+                thumb +
+                '<span class="cws-suggest-text"><strong>' + String(item.title).replace(/</g,'&lt;') + '</strong>' + status + '</span>' +
+                '</button>';
+            }).join('');
+            suggest.hidden = false;
+            input.setAttribute('aria-expanded', 'true');
+            suggest.querySelectorAll('.cws-suggest-item').forEach(function (el) {
+              el.addEventListener('click', function () {
+                window.location.href = el.getAttribute('data-url');
+              });
+            });
+          }
+
+          function queueSuggest() {
+            window.clearTimeout(timer);
+            timer = window.setTimeout(fetchSuggest, 220);
+          }
+
+          function fetchSuggest() {
+            var q = input.value.trim();
+            if (q.length < 2) {
+              hideSuggest();
+              return;
+            }
+            if (ctrl) ctrl.abort();
+            ctrl = new AbortController();
+            var params = new URLSearchParams({
+              action: 'cw_campaign_suggest',
+              q: q,
+              scope: scope
+            });
+            fetch(ajaxUrl + '?' + params.toString(), { signal: ctrl.signal, credentials: 'same-origin' })
+              .then(function (r) { return r.json(); })
+              .then(function (res) {
+                if (!res || !res.success) { hideSuggest(); return; }
+                renderSuggest((res.data && res.data.items) || []);
+              })
+              .catch(function () {});
+          }
+
+          input.addEventListener('input', queueSuggest);
+          input.addEventListener('focus', function () {
+            if (input.value.trim().length >= 2) queueSuggest();
+          });
+          document.addEventListener('click', function (e) {
+            if (!root.contains(e.target)) hideSuggest();
+          });
+
+          form.addEventListener('submit', function () {
+            if (!input.value.trim()) input.disabled = true;
+          });
+        })();
         </script>
-
-        <style>
-        /* ── Search Form (cws-) ── */
-        .cws-wrap { width: 100%; max-width: 760px; margin: 0 auto; }
-        .cws-form { background: rgba(255,255,255,0.12); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.25); border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
-
-        /* Category pills */
-        .cws-cats { display: flex; flex-wrap: wrap; gap: 8px; }
-        .cws-cat-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 50px; font-size: 13px; font-weight: 600; border: 1.5px solid rgba(255,255,255,0.4); background: rgba(255,255,255,0.15); color: #fff; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
-        .cws-cat-btn:hover { background: rgba(255,255,255,0.3); }
-        .cws-cat-btn.active { background: #fff; color: #125B9A; border-color: #fff; box-shadow: 0 3px 10px rgba(0,0,0,0.15); }
-        .cws-cat-btn i { font-size: 12px; }
-
-        /* Input row */
-        .cws-input-row { display: flex; gap: 10px; align-items: center; }
-        .cws-input-wrap { flex: 1; position: relative; }
-        .cws-input-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: rgba(255,255,255,0.6); font-size: 15px; pointer-events: none; }
-        .cws-input { width: 100%; padding: 13px 16px 13px 44px; border-radius: 12px; border: 1.5px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.18); color: #fff; font-size: 15px; font-family: inherit; outline: none; transition: border-color 0.2s; box-sizing: border-box; }
-        .cws-input::placeholder { color: rgba(255,255,255,0.6); }
-        .cws-input:focus { border-color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.25); }
-        .cws-submit { display: inline-flex; align-items: center; gap: 8px; padding: 13px 24px; border-radius: 12px; background: #fff; color: #125B9A; font-size: 14px; font-weight: 700; border: none; cursor: pointer; white-space: nowrap; transition: all 0.2s; font-family: inherit; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
-        .cws-submit:hover { background: #EEF5FB; transform: translateY(-1px); }
-
-        /* Mobile */
-        @media (max-width: 600px) {
-            .cws-form { padding: 14px 14px; gap: 12px; border-radius: 16px; }
-            .cws-input-row { flex-direction: column; }
-            .cws-input-wrap { width: 100%; }
-            .cws-submit { width: 100%; justify-content: center; }
-            .cws-cat-btn { font-size: 12px; padding: 7px 13px; }
-        }
-        </style>
         <?php
-        return ob_get_clean();
+        return (string) ob_get_clean();
     }
 
     public function search_query_filter($query) {
@@ -581,6 +839,14 @@ class CW_Shortcodes {
 
         // ── FAQ ───────────────────────────────────────────────────────────────
         $faqs = $unwrap('faq');
+
+        // ── Supporting partners & mentors (campaign page showcase) ───────────
+        $supporting_partners = class_exists( 'CW_Campaign_Showcase' )
+            ? CW_Campaign_Showcase::get_partners( $pid )
+            : [];
+        $campaign_mentors = class_exists( 'CW_Campaign_Showcase' )
+            ? CW_Campaign_Showcase::get_mentors( $pid )
+            : [];
 
         // ── Cover image ───────────────────────────────────────────────────────
         $thumb = get_the_post_thumbnail_url($pid, 'full');
@@ -804,6 +1070,12 @@ class CW_Shortcodes {
                         <?php if ($date_start): ?>
                         <div class="cwd-hero-stat"><i class="fas fa-calendar-alt"></i> <?php echo esc_html($fmt_day($date_start)); ?></div>
                         <?php endif; ?>
+                        <?php if ( $deadline ): ?>
+                        <div class="cwd-hero-stat cwd-hero-stat--closes">
+                            <i class="fas fa-hourglass-half"></i>
+                            <?php echo esc_html( ( $is_closed ? 'Closed ' : 'Closes ' ) . $fmt_date( $deadline ) ); ?>
+                        </div>
+                        <?php endif; ?>
                         <?php if ($fmt_time($date_start)): ?>
                         <div class="cwd-hero-stat"><i class="fas fa-clock"></i> <?php echo esc_html($fmt_time($date_start)); ?></div>
                         <?php endif; ?>
@@ -931,14 +1203,7 @@ class CW_Shortcodes {
                             </button>
                         <?php endif; ?>
 
-                        <?php if ( ! $is_closed && ! $already && ! $is_upcoming ):
-                            $deadline_str = $deadline ? 'Closes ' . $fmt_date($deadline) : '';
-                            if ( $deadline_str ): ?>
-                        <p class="cwd-reg-footnote"><i class="fas fa-info-circle"></i> <?php echo esc_html($deadline_str); ?></p>
-                            <?php endif; ?>
-                        <?php elseif ( $is_upcoming && $date_start ): ?>
-                        <p class="cwd-reg-footnote"><i class="fas fa-info-circle"></i> Registration opens <?php echo esc_html($fmt_date($date_start)); ?></p>
-                        <?php endif; ?>
+                        <?php /* Deadline/opens already shown in cwd-deadline-row above — no duplicate footnote. */ ?>
 
                         <?php if ( $voting_enabled ): ?>
                         <button type="button" class="cwv-open-btn" style="margin-top:10px;"
@@ -1223,7 +1488,6 @@ class CW_Shortcodes {
                         $pub_query    = null;
 
                         if ( $gallery_is_map ) {
-                            $map_interactive_cap = 150;
                             $map_point_data = CW_Cache::remember(
                                 'campaign:' . (int) $pid . ':paid',
                                 'map_gallery',
@@ -1232,10 +1496,10 @@ class CW_Shortcodes {
                                     $query = new WP_Query( [
                                         'post_type'              => $pub_entry_types,
                                         'post_status'            => 'publish',
-                                        'posts_per_page'         => CW_Map_Coordinates::MAX_POINTS,
+                                        'posts_per_page'         => CW_Map_Coordinates::max_slots(),
                                         'fields'                 => 'ids',
                                         'orderby'                => 'date',
-                                        'order'                  => 'DESC',
+                                        'order'                  => 'ASC',
                                         'no_found_rows'          => true,
                                         'update_post_meta_cache' => false,
                                         'update_post_term_cache' => false,
@@ -1254,11 +1518,9 @@ class CW_Shortcodes {
                                         ],
                                     ] );
                                     $ids = array_map( 'intval', (array) $query->posts );
-                                    // Pending / unpaid checkouts must not appear on the map or in its KPI.
                                     if ( class_exists( 'CW_Campaign_Admin' ) ) {
                                         $ids = CW_Campaign_Admin::filter_successful_entry_ids( $ids );
                                     }
-                                    // Keep image artwork only (matches interactive pin rules).
                                     $ids = array_values( array_filter( $ids, static function ( $entry_id ) {
                                         $art = (string) get_post_meta( (int) $entry_id, 'upload_document', true );
                                         return (bool) preg_match( '/\.(jpe?g|png|gif|webp)$/i', $art );
@@ -1269,19 +1531,14 @@ class CW_Shortcodes {
                                     ];
                                 }
                             );
-                            $map_total      = (int) ( $map_point_data['total'] ?? 0 );
-                            $map_all_ids    = array_map( 'intval', (array) ( $map_point_data['ids'] ?? [] ) );
-                            $map_pin_ids    = array_slice( $map_all_ids, 0, $map_interactive_cap );
-                            // Canvas only draws submissions beyond the interactive pin set
-                            // (avoids duplicate red dots under every pin when count is small).
-                            $map_canvas_ids = array_slice( $map_all_ids, $map_interactive_cap );
-                            $map_points     = CW_Map_Coordinates::points_for_entries( $map_canvas_ids );
+                            $map_total   = (int) ( $map_point_data['total'] ?? 0 );
+                            $map_all_ids = array_map( 'intval', (array) ( $map_point_data['ids'] ?? [] ) );
 
-                            $pub_query   = new WP_Query( [
+                            $pub_query = new WP_Query( [
                                 'post_type'      => $pub_entry_types,
                                 'post_status'    => 'publish',
-                                'post__in'       => $map_pin_ids ?: [ 0 ],
-                                'posts_per_page' => $map_interactive_cap,
+                                'post__in'       => $map_all_ids ?: [ 0 ],
+                                'posts_per_page' => CW_Map_Coordinates::max_slots(),
                                 'orderby'        => 'post__in',
                                 'no_found_rows'  => true,
                                 'meta_query'     => [
@@ -1358,20 +1615,11 @@ class CW_Shortcodes {
                                     'full'  => $art,
                                     'msg'   => $msg,
                                 ];
-                                if ( $gallery_is_map ) {
-                                    $point = CW_Map_Coordinates::point_for_entry( (int) $eid );
-                                    $entry['x']       = $point['x'];
-                                    $entry['y']       = $point['y'];
-                                    $entry['country'] = $point['country'];
-                                }
                                 $pub_rows[] = $entry;
                             }
                             wp_reset_postdata();
                         }
 
-                        if ( $gallery_is_map ) {
-                            $map_more = max( 0, $map_total - count( $pub_rows ) );
-                        }
 
                         $pub_json_rows = array_values( array_map( static function ( $r ) {
                             return [
@@ -1382,13 +1630,36 @@ class CW_Shortcodes {
                         }, $pub_rows ) );
 
                         if ( $gallery_is_map ) :
-                            $map_kpi_enabled = $kpi_target > 0;
-                            $map_target      = $kpi_target;
-                            // Same successful-join count as the hero KPI (pending checkouts excluded).
-                            $map_count = $kpi_visible ? (int) $kpi_count : (int) $map_total;
-                            $map_fill  = $map_kpi_enabled
+                            $map_kpi_enabled   = $kpi_target > 0;
+                            $map_target        = $kpi_target;
+                            $map_count         = $kpi_visible ? (int) $kpi_count : (int) $map_total;
+                            $map_fill          = $map_kpi_enabled
                                 ? max( 0, min( 100, round( ( $map_count / $map_target ) * 100, 1 ) ) )
                                 : 0;
+                            $map_display_slots = CW_Map_Coordinates::total_slots_for_display( $kpi_target, $map_total );
+                            $map_slots         = CW_Map_Coordinates::slots_for_display( $map_display_slots );
+                            $map_filled_count  = min( $map_total, $map_display_slots );
+                            $map_slot_by_entry = CW_Map_Coordinates::random_slot_assignments(
+                                array_column( $pub_rows, 'id' ),
+                                $map_display_slots,
+                                (int) $pid
+                            );
+                            $map_filled_slots  = [];
+                            $map_list_index    = 0;
+                            foreach ( $pub_rows as $row ) {
+                                $entry_id = (int) ( $row['id'] ?? 0 );
+                                if ( $entry_id <= 0 || ! isset( $map_slot_by_entry[ $entry_id ] ) ) {
+                                    continue;
+                                }
+                                $map_filled_slots[] = [
+                                    'slot'      => (int) $map_slot_by_entry[ $entry_id ],
+                                    'listIndex' => $map_list_index,
+                                    'full'      => $row['full'],
+                                    'msg'       => $row['msg'] ?: '',
+                                    'alt'       => __( 'Anonymous submission', 'creativewings-core' ),
+                                ];
+                                $map_list_index++;
+                            }
 
                             if ( $map_kpi_enabled ) {
                                 $map_label_text = sprintf(
@@ -1400,15 +1671,17 @@ class CW_Shortcodes {
                                 );
                             } else {
                                 $map_label_text = sprintf(
-                                    _n( '%s submission on the map', '%s submissions on the map', $map_count, 'creativewings-core' ),
+                                    _n( '%s smiley on the Malaysia map', '%s smileys on the Malaysia map', $map_count, 'creativewings-core' ),
                                     number_format_i18n( $map_count )
                                 );
                             }
 
+                            $map_mosaic    = CW_Map_Coordinates::get_mosaic_meta();
+                            $map_vb        = $map_mosaic['viewBox'] ?? [ 1000, 750 ];
                             $map_asset = add_query_arg(
                                 'ver',
                                 defined( 'CW_VERSION' ) ? CW_VERSION : '1',
-                                CW_URL . 'assets/img/world-map.svg'
+                                CW_URL . 'assets/img/malaysia-map.svg'
                             );
                             $map_js    = class_exists( 'CW_Core_Platform' )
                                 ? CW_Core_Platform::asset( 'assets/js/cw-map-gallery.js' )
@@ -1429,12 +1702,12 @@ class CW_Shortcodes {
                             );
                         ?>
                     <section class="cwd-section cwd-gallery-section cwd-public-gallery cwd-map-gallery-section" id="cwd-public-gallery">
-                        <h2 class="cwd-section-title"><i class="fas fa-globe"></i> <?php esc_html_e( 'Public Submissions', 'creativewings-core' ); ?></h2>
+                        <h2 class="cwd-section-title"><i class="fas fa-map"></i> <?php esc_html_e( 'Public Submissions', 'creativewings-core' ); ?></h2>
 
-                        <div id="cwd-map-gallery" class="cwd-map-gallery<?php echo $map_total <= 0 ? ' is-empty' : ''; ?>"
+                        <div id="cwd-map-gallery" class="cwd-map-gallery<?php echo $map_filled_count <= 0 ? ' is-empty' : ''; ?>"
                              data-cwd-map
                              role="region"
-                             aria-label="<?php esc_attr_e( 'Submission world map', 'creativewings-core' ); ?>">
+                             aria-label="<?php esc_attr_e( 'Malaysia smiley submission map', 'creativewings-core' ); ?>">
 
                             <div class="cwd-map-toolbar">
                                 <p class="cwd-map-count" data-cwd-map-count><?php echo esc_html( $map_label_text ); ?></p>
@@ -1445,47 +1718,52 @@ class CW_Shortcodes {
                                 <?php endif; ?>
                             </div>
 
-                            <div class="cwd-map-stage">
-                                <img class="cwd-map-bg"
-                                     src="<?php echo esc_url( $map_asset ); ?>"
-                                     alt=""
-                                     decoding="async"
-                                     width="1000"
-                                     height="500">
-                                <canvas class="cwd-map-canvas"
-                                        data-cwd-map-canvas
-                                        aria-label="<?php
-                                        echo esc_attr(
-                                            sprintf(
-                                                _n(
-                                                    '%s approved submission plotted across random countries.',
-                                                    '%s approved submissions plotted across random countries.',
-                                                    $map_total,
-                                                    'creativewings-core'
-                                                ),
-                                                number_format_i18n( $map_total )
-                                            )
-                                        );
-                                        ?>"></canvas>
+                            <div class="cwd-map-stage" data-cwd-map-stage>
+                                <div class="cwd-map-viewport" data-cwd-map-viewport>
+                                    <img class="cwd-map-bg"
+                                         src="<?php echo esc_url( $map_asset ); ?>"
+                                         alt="<?php esc_attr_e( 'Malaysia smiley map backdrop', 'creativewings-core' ); ?>"
+                                         decoding="async"
+                                         width="<?php echo (int) $map_vb[0]; ?>"
+                                         height="<?php echo (int) $map_vb[1]; ?>">
+                                    <canvas class="cwd-map-canvas"
+                                            data-cwd-map-canvas
+                                            role="img"
+                                            aria-label="<?php
+                                            echo esc_attr(
+                                                sprintf(
+                                                    _n(
+                                                        '%1$s of %2$s smiley slots filled on the Malaysia map.',
+                                                        '%1$s of %2$s smiley slots filled on the Malaysia map.',
+                                                        $map_filled_count,
+                                                        'creativewings-core'
+                                                    ),
+                                                    number_format_i18n( $map_filled_count ),
+                                                    number_format_i18n( $map_display_slots )
+                                                )
+                                            );
+                                            ?>"></canvas>
+                                </div>
                                 <?php if ( $map_kpi_enabled ) : ?>
-                                <div class="cwd-map-fill-overlay" style="opacity:<?php echo esc_attr( (string) round( min( 1, $map_fill / 100 ) * 0.35, 3 ) ); ?>;" aria-hidden="true"></div>
+                                <div class="cwd-map-fill-overlay" style="opacity:<?php echo esc_attr( (string) round( min( 1, $map_fill / 100 ) * 0.2, 3 ) ); ?>;" aria-hidden="true"></div>
                                 <?php endif; ?>
-                                <div class="cwd-map-pins" data-cwd-map-pins>
-                                    <?php foreach ( $pub_rows as $i => $row ) : ?>
-                                    <button type="button"
-                                            class="cwd-map-pin cwd-pub-gallery-item<?php echo $row['msg'] !== '' ? ' has-msg' : ''; ?>"
-                                            style="left:<?php echo esc_attr( (string) $row['x'] ); ?>%;top:<?php echo esc_attr( (string) $row['y'] ); ?>%;"
-                                            data-pub-index="<?php echo (int) $i; ?>"
-                                            data-full="<?php echo esc_url( $row['full'] ); ?>"
-                                            aria-label="<?php esc_attr_e( 'View anonymous submission', 'creativewings-core' ); ?>">
-                                        <span class="cwd-map-pin-dot" aria-hidden="true"></span>
+
+                                <div class="cwd-map-zoom-controls" aria-label="<?php esc_attr_e( 'Map zoom controls', 'creativewings-core' ); ?>">
+                                    <button type="button" class="cwd-map-zoom-btn" data-cwd-map-zoom-out aria-label="<?php esc_attr_e( 'Zoom out', 'creativewings-core' ); ?>">−</button>
+                                    <button type="button" class="cwd-map-zoom-btn" data-cwd-map-zoom-in aria-label="<?php esc_attr_e( 'Zoom in', 'creativewings-core' ); ?>">+</button>
+                                    <button type="button" class="cwd-map-zoom-btn cwd-map-zoom-btn--reset" data-cwd-map-zoom-reset aria-label="<?php esc_attr_e( 'Reset zoom', 'creativewings-core' ); ?>">
+                                        <i class="fas fa-compress" aria-hidden="true"></i>
                                     </button>
-                                    <?php endforeach; ?>
                                 </div>
 
-                                <?php if ( $map_total <= 0 ) : ?>
+                                <div class="cwd-map-legend" aria-hidden="true">
+                                    <span class="cwd-map-legend-item"><span class="cwd-map-legend-swatch cwd-map-legend-swatch--filled"></span><?php esc_html_e( 'Joined', 'creativewings-core' ); ?></span>
+                                    <span class="cwd-map-legend-item"><span class="cwd-map-legend-swatch cwd-map-legend-swatch--empty"></span><?php esc_html_e( 'Open slot', 'creativewings-core' ); ?></span>
+                                </div>
+
+                                <?php if ( $map_filled_count <= 0 ) : ?>
                                 <div class="cwd-map-empty">
-                                    <p><?php esc_html_e( 'No submissions on the map yet — be the first to join!', 'creativewings-core' ); ?></p>
+                                    <p><?php esc_html_e( 'Be the first to fill a smiley on the map!', 'creativewings-core' ); ?></p>
                                     <button type="button" class="cwd-map-empty-cta" onclick="if(typeof cwdOpenJoinGate==='function'){cwdOpenJoinGate();}else if(typeof cwdOpenRegModal==='function'){cwdOpenRegModal();}">
                                         <?php esc_html_e( 'Join now', 'creativewings-core' ); ?>
                                     </button>
@@ -1493,56 +1771,30 @@ class CW_Shortcodes {
                                 <?php endif; ?>
                             </div>
 
-                            <p class="cwd-map-more" data-cwd-map-more <?php echo $map_more > 0 ? '' : 'hidden'; ?>>
-                                <?php
-                                if ( $map_more > 0 ) {
-                                    printf(
-                                        esc_html__( '+%d more submissions', 'creativewings-core' ),
-                                        (int) $map_more
-                                    );
-                                }
-                                ?>
-                            </p>
-                            <?php if ( $map_total > 0 ) : ?>
                             <p class="cwd-map-note">
                                 <?php
-                                if ( ! empty( $map_points ) ) {
-                                    printf(
-                                        esc_html__(
-                                            'All %1$s successful submissions are on the map. The latest %2$s highlighted pins can be opened; older ones appear as dots.',
-                                            'creativewings-core'
-                                        ),
-                                        esc_html( number_format_i18n( $map_total ) ),
-                                        esc_html( number_format_i18n( min( 150, count( $pub_rows ) ) ) )
-                                    );
+                                if ( $map_filled_count > 0 ) {
+                                    esc_html_e( 'Tap a colourful smiley to view that submission. Joined smileys are placed randomly on the map.', 'creativewings-core' );
                                 } else {
-                                    printf(
-                                        esc_html__(
-                                            '%s successful submissions are shown as pins — click a pin to open the artwork.',
-                                            'creativewings-core'
-                                        ),
-                                        esc_html( number_format_i18n( count( $pub_rows ) ) )
-                                    );
+                                    esc_html_e( 'Each join adds a smiley somewhere on the Malaysia map. Scroll or use +/− to zoom.', 'creativewings-core' );
                                 }
                                 ?>
                             </p>
-                            <?php endif; ?>
                         </div>
 
-                        <?php if ( ! empty( $pub_json_rows ) || ! empty( $map_points ) ) : ?>
                         <script>
                         window.cwdPublicSubmissions = <?php echo wp_json_encode( $pub_json_rows ); ?>;
                         window.cwdMapGallery = <?php echo wp_json_encode( [
-                            'pins' => array_values( array_map( static function ( $r ) {
-                                return [
-                                    'full' => $r['full'],
-                                    'alt'  => __( 'Anonymous submission', 'creativewings-core' ),
-                                    'msg'  => $r['msg'] ?: '',
-                                    'x'    => (float) ( $r['x'] ?? 50 ),
-                                    'y'    => (float) ( $r['y'] ?? 50 ),
-                                ];
-                            }, $pub_rows ) ),
-                            'points' => $map_points,
+                            'slots' => array_values( array_map( static function ( $slot ) {
+                                return [ (float) $slot[0], (float) $slot[1] ];
+                            }, $map_slots ) ),
+                            'filled' => $pub_json_rows,
+                            'filledSlots' => $map_filled_slots,
+                            'filledCount' => (int) $map_filled_count,
+                            'totalSlots'  => (int) $map_display_slots,
+                            'viewBox'     => array_map( 'intval', (array) $map_vb ),
+                            'gridStep'    => (float) ( $map_mosaic['gridStep'] ?? 6.2 ),
+                            'radiusRatio' => (float) ( $map_mosaic['radiusRatio'] ?? 0.4 ),
                             'kpi' => [
                                 'enabled'     => (bool) $map_kpi_enabled,
                                 'count'       => (int) $map_count,
@@ -1550,17 +1802,12 @@ class CW_Shortcodes {
                                 'fillPercent' => (float) $map_fill,
                                 'labelText'   => $map_label_text,
                             ],
-                            'renderedPointCount' => count( $map_points ),
-                            'totalPointCount'    => (int) $map_count,
-                            'moreCount' => (int) $map_more,
                             'i18n' => [
                                 'anonymous' => __( 'Anonymous submission', 'creativewings-core' ),
                                 'openPin'   => __( 'View anonymous submission', 'creativewings-core' ),
-                                'more'      => __( '+%d more submissions', 'creativewings-core' ),
                             ],
                         ] ); ?>;
                         </script>
-                        <?php endif; ?>
                     </section>
                         <?php
                         else :
@@ -1638,8 +1885,190 @@ class CW_Shortcodes {
                     </section>
                     <?php endif; ?>
 
+                    <!-- Supporting Partners -->
+                    <?php if ( ! empty( $supporting_partners ) || ! empty( $campaign_mentors ) ) : ?>
+                    <style>
+                    .cwd-partners-grid{display:grid!important;grid-template-columns:repeat(8,minmax(0,1fr))!important;gap:16px;align-items:stretch;width:100%}
+                    .cwd-partner-item{min-width:0}
+                    .cwd-partner-logo{display:flex;align-items:center;justify-content:center;width:100%;min-width:0;height:72px;padding:10px 12px;background:#fff;border:1px solid #e5e9ef;border-radius:10px}
+                    .cwd-partner-logo img{max-width:100%;max-height:52px;width:auto;height:auto;object-fit:contain}
+                    .cwd-mentors-grid{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:20px;width:100%}
+                    .cwd-mentor-card{display:flex;flex-direction:column;align-items:center;text-align:center;background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:18px 16px}
+                    .cwd-mentor-avatar{width:100%!important;aspect-ratio:3/4!important;min-height:220px!important;height:auto!important;border-radius:8px;overflow:hidden;flex-shrink:0;margin-bottom:12px;background:#f8fafc;border:1px solid #e5e9ef;position:relative}
+                    .cwd-mentor-avatar-btn{display:block;position:absolute;inset:0;width:100%;height:100%;padding:0;border:0;background:transparent;cursor:pointer}
+                    .cwd-mentor-avatar>img,.cwd-mentor-avatar-btn img{position:absolute;inset:0;width:100%!important;height:100%!important;object-fit:contain!important;object-position:center center!important;display:block!important;background:#f8fafc}
+                    .cwd-mentor-avatar-hint{position:absolute;right:8px;bottom:8px;width:28px;height:28px;border-radius:999px;background:rgba(18,91,154,.88);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;pointer-events:none;z-index:1}
+                    .cwd-mentor-name{font-size:17px;font-weight:700;margin:0;line-height:1.3}
+                    .cwd-mentor-modal-wrap{max-width:720px;padding:0;overflow:hidden;position:relative}
+                    .cwd-mentor-modal-layout{display:flex;align-items:stretch;min-height:300px;max-height:min(80vh,520px)}
+                    .cwd-mentor-modal-photo{flex:0 0 42%;max-width:300px;background:#f8fafc;border-right:1px solid #e5e9ef}
+                    .cwd-mentor-modal-photo img{width:100%;height:100%;min-height:300px;object-fit:contain;object-position:center center;display:block;background:#f8fafc}
+                    .cwd-mentor-modal-content{flex:1;min-width:0;display:flex;flex-direction:column;padding:22px 24px 24px;text-align:left}
+                    .cwd-mentor-modal-content .cwd-mentor-name{margin:0 0 10px;font-size:20px}
+                    .cwd-mentor-modal-content .cwd-mentor-title{display:block;font-size:14px;font-weight:600;color:#125b9a;margin:0 0 14px;line-height:1.45}
+                    .cwd-mentor-modal-link{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#125b9a;text-decoration:none;margin:0 0 14px}
+                    .cwd-mentor-modal-link:hover{text-decoration:underline}
+                    .cwd-mentor-modal-bio-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-right:6px}
+                    .cwd-mentor-modal-bio-scroll .cwd-mentor-bio{font-size:14px;line-height:1.65;color:#334155;margin:0}
+                    .cwd-mentor-modal .cwd-modal-close{position:absolute;top:12px;right:12px;z-index:2;background:#fff}
+                    @media (max-width:640px){.cwd-mentor-modal-layout{flex-direction:column;max-height:90vh}.cwd-mentor-modal-photo{flex:none;max-width:none;border-right:0;border-bottom:1px solid #e5e9ef}.cwd-mentor-modal-photo img{min-height:220px;max-height:240px}.cwd-mentor-modal-bio-scroll{max-height:180px}}
+                    @media (max-width:1100px){.cwd-partners-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}.cwd-mentors-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+                    @media (max-width:640px){.cwd-partners-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.cwd-mentors-grid{grid-template-columns:1fr!important}}
+                    </style>
+                    <?php endif; ?>
+                    <?php if ( ! empty( $supporting_partners ) ) : ?>
+                    <section class="cwd-section cwd-partners-section">
+                        <h2 class="cwd-section-title"><i class="fas fa-handshake"></i> <?php esc_html_e( 'Supporting Partners', 'creativewings-core' ); ?></h2>
+                        <div class="cwd-partners-grid">
+                            <?php foreach ( $supporting_partners as $partner ) :
+                                $logo_url = wp_get_attachment_image_url( (int) $partner['attachment_id'], 'medium' );
+                                if ( ! $logo_url ) {
+                                    continue;
+                                }
+                                $partner_name = $partner['name'];
+                                $partner_url  = ! empty( $partner['url'] ) ? $partner['url'] : '';
+                            ?>
+                            <div class="cwd-partner-item">
+                                <?php if ( $partner_url ) : ?>
+                                <a href="<?php echo esc_url( $partner_url ); ?>"
+                                   class="cwd-partner-logo"
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   title="<?php echo esc_attr( $partner_name ); ?>">
+                                    <img src="<?php echo esc_url( $logo_url ); ?>"
+                                         alt="<?php echo esc_attr( $partner_name ); ?>"
+                                         loading="lazy">
+                                </a>
+                                <?php else : ?>
+                                <div class="cwd-partner-logo" title="<?php echo esc_attr( $partner_name ); ?>">
+                                    <img src="<?php echo esc_url( $logo_url ); ?>"
+                                         alt="<?php echo esc_attr( $partner_name ); ?>"
+                                         loading="lazy">
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </section>
+                    <?php endif; ?>
+
+                    <!-- Mentors -->
+                    <?php if ( ! empty( $campaign_mentors ) ) : ?>
+                    <section class="cwd-section cwd-mentors-section">
+                        <h2 class="cwd-section-title"><i class="fas fa-user-graduate"></i> <?php esc_html_e( 'Mentors', 'creativewings-core' ); ?></h2>
+                        <div class="cwd-mentors-grid">
+                            <?php foreach ( $campaign_mentors as $mentor ) :
+                                $photo_url = wp_get_attachment_image_url( (int) $mentor['attachment_id'], 'medium' );
+                                $photo_full = wp_get_attachment_image_url( (int) $mentor['attachment_id'], 'large' );
+                                if ( ! $photo_url ) {
+                                    continue;
+                                }
+                                $mentor_name  = $mentor['name'];
+                                $mentor_title = ! empty( $mentor['title'] ) ? $mentor['title'] : '';
+                                $mentor_bio   = ! empty( $mentor['bio'] ) ? $mentor['bio'] : '';
+                                $mentor_url   = ! empty( $mentor['url'] ) ? $mentor['url'] : '';
+                                $has_details  = ( $mentor_title !== '' || $mentor_bio !== '' || $mentor_url !== '' );
+                            ?>
+                            <article class="cwd-mentor-card">
+                                <div class="cwd-mentor-avatar">
+                                    <?php if ( $has_details ) : ?>
+                                    <button type="button"
+                                        class="cwd-mentor-avatar-btn"
+                                        onclick="cwdOpenMentorModal(this)"
+                                        aria-label="<?php echo esc_attr( sprintf( __( 'View profile: %s', 'creativewings-core' ), $mentor_name ) ); ?>"
+                                        data-photo="<?php echo esc_url( $photo_full ?: $photo_url ); ?>"
+                                        data-name="<?php echo esc_attr( $mentor_name ); ?>"
+                                        data-title="<?php echo esc_attr( $mentor_title ); ?>"
+                                        data-bio="<?php echo esc_attr( $mentor_bio ); ?>"
+                                        data-url="<?php echo esc_url( $mentor_url ); ?>">
+                                        <img src="<?php echo esc_url( $photo_url ); ?>"
+                                             alt="<?php echo esc_attr( $mentor_name ); ?>"
+                                             loading="lazy">
+                                    </button>
+                                    <span class="cwd-mentor-avatar-hint" aria-hidden="true"><i class="fas fa-info"></i></span>
+                                    <?php else : ?>
+                                    <img src="<?php echo esc_url( $photo_url ); ?>"
+                                         alt="<?php echo esc_attr( $mentor_name ); ?>"
+                                         loading="lazy">
+                                    <?php endif; ?>
+                                </div>
+                                <div class="cwd-mentor-info">
+                                    <h3 class="cwd-mentor-name"><?php echo esc_html( $mentor_name ); ?></h3>
+                                </div>
+                            </article>
+                            <?php endforeach; ?>
+                        </div>
+                        <div id="cwd-mentor-modal" class="cwd-modal-overlay cwd-mentor-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="cwd-mentor-modal-name" onclick="if(event.target===this)cwdCloseMentorModal()">
+                            <div class="cwd-modal-wrap cwd-mentor-modal-wrap">
+                                <button type="button" class="cwd-modal-close" onclick="cwdCloseMentorModal()" aria-label="<?php esc_attr_e( 'Close', 'creativewings-core' ); ?>">&times;</button>
+                                <div class="cwd-mentor-modal-layout">
+                                    <div class="cwd-mentor-modal-photo">
+                                        <img id="cwd-mentor-modal-img" src="" alt="">
+                                    </div>
+                                    <div class="cwd-mentor-modal-content">
+                                        <h3 id="cwd-mentor-modal-name" class="cwd-mentor-name"></h3>
+                                        <p id="cwd-mentor-modal-title" class="cwd-mentor-title" hidden></p>
+                                        <a id="cwd-mentor-modal-link" class="cwd-mentor-modal-link" href="#" target="_blank" rel="noopener noreferrer" hidden>
+                                            <i class="fas fa-external-link-alt" aria-hidden="true"></i>
+                                            <span><?php esc_html_e( 'Visit profile', 'creativewings-core' ); ?></span>
+                                        </a>
+                                        <div id="cwd-mentor-modal-bio-wrap" class="cwd-mentor-modal-bio-scroll" hidden>
+                                            <p id="cwd-mentor-modal-bio" class="cwd-mentor-bio"></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <script>
+                        (function(){
+                            function byId(id){ return document.getElementById(id); }
+                            window.cwdOpenMentorModal = function(btn){
+                                if(!btn) return;
+                                var img = byId('cwd-mentor-modal-img');
+                                var name = byId('cwd-mentor-modal-name');
+                                var title = byId('cwd-mentor-modal-title');
+                                var link = byId('cwd-mentor-modal-link');
+                                var bio = byId('cwd-mentor-modal-bio');
+                                var bioWrap = byId('cwd-mentor-modal-bio-wrap');
+                                var modal = byId('cwd-mentor-modal');
+                                if(!img || !name || !title || !link || !bio || !bioWrap || !modal) return;
+                                img.src = btn.getAttribute('data-photo') || '';
+                                img.alt = btn.getAttribute('data-name') || '';
+                                name.textContent = btn.getAttribute('data-name') || '';
+                                var t = btn.getAttribute('data-title') || '';
+                                var b = btn.getAttribute('data-bio') || '';
+                                var u = btn.getAttribute('data-url') || '';
+                                title.textContent = t;
+                                title.hidden = !t;
+                                if (u) {
+                                    link.href = u;
+                                    link.hidden = false;
+                                } else {
+                                    link.removeAttribute('href');
+                                    link.hidden = true;
+                                }
+                                bio.textContent = b;
+                                bioWrap.hidden = !b;
+                                bioWrap.scrollTop = 0;
+                                modal.style.display = 'flex';
+                                document.body.style.overflow = 'hidden';
+                            };
+                            window.cwdCloseMentorModal = function(){
+                                var modal = byId('cwd-mentor-modal');
+                                if(!modal) return;
+                                modal.style.display = 'none';
+                                document.body.style.overflow = '';
+                            };
+                            document.addEventListener('keydown', function(e){
+                                if(e.key === 'Escape') cwdCloseMentorModal();
+                            });
+                        })();
+                        </script>
+                    </section>
+                    <?php endif; ?>
+
                     <!-- GALLERY (WooCommerce product image gallery) — sits
-                         below About so the page reads: Submissions → About → Gallery. -->
+                         below About so the page reads: Submissions → About → Partners → Mentors → Gallery. -->
                     <?php if ( ! empty( $gallery_images ) ): ?>
                     <section class="cwd-section cwd-gallery-section">
                         <h2 class="cwd-section-title"><i class="fas fa-images"></i> Gallery</h2>
@@ -2757,37 +3186,50 @@ class CW_Shortcodes {
 
     /* ==========================================================================
        9. COMBINED EVENTS SNIPPET  [cw_events_grid]
-          Shows N cards (default 3) from ALL event categories — no tabs/pagination
+          Active campaigns only. Default: looping carousel, 3 visible.
        ========================================================================== */
     public function render_events_grid( $atts ) {
         $atts = shortcode_atts([
-            'limit'      => 3,
+            'heading'    => __( 'Open Campaigns', 'creativewings-core' ),
+            'limit'      => 6,
             'columns'    => 3,
             'categories' => 'activities,competitions,talk-seminar',
             'orderby'    => 'date',  // date | rand | title
+            'carousel'   => 'yes',
+            'autoplay'   => 'yes',
+            'interval'   => '5000',
+            'active'     => 'yes',   // yes = hide closed campaigns
         ], $atts, 'cw_events_grid');
 
-        $limit   = max( 1, intval( $atts['limit'] ) );
-        $cols    = max( 1, min( 4, intval( $atts['columns'] ) ) );
-        $orderby = in_array( $atts['orderby'], ['date','rand','title'] ) ? $atts['orderby'] : 'date';
+        $limit    = max( 1, intval( $atts['limit'] ) );
+        $cols     = max( 1, min( 4, intval( $atts['columns'] ) ) );
+        $orderby  = in_array( $atts['orderby'], ['date','rand','title'], true ) ? $atts['orderby'] : 'date';
+        $carousel = $atts['carousel'] !== 'no';
+        $active   = $atts['active'] !== 'no';
+        $today    = current_time( 'Y-m-d' );
 
-        // Collect all term IDs for the requested parent categories
         $cat_slugs = array_filter( array_map( 'trim', explode( ',', $atts['categories'] ) ) );
         $term_ids  = [];
         foreach ( $cat_slugs as $slug ) {
             $t = get_term_by( 'slug', $slug, 'product_cat' );
-            if ( ! $t || is_wp_error($t) ) continue;
+            if ( ! $t || is_wp_error( $t ) ) {
+                continue;
+            }
             $term_ids[] = $t->term_id;
             foreach ( get_term_children( $t->term_id, 'product_cat' ) as $cid ) {
                 $term_ids[] = (int) $cid;
             }
         }
-        if ( empty( $term_ids ) ) return '';
+        if ( empty( $term_ids ) ) {
+            return '';
+        }
 
-        $query = new WP_Query([
+        $fetch = $active ? max( $limit * 3, 24 ) : $limit;
+
+        $query_args = [
             'post_type'      => 'product',
             'post_status'    => 'publish',
-            'posts_per_page' => $limit,
+            'posts_per_page' => $fetch,
             'orderby'        => $orderby,
             'order'          => 'DESC',
             'tax_query'      => [[
@@ -2795,20 +3237,47 @@ class CW_Shortcodes {
                 'field'    => 'term_id',
                 'terms'    => array_unique( $term_ids ),
             ]],
-        ]);
+        ];
 
-        if ( ! $query->have_posts() ) return '';
+        if ( $active ) {
+            $query_args['meta_query'] = [
+                'relation' => 'OR',
+                [
+                    'key'     => 'submission_deadline',
+                    'compare' => 'NOT EXISTS',
+                ],
+                [
+                    'key'     => 'submission_deadline',
+                    'value'   => '',
+                    'compare' => '=',
+                ],
+                [
+                    'key'     => 'submission_deadline',
+                    'value'   => $today,
+                    'compare' => '>=',
+                    'type'    => 'CHAR',
+                ],
+            ];
+        }
 
-        // SDG icon base URL
+        $query = new WP_Query( $query_args );
+        if ( ! $query->have_posts() ) {
+            return '';
+        }
+
         $sdg_base  = 'https://creativewings.asia/wp-content/uploads/2025/12/';
         $sdg_names = [ 'No Poverty'=>1,'Zero Hunger'=>2,'Good Health and Well-Being'=>3,'Quality Education'=>4,'Gender Equality'=>5,'Clean Water and Sanitation'=>6,'Affordable and Clean Energy'=>7,'Decent Work and Economic Growth'=>8,'Industry, Innovation, and Infrastructure'=>9,'Reduced Inequalities'=>10,'Sustainable Cities and Communities'=>11,'Responsible Consumption and Production'=>12,'Climate Action'=>13,'Life Below Water'=>14,'Life on Land'=>15,'Peace, Justice, and Strong Institutions'=>16,'Partnerships for the Goals'=>17 ];
 
-        // Already-joined check
         $joined_pids = [];
         $uid = get_current_user_id();
         if ( $uid ) {
             $joined = get_posts([ 'post_type' => ['cw_activity_entry','cw_competition_entry'], 'meta_key' => 'customer_id', 'meta_value' => $uid, 'posts_per_page' => -1, 'fields' => 'ids' ]);
-            foreach ( $joined as $eid ) { $epid = (int) get_post_meta( $eid, 'product_id', true ); if ( $epid ) $joined_pids[$epid] = true; }
+            foreach ( $joined as $eid ) {
+                $epid = (int) get_post_meta( $eid, 'product_id', true );
+                if ( $epid ) {
+                    $joined_pids[ $epid ] = true;
+                }
+            }
         }
 
         $chip_colors = [
@@ -2820,94 +3289,200 @@ class CW_Shortcodes {
             'volunteer'   => 'cwg-chip-volunteer',
         ];
 
-        ob_start();
-        ?>
-        <div class="cwg-grid cwg-cols-<?php echo $cols; ?> cwg-events-snippet">
-            <?php while ( $query->have_posts() ): $query->the_post();
-                $pid  = get_the_ID();
-                $wcp  = wc_get_product( $pid );
-                if ( ! $wcp ) continue;
+        $cards_html = [];
+        while ( $query->have_posts() ) {
+            $query->the_post();
+            if ( count( $cards_html ) >= $limit ) {
+                break;
+            }
 
-                // Type
-                $terms_p = get_the_terms( $pid, 'product_cat' );
-                $type_lbl = ''; $type_key = '';
-                if ( $terms_p && ! is_wp_error( $terms_p ) ) {
-                    foreach ( $terms_p as $tp ) {
-                        $s = strtolower( $tp->slug );
-                        if ( false !== strpos( $s, 'competition' ) ) { $type_lbl = 'Competition'; $type_key = 'competition'; break; }
-                        if ( $s === 'talk-seminar' || false !== strpos( $s, 'seminar' ) || false !== strpos( $s, 'talk' ) ) { $type_lbl = 'Talk / Seminar'; $type_key = 'seminar'; break; }
-                        if ( false !== strpos( $s, 'running' ) )   { $type_lbl = 'Running';    $type_key = 'running';    break; }
-                        if ( false !== strpos( $s, 'volunteer' ) ) { $type_lbl = 'Volunteer';  $type_key = 'volunteer';  break; }
-                        if ( false !== strpos( $s, 'workshop' ) )  { $type_lbl = 'Workshop';   $type_key = 'workshop';   break; }
-                        if ( false !== strpos( $s, 'community' ) ) { $type_lbl = 'Community';  $type_key = 'community';  break; }
-                    }
-                    if ( ! $type_lbl ) { $t0 = reset( $terms_p ); $type_lbl = $t0->name; $type_key = $t0->slug; }
+            $pid = get_the_ID();
+            $wcp = wc_get_product( $pid );
+            if ( ! $wcp ) {
+                continue;
+            }
+
+            $deadline  = get_post_meta( $pid, 'submission_deadline', true );
+            $is_closed = $deadline && strtotime( $deadline ) < current_time( 'timestamp' );
+            if ( $active && $is_closed ) {
+                continue;
+            }
+
+            $terms_p  = get_the_terms( $pid, 'product_cat' );
+            $type_lbl = '';
+            $type_key = '';
+            if ( $terms_p && ! is_wp_error( $terms_p ) ) {
+                foreach ( $terms_p as $tp ) {
+                    $s = strtolower( $tp->slug );
+                    if ( false !== strpos( $s, 'competition' ) ) { $type_lbl = 'Competition'; $type_key = 'competition'; break; }
+                    if ( $s === 'talk-seminar' || false !== strpos( $s, 'seminar' ) || false !== strpos( $s, 'talk' ) ) { $type_lbl = 'Talk / Seminar'; $type_key = 'seminar'; break; }
+                    if ( false !== strpos( $s, 'running' ) )   { $type_lbl = 'Running';    $type_key = 'running';    break; }
+                    if ( false !== strpos( $s, 'volunteer' ) ) { $type_lbl = 'Volunteer';  $type_key = 'volunteer';  break; }
+                    if ( false !== strpos( $s, 'workshop' ) )  { $type_lbl = 'Workshop';   $type_key = 'workshop';   break; }
+                    if ( false !== strpos( $s, 'community' ) ) { $type_lbl = 'Community';  $type_key = 'community';  break; }
                 }
+                if ( ! $type_lbl ) {
+                    $t0       = reset( $terms_p );
+                    $type_lbl = $t0->name;
+                    $type_key = $t0->slug;
+                }
+            }
 
-                // Meta
-                $start     = get_post_meta( $pid, 'cw_submission_start', true );
-                $deadline  = get_post_meta( $pid, 'submission_deadline', true );
-                $is_closed = $deadline && strtotime( $deadline ) < current_time('timestamp');
-                $date_str  = $start ? date_i18n( 'j M Y (l)', strtotime($start) ) : '—';
-                $time_str  = $start ? date_i18n( 'g:i A', strtotime($start) ) . ' (GMT +08:00)' : '';
-                $price     = floatval( $wcp->get_price() );
-                $cert_type = get_post_meta( $pid, 'cw_certificate_type', true );
-                $fee_text  = $price > 0 ? 'RM ' . number_format($price,2) : ( $cert_type ? 'E Certificate' : 'Free' );
-                $org_id    = get_post_meta( $pid, 'organizer_id', true );
-                $org_name  = $org_id ? ( get_user_meta( $org_id, 'business_name', true ) ?: 'Host' ) : 'Host';
-                $thumb     = get_the_post_thumbnail_url( $pid, 'medium_large' );
-                $already   = isset( $joined_pids[$pid] );
+            $start      = get_post_meta( $pid, 'cw_submission_start', true );
+            $date_str   = $start ? date_i18n( 'j M Y (l)', strtotime( $start ) ) : '—';
+            $time_str   = $start ? date_i18n( 'g:i A', strtotime( $start ) ) . ' (GMT +08:00)' : '';
+            $closes_str = $deadline ? sprintf( __( 'Closes %s', 'creativewings-core' ), date_i18n( 'j M Y', strtotime( $deadline ) ) ) : '';
+            $price      = floatval( $wcp->get_price() );
+            $cert_type  = get_post_meta( $pid, 'cw_certificate_type', true );
+            $fee_text   = $price > 0 ? 'RM ' . number_format( $price, 2 ) : ( $cert_type ? 'E Certificate' : 'Free' );
+            $org_id     = get_post_meta( $pid, 'organizer_id', true );
+            $org_name   = $org_id ? ( get_user_meta( $org_id, 'business_name', true ) ?: 'Host' ) : 'Host';
+            $thumb      = get_the_post_thumbnail_url( $pid, 'medium_large' );
+            $already    = isset( $joined_pids[ $pid ] );
 
-                // SDG
-                $sdg_raw = get_post_meta( $pid, 'sdg_goals', true );
-                $sdg_icons_d = [];
-                if ( is_array($sdg_raw) ) foreach ( $sdg_raw as $n => $v ) if ( $v === 'true' && isset($sdg_names[$n]) ) $sdg_icons_d[] = [ 'num' => $sdg_names[$n], 'name' => $n ];
+            $sdg_raw     = get_post_meta( $pid, 'sdg_goals', true );
+            $sdg_icons_d = [];
+            if ( is_array( $sdg_raw ) ) {
+                foreach ( $sdg_raw as $n => $v ) {
+                    if ( $v === 'true' && isset( $sdg_names[ $n ] ) ) {
+                        $sdg_icons_d[] = [ 'num' => $sdg_names[ $n ], 'name' => $n ];
+                    }
+                }
+            }
+
+            ob_start();
             ?>
             <div class="cwg-card<?php echo $is_closed ? ' cwg-card-closed' : ''; ?>">
                 <a href="<?php the_permalink(); ?>" class="cwg-card-cover">
-                    <?php if ( $thumb ): ?>
-                        <img src="<?php echo esc_url($thumb); ?>" alt="<?php echo esc_attr( get_the_title() ); ?>" loading="lazy">
-                    <?php else: ?>
+                    <?php if ( $thumb ) : ?>
+                        <img src="<?php echo esc_url( $thumb ); ?>" alt="<?php echo esc_attr( get_the_title() ); ?>" loading="lazy">
+                    <?php else : ?>
                         <div class="cwg-cover-ph"><i class="fas fa-image"></i></div>
                     <?php endif; ?>
-                    <?php if ( $type_lbl ): ?><span class="cwg-chip <?php echo esc_attr( $chip_colors[$type_key] ?? '' ); ?>"><?php echo esc_html($type_lbl); ?></span><?php endif; ?>
-                    <?php if ( $is_closed ): ?>
+                    <?php if ( $type_lbl ) : ?>
+                        <span class="cwg-chip <?php echo esc_attr( $chip_colors[ $type_key ] ?? '' ); ?>"><?php echo esc_html( $type_lbl ); ?></span>
+                    <?php endif; ?>
+                    <?php if ( ! $is_closed ) : ?>
+                        <span class="cwg-open-pill"><span class="cwg-open-dot" aria-hidden="true"></span> <?php esc_html_e( 'Open', 'creativewings-core' ); ?></span>
+                    <?php endif; ?>
+                    <?php if ( $is_closed ) : ?>
                         <span class="cwg-closed-ribbon"><i class="fas fa-lock"></i> Closed</span>
-                    <?php elseif ( $already ): ?>
+                    <?php elseif ( $already ) : ?>
                         <span class="cwg-joined-ribbon"><i class="fas fa-check"></i> Joined</span>
                     <?php endif; ?>
                 </a>
                 <div class="cwg-card-body">
                     <a href="<?php the_permalink(); ?>"><h3 class="cwg-card-title"><?php the_title(); ?></h3></a>
-                    <p class="cwg-card-org"><i class="fas fa-building"></i> <?php echo esc_html($org_name); ?></p>
+                    <p class="cwg-card-org"><i class="fas fa-building"></i> <?php echo esc_html( $org_name ); ?></p>
                     <ul class="cwg-card-meta">
-                        <li><i class="fas fa-calendar-alt"></i> <?php echo esc_html($date_str); ?></li>
-                        <?php if ($time_str): ?><li><i class="fas fa-clock"></i> <?php echo esc_html($time_str); ?></li><?php endif; ?>
-                        <li><i class="fas fa-tag"></i> <?php echo esc_html($fee_text); ?></li>
+                        <li><i class="fas fa-calendar-alt"></i> <?php echo esc_html( $date_str ); ?></li>
+                        <?php if ( $closes_str ) : ?>
+                            <li class="cwg-meta-closes"><i class="fas fa-hourglass-half"></i> <?php echo esc_html( $closes_str ); ?></li>
+                        <?php elseif ( $time_str ) : ?>
+                            <li><i class="fas fa-clock"></i> <?php echo esc_html( $time_str ); ?></li>
+                        <?php endif; ?>
+                        <li><i class="fas fa-tag"></i> <?php echo esc_html( $fee_text ); ?></li>
                     </ul>
-                    <?php if ( ! empty($sdg_icons_d) ): ?>
+                    <?php if ( ! empty( $sdg_icons_d ) ) : ?>
                     <div class="cwg-sdg-section">
-                        <p class="cwg-sdg-label">Sustainable Development Goals (SDGs)</p>
+                        <p class="cwg-sdg-label"><?php esc_html_e( 'SDGs', 'creativewings-core' ); ?></p>
                         <div class="cwg-sdg-icons">
-                            <?php foreach ($sdg_icons_d as $sg): $pad = str_pad($sg['num'],2,'0',STR_PAD_LEFT); ?>
-                            <img src="<?php echo esc_url($sdg_base.'E_WEB_'.$pad.'.png'); ?>" alt="SDG <?php echo $sg['num']; ?>" title="<?php echo esc_attr($sg['name']); ?>" class="cwg-sdg-icon" loading="lazy">
+                            <?php foreach ( $sdg_icons_d as $sg ) :
+                                $pad = str_pad( (string) $sg['num'], 2, '0', STR_PAD_LEFT );
+                                ?>
+                            <img src="<?php echo esc_url( $sdg_base . 'E_WEB_' . $pad . '.png' ); ?>" alt="SDG <?php echo esc_attr( (string) $sg['num'] ); ?>" title="<?php echo esc_attr( $sg['name'] ); ?>" class="cwg-sdg-icon" loading="lazy">
                             <?php endforeach; ?>
                         </div>
                     </div>
                     <?php endif; ?>
-                    <?php if ( $is_closed ): ?>
+                    <?php if ( $is_closed ) : ?>
                         <button class="cwg-cta cwg-cta-closed" disabled><i class="fas fa-lock"></i> Campaign Closed</button>
-                    <?php elseif ( $already ): ?>
+                    <?php elseif ( $already ) : ?>
                         <a href="<?php the_permalink(); ?>" class="cwg-cta cwg-cta-joined"><i class="fas fa-check-circle"></i> Already Joined</a>
-                    <?php else: ?>
+                    <?php else : ?>
                         <a href="<?php the_permalink(); ?>" class="cwg-cta cwg-cta-join">View &amp; Join <i class="fas fa-arrow-right"></i></a>
                     <?php endif; ?>
                 </div>
             </div>
-            <?php endwhile; wp_reset_postdata(); ?>
-        </div>
+            <?php
+            $cards_html[] = (string) ob_get_clean();
+        }
+        wp_reset_postdata();
+
+        if ( empty( $cards_html ) ) {
+            return '';
+        }
+
+        $heading = trim( (string) $atts['heading'] );
+
+        if ( ! $carousel ) {
+            ob_start();
+            ?>
+            <section class="cwg-events-wrap" aria-label="<?php echo esc_attr( $heading !== '' ? $heading : __( 'Campaigns', 'creativewings-core' ) ); ?>">
+                <?php if ( $heading !== '' ) : ?>
+                    <h2 class="cw-home-section-heading"><?php echo esc_html( $heading ); ?></h2>
+                <?php endif; ?>
+                <div class="cwg-grid cwg-cols-<?php echo esc_attr( (string) $cols ); ?> cwg-events-snippet">
+                    <?php echo implode( '', $cards_html ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                </div>
+            </section>
+            <?php
+            return (string) ob_get_clean();
+        }
+
+        $js = class_exists( 'CW_Core_Platform' )
+            ? CW_Core_Platform::asset( 'assets/js/cw-carousel.js' )
+            : [ 'url' => CW_URL . 'assets/js/cw-carousel.js', 'version' => defined( 'CW_VERSION' ) ? CW_VERSION : null ];
+
+        wp_enqueue_script(
+            'cw-carousel',
+            $js['url'],
+            [],
+            $js['version'] ?? ( defined( 'CW_VERSION' ) ? CW_VERSION : null ),
+            true
+        );
+
+        $uid = 'cw-events-carousel-' . wp_unique_id();
+        ob_start();
+        ?>
+        <section class="cwg-events-wrap" aria-label="<?php echo esc_attr( $heading !== '' ? $heading : __( 'Open Campaigns', 'creativewings-core' ) ); ?>">
+            <div class="cwg-carousel"
+                 id="<?php echo esc_attr( $uid ); ?>"
+                 data-cw-carousel
+                 data-per-view="<?php echo esc_attr( (string) $cols ); ?>"
+                 data-autoplay="<?php echo esc_attr( $atts['autoplay'] === 'no' ? 'no' : 'yes' ); ?>"
+                 data-interval="<?php echo esc_attr( (string) max( 2000, (int) $atts['interval'] ) ); ?>"
+                 data-gap="24"
+                 aria-roledescription="carousel"
+                 aria-label="<?php echo esc_attr( $heading !== '' ? $heading : __( 'Open Campaigns', 'creativewings-core' ) ); ?>">
+                <div class="cwg-carousel__head">
+                    <?php if ( $heading !== '' ) : ?>
+                        <h2 class="cw-home-section-heading cwg-carousel__title"><?php echo esc_html( $heading ); ?></h2>
+                    <?php else : ?>
+                        <span class="cwg-carousel__title-spacer" aria-hidden="true"></span>
+                    <?php endif; ?>
+                    <div class="cwg-carousel__nav">
+                        <button type="button" class="cwg-carousel__btn" data-cw-carousel-prev aria-label="<?php esc_attr_e( 'Previous', 'creativewings-core' ); ?>">
+                            <i class="fas fa-chevron-left" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" class="cwg-carousel__btn" data-cw-carousel-next aria-label="<?php esc_attr_e( 'Next', 'creativewings-core' ); ?>">
+                            <i class="fas fa-chevron-right" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="cwg-carousel__viewport">
+                    <div class="cwg-carousel__track" data-cw-carousel-track>
+                        <?php foreach ( $cards_html as $card ) : ?>
+                            <div class="cwg-carousel__slide">
+                                <?php echo $card; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+        </section>
         <?php
-        return ob_get_clean();
+        return (string) ob_get_clean();
     }
 
     /* ==========================================================================
@@ -3143,6 +3718,9 @@ class CW_Shortcodes {
                         <?php if ( $type_lbl ): ?>
                             <span class="cwg-chip cwg-chip-<?php echo esc_attr( $type_key ); ?>"><?php echo esc_html( $type_lbl ); ?></span>
                         <?php endif; ?>
+                        <?php if ( ! $is_closed && ! $already ) : ?>
+                            <span class="cwg-open-pill"><span class="cwg-open-dot" aria-hidden="true"></span> <?php esc_html_e( 'Open', 'creativewings-core' ); ?></span>
+                        <?php endif; ?>
                         <?php if ( $is_closed ): ?>
                             <span class="cwg-closed-ribbon"><i class="fas fa-lock"></i> Closed</span>
                         <?php elseif ( $already ): ?>
@@ -3158,7 +3736,9 @@ class CW_Shortcodes {
 
                         <ul class="cwg-card-meta">
                             <li><i class="fas fa-calendar-alt"></i> <?php echo esc_html( $date_str ); ?></li>
-                            <?php if ( $time_str ): ?>
+                            <?php if ( $deadline ) : ?>
+                            <li class="cwg-meta-closes"><i class="fas fa-hourglass-half"></i> <?php echo esc_html( sprintf( __( 'Closes %s', 'creativewings-core' ), date_i18n( 'j M Y', strtotime( $deadline ) ) ) ); ?></li>
+                            <?php elseif ( $time_str ): ?>
                             <li><i class="fas fa-clock"></i> <?php echo esc_html( $time_str ); ?></li>
                             <?php endif; ?>
                             <li><i class="fas fa-tag"></i> <?php echo esc_html( $fee_text ); ?></li>
@@ -3166,7 +3746,7 @@ class CW_Shortcodes {
 
                         <?php if ( ! empty( $sdg_icons_d ) ): ?>
                         <div class="cwg-sdg-section">
-                            <p class="cwg-sdg-label">Sustainable Development Goals (SDGs)</p>
+                            <p class="cwg-sdg-label"><?php esc_html_e( 'SDGs', 'creativewings-core' ); ?></p>
                             <div class="cwg-sdg-icons">
                                 <?php foreach ( $sdg_icons_d as $sg ):
                                     $pad_n = str_pad( $sg['num'], 2, '0', STR_PAD_LEFT );

@@ -317,6 +317,16 @@ class CW_Campaign_Persistence {
             }
         }
 
+        if ( array_key_exists( 'cw_address_promo_codes', $data ) || ! empty( $data['_save_feature_blocks'] ) ) {
+            update_post_meta( $product_id, 'cw_address_promo_codes', sanitize_text_field( $data['cw_address_promo_codes'] ?? '' ) );
+            update_post_meta( $product_id, 'cw_address_promo_postcodes', sanitize_text_field( $data['cw_address_promo_postcodes'] ?? '' ) );
+            update_post_meta( $product_id, 'cw_address_promo_keywords', sanitize_text_field( $data['cw_address_promo_keywords'] ?? '' ) );
+            update_post_meta( $product_id, 'cw_address_promo_message', sanitize_text_field( $data['cw_address_promo_message'] ?? '' ) );
+            if ( class_exists( 'CW_Sponsor_Coupons' ) ) {
+                CW_Sponsor_Coupons::sync_campaign_address_promo_coupons( $product_id );
+            }
+        }
+
         if ( ! empty( $data['banner_attachment_id'] ) ) {
             set_post_thumbnail( $product_id, (int) $data['banner_attachment_id'] );
         }
@@ -412,6 +422,19 @@ class CW_Campaign_Persistence {
             }
         }
 
+        if ( array_key_exists( 'cw_supporting_partners', $data ) || array_key_exists( 'cw_mentors', $data ) || ! empty( $data['_save_feature_blocks'] ) ) {
+            if ( class_exists( 'CW_Campaign_Showcase' ) ) {
+                $raw_partners = isset( $data['cw_supporting_partners'] ) && is_array( $data['cw_supporting_partners'] )
+                    ? $data['cw_supporting_partners']
+                    : [];
+                $raw_mentors = isset( $data['cw_mentors'] ) && is_array( $data['cw_mentors'] )
+                    ? $data['cw_mentors']
+                    : [];
+                update_post_meta( $product_id, CW_Campaign_Showcase::META_PARTNERS, CW_Campaign_Showcase::sanitize_partners( $raw_partners ) );
+                update_post_meta( $product_id, CW_Campaign_Showcase::META_MENTORS, CW_Campaign_Showcase::sanitize_mentors( $raw_mentors ) );
+            }
+        }
+
         if ( class_exists( 'CW_Campaign_Resolver' ) ) {
             CW_Campaign_Resolver::flush_serial_cache( $product_id );
         }
@@ -482,11 +505,21 @@ class CW_Campaign_Persistence {
             'cw_kpi_target'                 => $_POST['cw_kpi_target'] ?? '',
             'cw_kpi_label'                  => $_POST['cw_kpi_label'] ?? '',
             'cw_kpi_display_boost'          => $_POST['cw_kpi_display_boost'] ?? '',
+            'cw_address_promo_codes'        => $_POST['cw_address_promo_codes'] ?? '',
+            'cw_address_promo_postcodes'    => $_POST['cw_address_promo_postcodes'] ?? '',
+            'cw_address_promo_keywords'     => $_POST['cw_address_promo_keywords'] ?? '',
+            'cw_address_promo_message'      => $_POST['cw_address_promo_message'] ?? '',
             '_save_feature_blocks'          => true,
         ];
 
         if ( isset( $_POST['cw_design_variants'] ) && is_array( $_POST['cw_design_variants'] ) ) {
             $data['cw_design_variants'] = $_POST['cw_design_variants'];
+        }
+        if ( isset( $_POST['cw_supporting_partners'] ) && is_array( $_POST['cw_supporting_partners'] ) ) {
+            $data['cw_supporting_partners'] = $_POST['cw_supporting_partners'];
+        }
+        if ( isset( $_POST['cw_mentors'] ) && is_array( $_POST['cw_mentors'] ) ) {
+            $data['cw_mentors'] = $_POST['cw_mentors'];
         }
 
         if ( ! self::is_yes( $data['cw_allow_multiple_participants'] ) ) {
@@ -641,6 +674,8 @@ class CW_Campaign_Persistence {
                 'school_code'  => preg_replace( '/\D/', '', $row['school_code'] ),
                 'school_name'  => sanitize_text_field( $row['school_name'] ?? '' ),
                 'coupon_code'  => sanitize_text_field( $row['coupon_code'] ?? '' ),
+                'coupon_restrict_postcodes' => sanitize_text_field( $row['coupon_restrict_postcodes'] ?? '' ),
+                'coupon_restrict_keywords'  => sanitize_text_field( $row['coupon_restrict_keywords'] ?? '' ),
             ];
         }
         return $out;
