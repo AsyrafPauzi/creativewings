@@ -106,6 +106,7 @@ class CW_Dashboard_Creator {
             require_once(ABSPATH.'wp-admin/includes/media.php');
             $aid=media_handle_upload($file_key,0);
             if(!is_wp_error($aid)) {
+                update_post_meta( (int) $aid, '_cw_plugin_media', '1' );
                 if ( class_exists( 'CW_Image_Optimizer' ) ) {
                     $ctx = ( strpos( $file_key, 'header' ) !== false ) ? 'cover' : 'avatar';
                     CW_Image_Optimizer::optimize_attachment( $aid, $ctx );
@@ -1702,6 +1703,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
         if(!empty($_FILES['pf_image']['name'])){
             $aid=media_handle_upload('pf_image',0);
             if(!is_wp_error($aid)){
+                update_post_meta( (int) $aid, '_cw_plugin_media', '1' );
                 if ( class_exists( 'CW_Image_Optimizer' ) ) {
                     CW_Image_Optimizer::optimize_attachment( $aid, 'portfolio' );
                 }
@@ -1715,6 +1717,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                     $_FILES['s_file']=['name'=>$files['name'][$k],'type'=>$files['type'][$k],'tmp_name'=>$files['tmp_name'][$k],'error'=>$files['error'][$k],'size'=>$files['size'][$k]];
                     $gid=media_handle_upload('s_file',0);
                     if(!is_wp_error($gid)){
+                        update_post_meta( (int) $gid, '_cw_plugin_media', '1' );
                         if ( class_exists( 'CW_Image_Optimizer' ) ) {
                             CW_Image_Optimizer::optimize_attachment( $gid, 'gallery' );
                         }

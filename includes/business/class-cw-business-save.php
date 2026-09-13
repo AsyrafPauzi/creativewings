@@ -447,6 +447,7 @@ class CW_Business_Save {
         if ( ! empty( $_FILES['business_logo']['name'] ) ) {
             $lid = media_handle_upload( 'business_logo', 0 );
             if ( ! is_wp_error( $lid ) ) {
+                update_post_meta( (int) $lid, '_cw_plugin_media', '1' );
                 if ( class_exists( 'CW_Image_Optimizer' ) ) {
                     CW_Image_Optimizer::optimize_attachment( $lid, 'logo' );
                 }
@@ -461,6 +462,7 @@ class CW_Business_Save {
         if ( ! empty( $_FILES['business_cover']['name'] ) ) {
             $cid = media_handle_upload( 'business_cover', 0 );
             if ( ! is_wp_error( $cid ) ) {
+                update_post_meta( (int) $cid, '_cw_plugin_media', '1' );
                 if ( class_exists( 'CW_Image_Optimizer' ) ) {
                     CW_Image_Optimizer::optimize_attachment( $cid, 'cover' );
                 }
