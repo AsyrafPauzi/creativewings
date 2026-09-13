@@ -133,6 +133,7 @@ class CW_Cron {
             '_product_image_gallery',
             '_thumbnail_id',
             'cw_design_artwork_id',
+            'cw_design_source_id',
             'cw_cert_template_id',
             'rank_math_facebook_image_id',
             'rank_math_twitter_image_id',
@@ -146,7 +147,7 @@ class CW_Cron {
             )
         );
         foreach ( (array) $rows as $row ) {
-            if ( in_array( $row->meta_key, [ '_thumbnail_id', 'cw_design_artwork_id', 'cw_cert_template_id', 'rank_math_facebook_image_id', 'rank_math_twitter_image_id' ], true ) ) {
+            if ( in_array( $row->meta_key, [ '_thumbnail_id', 'cw_design_artwork_id', 'cw_design_source_id', 'cw_cert_template_id', 'rank_math_facebook_image_id', 'rank_math_twitter_image_id' ], true ) ) {
                 $mark( $row->meta_value );
                 continue;
             }
@@ -169,6 +170,31 @@ class CW_Cron {
             $collect_from_value( maybe_unserialize( $row->meta_value ) );
         }
 
+        // WooCommerce order line-item meta (design checkout).
+        $itemmeta = $wpdb->prefix . 'woocommerce_order_itemmeta';
+        if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $itemmeta ) ) === $itemmeta ) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $item_rows = $wpdb->get_results(
+                "SELECT meta_key, meta_value FROM {$itemmeta}
+                 WHERE meta_key IN ('_cw_design_artwork_id','_cw_design_artwork_ids','_cw_design_source_id')
+                 LIMIT 5000"
+            );
+            foreach ( (array) $item_rows as $row ) {
+                if ( $row->meta_key === '_cw_design_artwork_id' || $row->meta_key === '_cw_design_source_id' ) {
+                    $mark( $row->meta_value );
+                    continue;
+                }
+                $decoded = json_decode( (string) $row->meta_value, true );
+                if ( is_array( $decoded ) ) {
+                    foreach ( $decoded as $v ) {
+                        $mark( $v );
+                    }
+                } else {
+                    $collect_from_value( maybe_unserialize( $row->meta_value ) );
+                }
+            }
+        }
+
         // Entry artwork often stored as attachment URL in upload_document — map back if possible.
         // Also protect numeric upload_document values if any.
         $doc_rows = $wpdb->get_col(
@@ -179,6 +205,28 @@ class CW_Cron {
         foreach ( (array) $doc_rows as $doc ) {
             if ( is_numeric( $doc ) ) {
                 $mark( $doc );
+            }
+        }
+
+        // Certificate templates are often stored as URLs (cw_cert_template).
+        $cert_urls = $wpdb->get_col(
+            "SELECT meta_value FROM {$wpdb->postmeta}
+             WHERE meta_key = 'cw_cert_template' AND meta_value <> ''
+             LIMIT 2000"
+        );
+        $uploads = wp_upload_dir();
+        $baseurl = isset( $uploads['baseurl'] ) ? (string) $uploads['baseurl'] : '';
+        foreach ( (array) $cert_urls as $curl ) {
+            $curl = (string) $curl;
+            if ( $baseurl && strpos( $curl, $baseurl ) === 0 ) {
+                $rel = ltrim( substr( $curl, strlen( $baseurl ) ), '/' );
+                $aid = (int) $wpdb->get_var(
+                    $wpdb->prepare(
+                        "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND meta_value = %s LIMIT 1",
+                        $rel
+                    )
+                );
+                $mark( $aid );
             }
         }
 

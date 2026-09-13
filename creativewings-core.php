@@ -2,7 +2,7 @@
 /**
  * Plugin Name: CreativeWings Core Platform
  * Description: Complete ecosystem: Auth, Onboarding, Campaigns, Tournaments, and Business Logic.
- * Version: 11.1.7
+ * Version: 11.1.10
  * Author: CreativeWings Dev
  * Text Domain: creativewings-core
  * Domain Path: /languages
@@ -69,7 +69,22 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
         private function define_constants() {
             define( 'CW_PATH', plugin_dir_path( __FILE__ ) );
             define( 'CW_URL', plugin_dir_url( __FILE__ ) );
-            define( 'CW_VERSION', '11.1.7' );
+            define( 'CW_VERSION', '11.1.10' );
+        }
+
+        /**
+         * Mark an attachment as permanent Creative Wings media.
+         * Defense-in-depth against any future cleanup that targets unattached media.
+         *
+         * @param int $attachment_id Attachment post ID.
+         * @return int The same ID (0 when invalid).
+         */
+        public static function tag_plugin_media( $attachment_id ) {
+            $attachment_id = (int) $attachment_id;
+            if ( $attachment_id > 0 ) {
+                update_post_meta( $attachment_id, '_cw_plugin_media', '1' );
+            }
+            return $attachment_id;
         }
 
         /**

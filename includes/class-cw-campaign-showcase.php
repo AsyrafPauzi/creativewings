@@ -166,6 +166,9 @@ class CW_Campaign_Showcase {
             }
 
             $aid = (int) $aid;
+            if ( class_exists( 'CW' ) ) {
+                CW::tag_plugin_media( $aid );
+            }
             wp_update_post(
                 [
                     'ID'          => $aid,

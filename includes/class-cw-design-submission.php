@@ -238,15 +238,19 @@ class CW_Design_Submission {
             $slug = (string) ( $variant['slug'] ?? $slug );
         }
 
+        $art_path = (string) get_attached_file( $art_id );
+        if ( ! $art_path || ! file_exists( $art_path ) ) {
+            // Attachment row or file was deleted (legacy orphan cleanup).
+            return null;
+        }
         $art_url = (string) wp_get_attachment_url( $art_id );
         if ( $art_url === '' ) {
             return null;
         }
-        $art_path = (string) get_attached_file( $art_id );
 
         return [
             'artwork_url'  => $art_url,
-            'art_filename' => $art_path ? basename( $art_path ) : '',
+            'art_filename' => basename( $art_path ),
             'variant_url'  => (string) ( $variant['image_url'] ?? '' ),
             'variant_name' => (string) ( $variant['name'] ?? $slug ),
             'variant_slug' => $slug,
@@ -256,6 +260,44 @@ class CW_Design_Submission {
             // hasn't configured it — JS then falls back to contain-fit.
             'print_area'   => $cfg['print_area'] ?? null,
         ];
+    }
+
+    /**
+     * Resolve a working artwork preview URL for an entry, or empty when gone.
+     *
+     * @param int $entry_id Entry post ID.
+     * @return array{url:string,id:int}|null
+     */
+    public static function resolve_entry_artwork( $entry_id ) {
+        $entry_id = (int) $entry_id;
+        if ( $entry_id <= 0 ) {
+            return null;
+        }
+
+        $art_id = (int) get_post_meta( $entry_id, self::ENTRY_ARTWORK, true );
+        if ( $art_id > 0 ) {
+            $path = get_attached_file( $art_id );
+            $url  = wp_get_attachment_url( $art_id );
+            if ( $path && file_exists( $path ) && $url ) {
+                return [ 'url' => (string) $url, 'id' => $art_id ];
+            }
+        }
+
+        $doc = (string) get_post_meta( $entry_id, 'upload_document', true );
+        if ( $doc !== '' ) {
+            $uploads = wp_upload_dir();
+            $baseurl = trailingslashit( (string) ( $uploads['baseurl'] ?? '' ) );
+            $basedir = trailingslashit( (string) ( $uploads['basedir'] ?? '' ) );
+            if ( $baseurl && $basedir && strpos( $doc, $baseurl ) === 0 ) {
+                $rel  = substr( $doc, strlen( $baseurl ) );
+                $path = $basedir . ltrim( $rel, '/' );
+                if ( file_exists( $path ) ) {
+                    return [ 'url' => $doc, 'id' => $art_id > 0 ? $art_id : 0 ];
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -495,6 +537,9 @@ class CW_Design_Submission {
                 }
 
                 $aid = (int) $aid;
+                if ( class_exists( 'CW' ) ) {
+                    CW::tag_plugin_media( $aid );
+                }
                 wp_update_post(
                     [
                         'ID'          => $aid,
@@ -1029,6 +1074,19 @@ class CW_Design_Submission {
         if ( is_wp_error( $attachment_id ) || ! $attachment_id ) {
             @unlink( $move['file'] );
             wp_send_json_error( [ 'message' => __( 'Could not register attachment.', 'creativewings-core' ) ] );
+        }
+
+        // Keep design artwork/source out of any future media cleanup.
+        if ( class_exists( 'CW' ) ) {
+            CW::tag_plugin_media( (int) $attachment_id );
+        } else {
+            update_post_meta( (int) $attachment_id, '_cw_plugin_media', '1' );
+        }
+        if ( $product_id > 0 ) {
+            wp_update_post( [
+                'ID'          => (int) $attachment_id,
+                'post_parent' => $product_id,
+            ] );
         }
 
         // Lean thumbnail only — artwork is already exact W×H after cover-crop.

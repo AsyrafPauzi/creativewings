@@ -119,6 +119,9 @@ class CW_Business_Save {
         if ( ! empty( $_FILES['campaign_image']['name'] ) ) {
             $aid = media_handle_upload( 'campaign_image', $pid );
             if ( ! is_wp_error( $aid ) ) {
+                if ( class_exists( 'CW' ) ) {
+                    CW::tag_plugin_media( (int) $aid );
+                }
                 set_post_thumbnail( $pid, $aid );
                 if ( class_exists( 'CW_Image_Optimizer' ) ) {
                     CW_Image_Optimizer::optimize_attachment( $aid, 'campaign_thumb' );
@@ -154,6 +157,9 @@ class CW_Business_Save {
                 $_FILES['cw_gallery_one'] = $single;
                 $new_id = media_handle_upload( 'cw_gallery_one', $pid );
                 if ( ! is_wp_error( $new_id ) ) {
+                    if ( class_exists( 'CW' ) ) {
+                        CW::tag_plugin_media( (int) $new_id );
+                    }
                     $new_upload_ids[] = (int) $new_id;
                     if ( class_exists( 'CW_Image_Optimizer' ) ) {
                         CW_Image_Optimizer::optimize_attachment( $new_id, 'campaign_thumb' );
@@ -216,7 +222,11 @@ class CW_Business_Save {
         if ( ! empty( $_FILES['cw_cert_template']['name'] ) ) {
             $cid = media_handle_upload( 'cw_cert_template', $pid );
             if ( ! is_wp_error( $cid ) ) {
+                if ( class_exists( 'CW' ) ) {
+                    CW::tag_plugin_media( (int) $cid );
+                }
                 update_post_meta( $pid, 'cw_cert_template', wp_get_attachment_url( $cid ) );
+                update_post_meta( $pid, 'cw_cert_template_id', (int) $cid );
                 if ( class_exists( 'CW_Image_Optimizer' ) ) {
                     CW_Image_Optimizer::optimize_attachment( $cid, 'hero' );
                 }
@@ -307,6 +317,9 @@ class CW_Business_Save {
                 $maybe_new = media_handle_upload( $file_key, $pid );
                 if ( ! is_wp_error( $maybe_new ) ) {
                     $uploaded_new_id = (int) $maybe_new;
+                    if ( class_exists( 'CW' ) ) {
+                        CW::tag_plugin_media( $uploaded_new_id );
+                    }
                     // Row was attached to a different id before — clean up.
                     if ( $row_id && $row_id !== $uploaded_new_id && isset( $existing_ids_in_meta[ $row_id ] ) ) {
                         wp_delete_attachment( $row_id, true );
@@ -447,13 +460,16 @@ class CW_Business_Save {
         if ( ! empty( $_FILES['business_logo']['name'] ) ) {
             $lid = media_handle_upload( 'business_logo', 0 );
             if ( ! is_wp_error( $lid ) ) {
-                update_post_meta( (int) $lid, '_cw_plugin_media', '1' );
+                if ( class_exists( 'CW' ) ) {
+                    CW::tag_plugin_media( (int) $lid );
+                }
                 if ( class_exists( 'CW_Image_Optimizer' ) ) {
                     CW_Image_Optimizer::optimize_attachment( $lid, 'logo' );
                 }
                 $logo_data = [ 'id' => $lid, 'url' => wp_get_attachment_url( $lid ) ];
                 update_user_meta( $uid, 'business_logo', $logo_data );
                 update_user_meta( $uid, 'creator_profile_image', $logo_data );
+                update_user_meta( $uid, 'cw_avatar_attachment_id', (int) $lid );
             }
         }
 
@@ -462,7 +478,9 @@ class CW_Business_Save {
         if ( ! empty( $_FILES['business_cover']['name'] ) ) {
             $cid = media_handle_upload( 'business_cover', 0 );
             if ( ! is_wp_error( $cid ) ) {
-                update_post_meta( (int) $cid, '_cw_plugin_media', '1' );
+                if ( class_exists( 'CW' ) ) {
+                    CW::tag_plugin_media( (int) $cid );
+                }
                 if ( class_exists( 'CW_Image_Optimizer' ) ) {
                     CW_Image_Optimizer::optimize_attachment( $cid, 'cover' );
                 }

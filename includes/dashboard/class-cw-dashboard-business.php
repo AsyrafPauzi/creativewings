@@ -16,6 +16,8 @@ class CW_Dashboard_Business {
 
         // Organizer-initiated submission delete (Reports tab + Manage Entries cards).
         add_action( 'admin_post_cw_delete_staged_submission', [ $this, 'handle_delete_staged_submission' ] );
+        // Replace missing entry artwork (Manage Entries) after media cleanup incidents.
+        add_action( 'admin_post_cw_replace_entry_artwork', [ $this, 'handle_replace_entry_artwork' ] );
 
         // Note: The save handler 'admin_post_cw_save_biz_info' is located in CW_Business class.
     }
@@ -64,6 +66,130 @@ class CW_Dashboard_Business {
         }
 
         wp_safe_redirect( $redirect_to );
+        exit;
+    }
+
+    /**
+     * Organizer replaces a missing competition-entry artwork file.
+     */
+    public function handle_replace_entry_artwork() {
+        if ( ! is_user_logged_in() ) {
+            wp_safe_redirect( wp_login_url() );
+            exit;
+        }
+        check_admin_referer( 'cw_replace_entry_artwork' );
+
+        $uid = get_current_user_id();
+        $is_business = class_exists( 'CW_Roles' ) ? CW_Roles::is_business_user( $uid ) : current_user_can( 'edit_posts' );
+        if ( ! $is_business && ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'You do not have permission to update entries.', 'creativewings-core' ), 403 );
+        }
+
+        $entry_id    = isset( $_POST['entry_id'] ) ? (int) $_POST['entry_id'] : 0;
+        $campaign_id = isset( $_POST['campaign_id'] ) ? (int) $_POST['campaign_id'] : 0;
+        $redirect_to = isset( $_POST['redirect_to'] ) ? esc_url_raw( wp_unslash( $_POST['redirect_to'] ) ) : '';
+        if ( ! $redirect_to ) {
+            $my_account_url = function_exists( 'wc_get_page_id' ) ? get_permalink( wc_get_page_id( 'myaccount' ) ) : home_url( '/' );
+            $redirect_to    = add_query_arg(
+                [ 'tab' => 'manage_entries', 'campaign_id' => $campaign_id ],
+                $my_account_url
+            );
+        }
+
+        $entry = get_post( $entry_id );
+        if ( ! $entry || ! in_array( $entry->post_type, [ 'cw_competition_entry', 'cw_activity_entry' ], true ) ) {
+            wp_safe_redirect( add_query_arg( 'cw_art_err', 'invalid', $redirect_to ) );
+            exit;
+        }
+
+        $product_id = (int) get_post_meta( $entry_id, 'product_id', true );
+        if ( $campaign_id <= 0 ) {
+            $campaign_id = $product_id;
+        }
+        if ( $campaign_id <= 0 || ( class_exists( 'CW_Roles' ) && ! CW_Roles::user_owns_campaign( $campaign_id, $uid ) && ! current_user_can( 'manage_options' ) ) ) {
+            wp_die( esc_html__( 'You do not own this campaign.', 'creativewings-core' ), 403 );
+        }
+
+        if ( empty( $_FILES['artwork_file']['name'] ) ) {
+            wp_safe_redirect( add_query_arg( 'cw_art_err', 'nofile', $redirect_to ) );
+            exit;
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+
+        $aid = media_handle_upload( 'artwork_file', $campaign_id > 0 ? $campaign_id : 0 );
+        if ( is_wp_error( $aid ) ) {
+            wp_safe_redirect( add_query_arg( 'cw_art_err', 'upload', $redirect_to ) );
+            exit;
+        }
+
+        if ( class_exists( 'CW' ) ) {
+            CW::tag_plugin_media( (int) $aid );
+        } else {
+            update_post_meta( (int) $aid, '_cw_plugin_media', '1' );
+        }
+
+        $old_art_id = (int) get_post_meta( $entry_id, 'cw_design_artwork_id', true );
+
+        // Cover-crop to campaign artwork size when this is a design submission.
+        if ( class_exists( 'CW_Design_Submission' ) && CW_Design_Submission::is_enabled( $campaign_id ) ) {
+            $cfg  = CW_Design_Submission::get_config( $campaign_id );
+            $path = get_attached_file( $aid );
+            if ( $path && class_exists( 'CW_Design_Artwork_Crop' ) ) {
+                $w = (int) ( $cfg['width'] ?? 0 );
+                $h = (int) ( $cfg['height'] ?? 0 );
+                if ( $w > 0 && $h > 0 ) {
+                    CW_Design_Artwork_Crop::ensure_size( $path, $w, $h );
+                    if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                        $meta = CW_Image_Optimizer::generate_lean_metadata( (int) $aid, $path );
+                        if ( ! empty( $meta ) ) {
+                            wp_update_attachment_metadata( (int) $aid, $meta );
+                        }
+                    }
+                }
+            }
+            update_post_meta( $entry_id, CW_Design_Submission::ENTRY_ARTWORK, (int) $aid );
+        }
+
+        $url = wp_get_attachment_url( (int) $aid );
+        if ( $url ) {
+            update_post_meta( $entry_id, 'upload_document', $url );
+        }
+
+        // Keep matching order line-item meta in sync when possible.
+        $order_id = (int) get_post_meta( $entry_id, 'order_id', true );
+        if ( $order_id && function_exists( 'wc_get_order' ) ) {
+            $order = wc_get_order( $order_id );
+            if ( $order ) {
+                foreach ( $order->get_items() as $item ) {
+                    $item_art = (int) $item->get_meta( '_cw_design_artwork_id' );
+                    $ids_raw  = $item->get_meta( '_cw_design_artwork_ids' );
+                    $match    = ( $old_art_id > 0 && $item_art === $old_art_id )
+                        || ( $item_art > 0 && $product_id && (int) $item->get_product_id() === $product_id )
+                        || ( ! empty( $ids_raw ) && (int) $item->get_product_id() === $product_id );
+                    if ( ! $match ) {
+                        continue;
+                    }
+                    $item->update_meta_data( '_cw_design_artwork_id', (int) $aid );
+                    $ids = is_string( $ids_raw ) ? json_decode( $ids_raw, true ) : ( is_array( $ids_raw ) ? $ids_raw : [] );
+                    if ( is_array( $ids ) && ! empty( $ids ) ) {
+                        foreach ( $ids as $slot => $slot_aid ) {
+                            if ( (int) $slot_aid === $old_art_id || (int) $slot === 1 ) {
+                                $ids[ $slot ] = (int) $aid;
+                                break;
+                            }
+                        }
+                        $item->update_meta_data( '_cw_design_artwork_ids', wp_json_encode( $ids ) );
+                    }
+                    $item->save();
+                    break;
+                }
+            }
+        }
+
+        wp_safe_redirect( add_query_arg( 'cw_art_ok', 1, $redirect_to ) );
         exit;
     }
 
@@ -677,7 +803,10 @@ class CW_Dashboard_Business {
                 <?php else: ?>
                     <div class="cwcd-entries">
                         <?php foreach ( $latest_entries as $entry ):
-                            $art    = (string) get_post_meta( $entry->ID, 'upload_document', true );
+                            $resolved = class_exists( 'CW_Design_Submission' )
+                                ? CW_Design_Submission::resolve_entry_artwork( (int) $entry->ID )
+                                : null;
+                            $art    = $resolved['url'] ?? '';
                             $name   = (string) get_post_meta( $entry->ID, 'cw_participant_name', true );
                             $is_img = $art && preg_match( '/\.(jpe?g|png|gif|webp)$/i', $art );
                         ?>
@@ -686,7 +815,7 @@ class CW_Dashboard_Business {
                                 <?php if ( $is_img ): ?>
                                     <img src="<?php echo esc_url( $art ); ?>" alt="" loading="lazy" decoding="async">
                                 <?php else: ?>
-                                    <div class="cwcd-entry-blank"><i class="fas fa-user"></i></div>
+                                    <div class="cwcd-entry-blank"><i class="fas fa-image"></i></div>
                                 <?php endif; ?>
                             </div>
                             <figcaption class="cwcd-entry-name"><?php echo esc_html( $name ?: __( 'Participant', 'creativewings-core' ) ); ?></figcaption>
@@ -2927,7 +3056,21 @@ class CW_Dashboard_Business {
             <div class="cw-entry-management-grid">
                 <?php foreach($entries as $entry):
                     $name = get_post_meta($entry->ID, 'cw_participant_name', true);
-                    $file_url = get_post_meta($entry->ID, 'upload_document', true);
+                    $resolved_art = class_exists( 'CW_Design_Submission' )
+                        ? CW_Design_Submission::resolve_entry_artwork( (int) $entry->ID )
+                        : null;
+                    $file_url = $resolved_art['url'] ?? (string) get_post_meta($entry->ID, 'upload_document', true);
+                    $artwork_missing = false;
+                    if ( $resolved_art ) {
+                        $file_url = $resolved_art['url'];
+                    } else {
+                        // Meta may still hold a dead URL / attachment id from the
+                        // legacy orphan media cleanup — treat as missing.
+                        $raw_doc = (string) get_post_meta( $entry->ID, 'upload_document', true );
+                        $raw_art = (int) get_post_meta( $entry->ID, 'cw_design_artwork_id', true );
+                        $artwork_missing = ( $raw_doc !== '' || $raw_art > 0 );
+                        $file_url = '';
+                    }
                     $score = get_post_meta($entry->ID, 'judge_score', true) ?: '0';
                     $comment = get_post_meta($entry->ID, 'judge_comment', true) ?: '';
                     $entry_data = get_post_meta($entry->ID, 'participant_details', true);
@@ -2986,7 +3129,7 @@ class CW_Dashboard_Business {
                         $file_class = 'image-preview is-design-mockup';
                     } elseif ($file_url) {
                         $download_link = $file_url;
-                        if (preg_match('/\.(jpg|jpeg|png|gif)$/i', $file_url)) {
+                        if (preg_match('/\.(jpg|jpeg|png|gif|webp)$/i', $file_url)) {
                             // Plain image preview — click opens the same
                             // lightbox so judges still get the zoom affordance
                             // even on non-design campaigns.
@@ -3002,6 +3145,27 @@ class CW_Dashboard_Business {
                             $img_display = '<i class="fas fa-file-alt file-icon"></i>';
                             $file_class = 'document-preview';
                         }
+                    } elseif ( $artwork_missing ) {
+                        $replace_action = esc_url( admin_url( 'admin-post.php' ) );
+                        $replace_nonce  = esc_attr( wp_create_nonce( 'cw_replace_entry_artwork' ) );
+                        $redirect_back  = esc_attr( $base_url );
+                        $img_display    = '<div class="cw-entry-missing-art" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:20px;text-align:center;color:#64748b;min-height:180px;box-sizing:border-box;">'
+                            . '<i class="fas fa-image" style="font-size:28px;opacity:.55;"></i>'
+                            . '<div style="font-size:13px;font-weight:600;color:#334155;">' . esc_html__( 'Artwork file missing', 'creativewings-core' ) . '</div>'
+                            . '<div style="font-size:12px;line-height:1.4;max-width:220px;">' . esc_html__( 'Ask the participant for the PNG, then re-upload it here.', 'creativewings-core' ) . '</div>'
+                            . '<form method="post" action="' . $replace_action . '" enctype="multipart/form-data" style="margin:0;display:flex;flex-direction:column;align-items:center;gap:8px;" onclick="event.stopPropagation();">'
+                            . '<input type="hidden" name="action" value="cw_replace_entry_artwork">'
+                            . '<input type="hidden" name="_wpnonce" value="' . $replace_nonce . '">'
+                            . '<input type="hidden" name="entry_id" value="' . (int) $entry->ID . '">'
+                            . '<input type="hidden" name="campaign_id" value="' . (int) $campaign_id . '">'
+                            . '<input type="hidden" name="redirect_to" value="' . $redirect_back . '">'
+                            . '<label class="cw-btn-white small" style="cursor:pointer;margin:0;">'
+                            . '<i class="fas fa-upload"></i> ' . esc_html__( 'Re-upload artwork', 'creativewings-core' )
+                            . '<input type="file" name="artwork_file" accept="image/png,image/jpeg,image/webp" required style="display:none;" onchange="this.form.submit()">'
+                            . '</label>'
+                            . '</form>'
+                            . '</div>';
+                        $file_class = 'no-file is-missing-art';
                     } else {
                         $img_display = '<i class="fas fa-times-circle file-icon"></i>';
                         $file_class = 'no-file';
@@ -3518,6 +3682,29 @@ class CW_Dashboard_Business {
                 var clean = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
                 if (window.history && window.history.replaceState) {
                     window.history.replaceState({}, document.title, clean);
+                }
+            }
+            if (params.has('cw_art_ok') || params.has('cw_art_err')) {
+                var artOk = params.has('cw_art_ok');
+                waitSwal(function(){
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: artOk ? 'success' : 'error',
+                        title: artOk
+                            ? <?php echo wp_json_encode( __( 'Artwork restored.', 'creativewings-core' ) ); ?>
+                            : <?php echo wp_json_encode( __( 'Could not upload artwork. Try a PNG/JPG again.', 'creativewings-core' ) ); ?>,
+                        showConfirmButton: false,
+                        timer: 3500,
+                        timerProgressBar: true
+                    });
+                });
+                params.delete('cw_art_ok');
+                params.delete('cw_art_err');
+                var qsArt = params.toString();
+                var cleanArt = window.location.pathname + (qsArt ? '?' + qsArt : '') + window.location.hash;
+                if (window.history && window.history.replaceState) {
+                    window.history.replaceState({}, document.title, cleanArt);
                 }
             }
         })();

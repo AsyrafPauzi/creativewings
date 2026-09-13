@@ -12,6 +12,76 @@ class CW_Users {
         add_filter( 'template_include', [ $this, 'load_public_profile_template' ], 99 );
         add_action('init', [ $this, 'add_profile_rewrite_rule_init' ]);
         add_filter('query_vars', [ $this, 'add_profile_query_vars' ]);
+        // Creator/business uploaded photo becomes the global WP/Woo avatar.
+        add_filter( 'pre_get_avatar_data', [ $this, 'filter_avatar_data' ], 20, 2 );
+    }
+
+    /**
+     * Prefer Creative Wings profile photo (or business logo) over Gravatar.
+     *
+     * @param array $args        Avatar args.
+     * @param mixed $id_or_email User id, email, or comment object.
+     * @return array
+     */
+    public function filter_avatar_data( $args, $id_or_email ) {
+        $user_id = 0;
+        if ( is_numeric( $id_or_email ) ) {
+            $user_id = (int) $id_or_email;
+        } elseif ( is_object( $id_or_email ) && ! empty( $id_or_email->user_id ) ) {
+            $user_id = (int) $id_or_email->user_id;
+        } elseif ( is_object( $id_or_email ) && ! empty( $id_or_email->ID ) ) {
+            $user_id = (int) $id_or_email->ID;
+        } elseif ( is_string( $id_or_email ) && is_email( $id_or_email ) ) {
+            $user = get_user_by( 'email', $id_or_email );
+            $user_id = $user ? (int) $user->ID : 0;
+        }
+
+        if ( $user_id <= 0 ) {
+            return $args;
+        }
+
+        $url = self::get_custom_avatar_url( $user_id );
+        if ( $url ) {
+            $args['url'] = $url;
+            $args['found_avatar'] = true;
+        }
+        return $args;
+    }
+
+    /**
+     * Resolve custom avatar URL from creator profile image or business logo.
+     *
+     * @param int $user_id User ID.
+     * @return string Empty when none.
+     */
+    public static function get_custom_avatar_url( $user_id ) {
+        $user_id = (int) $user_id;
+        if ( $user_id <= 0 ) {
+            return '';
+        }
+
+        foreach ( [ 'creator_profile_image', 'business_logo' ] as $key ) {
+            $meta = get_user_meta( $user_id, $key, true );
+            if ( ! is_array( $meta ) ) {
+                continue;
+            }
+            $aid = (int) ( $meta['id'] ?? 0 );
+            if ( $aid > 0 ) {
+                $from_att = wp_get_attachment_image_url( $aid, 'thumbnail' );
+                if ( ! $from_att ) {
+                    $from_att = wp_get_attachment_url( $aid );
+                }
+                if ( $from_att ) {
+                    return $from_att;
+                }
+            }
+            $url = isset( $meta['url'] ) ? (string) $meta['url'] : '';
+            if ( $url !== '' ) {
+                return $url;
+            }
+        }
+
+        return '';
     }
 
     public function remove_wc_tabs($items) { unset($items['edit-address'], $items['downloads'], $items['orders']); return $items; }

@@ -228,6 +228,9 @@ class CW_Ajax {
             if ( is_wp_error( $attach_id ) ) {
                 wp_send_json_error( 'Could not create attachment.' );
             }
+            if ( class_exists( 'CW' ) ) {
+                CW::tag_plugin_media( (int) $attach_id );
+            }
 
             wp_update_post(
                 [
