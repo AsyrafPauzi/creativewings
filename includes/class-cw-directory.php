@@ -351,66 +351,69 @@ class CW_Directory {
         ?>
         <form class="cw-dir-toolbar" method="get" action="<?php echo esc_url( $anchor ); ?>">
             <?php echo $hidden_inputs; ?>
-            <?php if ( $cfg['total'] > 0 ) : ?>
-                <p class="cw-dir-count"><?php echo esc_html( sprintf( $cfg['total_label'], number_format_i18n( $cfg['total'] ) ) ); ?></p>
-            <?php endif; ?>
-
-            <div class="cw-dir-toolbar-row">
-                <?php if ( $cfg['show_search'] ) : ?>
-                    <label class="cw-dir-search">
-                        <i class="fas fa-search" aria-hidden="true"></i>
-                        <input
-                            type="search"
-                            name="<?php echo esc_attr( $prefix . 'q' ); ?>"
-                            value="<?php echo esc_attr( $cfg['search'] ); ?>"
-                            placeholder="<?php echo esc_attr( $cfg['search_ph'] ); ?>"
-                            aria-label="<?php echo esc_attr( $cfg['search_ph'] ); ?>"
-                        >
-                    </label>
+            <div class="cw-dir-toolbar-bar">
+                <?php if ( $cfg['total'] > 0 ) : ?>
+                    <p class="cw-dir-count"><?php echo esc_html( sprintf( $cfg['total_label'], number_format_i18n( $cfg['total'] ) ) ); ?></p>
                 <?php endif; ?>
 
-                <?php if ( $cfg['show_sort'] ) : ?>
-                    <label class="cw-dir-sort">
-                        <span class="cw-dir-sort-label"><?php esc_html_e( 'Sort by', 'creativewings-core' ); ?></span>
-                        <select name="<?php echo esc_attr( $prefix . 'sort' ); ?>" onchange="this.form.submit()">
-                            <?php foreach ( $cfg['sort_opts'] as $val => $label ) : ?>
-                                <option value="<?php echo esc_attr( $val ); ?>" <?php selected( $cfg['sort'], $val ); ?>>
-                                    <?php echo esc_html( $label ); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </label>
-                <?php endif; ?>
+                <div class="cw-dir-toolbar-controls">
+                    <?php if ( $cfg['show_search'] ) : ?>
+                        <label class="cw-dir-search">
+                            <i class="fas fa-search" aria-hidden="true"></i>
+                            <input
+                                type="search"
+                                name="<?php echo esc_attr( $prefix . 'q' ); ?>"
+                                value="<?php echo esc_attr( $cfg['search'] ); ?>"
+                                placeholder="<?php echo esc_attr( $cfg['search_ph'] ); ?>"
+                                aria-label="<?php echo esc_attr( $cfg['search_ph'] ); ?>"
+                            >
+                        </label>
+                    <?php endif; ?>
 
-                <button type="submit" class="cw-dir-btn cw-dir-btn--primary">
-                    <i class="fas fa-arrow-right" aria-hidden="true"></i>
-                    <?php esc_html_e( 'Apply', 'creativewings-core' ); ?>
-                </button>
-            </div>
+                    <?php if ( $cfg['show_filters'] && ! empty( $cfg['filter_values'] ) ) : ?>
+                        <label class="cw-dir-select">
+                            <span class="screen-reader-text"><?php echo esc_html( $cfg['filter_label'] ); ?></span>
+                            <select
+                                name="<?php echo esc_attr( $filter_qs ); ?>"
+                                aria-label="<?php echo esc_attr( $cfg['filter_label'] ); ?>"
+                                onchange="this.form.submit()"
+                            >
+                                <option value=""><?php
+                                    /* translators: filter dropdown empty option */
+                                    echo esc_html( sprintf( __( 'All %s', 'creativewings-core' ), $cfg['filter_label'] ) );
+                                ?></option>
+                                <?php foreach ( $cfg['filter_values'] as $val ) :
+                                    $val = (string) $val;
+                                    if ( $val === '' ) {
+                                        continue;
+                                    }
+                                    ?>
+                                    <option value="<?php echo esc_attr( $val ); ?>" <?php selected( $cfg['industry'], $val ); ?>>
+                                        <?php echo esc_html( $val ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                    <?php endif; ?>
 
-            <?php if ( $cfg['show_filters'] && ! empty( $cfg['filter_values'] ) ) : ?>
-                <div class="cw-dir-filter-pills" role="tablist" aria-label="<?php echo esc_attr( $cfg['filter_label'] ); ?>">
-                    <?php
-                    $all_url = remove_query_arg( [ $filter_qs, $prefix . 'page' ] );
-                    ?>
-                    <a class="cw-dir-pill <?php echo $cfg['industry'] === '' ? 'is-active' : ''; ?>"
-                       href="<?php echo esc_url( $all_url . $anchor ); ?>">
-                        <?php esc_html_e( 'All', 'creativewings-core' ); ?>
-                    </a>
-                    <?php foreach ( $cfg['filter_values'] as $val ) :
-                        $val = (string) $val;
-                        if ( $val === '' ) { continue; }
-                        $url = add_query_arg( [ $filter_qs => $val ], remove_query_arg( $prefix . 'page' ) ) . $anchor;
-                        $is_active = ( $cfg['industry'] === $val );
-                        ?>
-                        <a class="cw-dir-pill <?php echo $is_active ? 'is-active' : ''; ?>"
-                           href="<?php echo esc_url( $url ); ?>"
-                           data-value="<?php echo esc_attr( $val ); ?>">
-                            <?php echo esc_html( $val ); ?>
-                        </a>
-                    <?php endforeach; ?>
+                    <?php if ( $cfg['show_sort'] ) : ?>
+                        <label class="cw-dir-select">
+                            <span class="screen-reader-text"><?php esc_html_e( 'Sort by', 'creativewings-core' ); ?></span>
+                            <select name="<?php echo esc_attr( $prefix . 'sort' ); ?>" aria-label="<?php esc_attr_e( 'Sort by', 'creativewings-core' ); ?>" onchange="this.form.submit()">
+                                <?php foreach ( $cfg['sort_opts'] as $val => $label ) : ?>
+                                    <option value="<?php echo esc_attr( $val ); ?>" <?php selected( $cfg['sort'], $val ); ?>>
+                                        <?php echo esc_html( $label ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                    <?php endif; ?>
+
+                    <button type="submit" class="cw-dir-btn cw-dir-btn--primary">
+                        <?php esc_html_e( 'Search', 'creativewings-core' ); ?>
+                    </button>
                 </div>
-            <?php endif; ?>
+            </div>
         </form>
         <?php
     }
