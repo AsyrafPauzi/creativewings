@@ -61,7 +61,11 @@ class CW_Cron {
     }
 
     /**
-     * Attachment IDs referenced by campaign feature meta.
+     * Attachment IDs referenced by campaign feature meta + profile media.
+     *
+     * Creator/business profile uploads use media_handle_upload( ..., 0 ) so
+     * post_parent stays 0. Without protecting those IDs, daily orphan cleanup
+     * deletes avatars and covers after 7 days while user meta still points at them.
      *
      * @return array<int,true>
      */
@@ -116,6 +120,33 @@ class CW_Cron {
                 if ( $id > 0 ) {
                     $protected[ $id ] = true;
                 }
+            }
+        }
+
+        // Profile / directory media stored in usermeta as { id, url }.
+        $user_keys = [
+            'creator_profile_image',
+            'creator_header_image',
+            'business_logo',
+            'business_cover',
+        ];
+        $u_placeholders = implode( ',', array_fill( 0, count( $user_keys ), '%s' ) );
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $user_rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT meta_value FROM {$wpdb->usermeta} WHERE meta_key IN ($u_placeholders)",
+                ...$user_keys
+            )
+        );
+        foreach ( (array) $user_rows as $row ) {
+            $val = maybe_unserialize( $row->meta_value );
+            if ( is_array( $val ) ) {
+                $id = (int) ( $val['id'] ?? $val['attachment_id'] ?? 0 );
+            } else {
+                $id = (int) $val;
+            }
+            if ( $id > 0 ) {
+                $protected[ $id ] = true;
             }
         }
 
