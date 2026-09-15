@@ -1,7 +1,7 @@
 # KPI progress inside Open Campaign cards
 
 **Date:** 2026-09-15  
-**Status:** Draft for review  
+**Status:** Implemented in 11.1.12  
 **Goal:** Show simple campaign KPI progress on each Open Campaigns card, and remove the separate homepage “Campaign Progress” carousel so progress is not duplicated.
 
 ## Problem

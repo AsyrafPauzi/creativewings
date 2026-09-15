@@ -3383,6 +3383,7 @@ class CW_Shortcodes {
                         <?php endif; ?>
                         <li><i class="fas fa-tag"></i> <?php echo esc_html( $fee_text ); ?></li>
                     </ul>
+                    <?php echo $this->render_card_kpi_html( (int) $pid ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
                     <?php if ( ! empty( $sdg_icons_d ) ) : ?>
                     <div class="cwg-sdg-section">
                         <p class="cwg-sdg-label"><?php esc_html_e( 'SDGs', 'creativewings-core' ); ?></p>
@@ -3481,6 +3482,69 @@ class CW_Shortcodes {
                 </div>
             </div>
         </section>
+        <?php
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * Compact KPI progress block for Open Campaigns cards.
+     * Empty string when KPI is disabled or target is unset.
+     *
+     * @param int $campaign_id Product / campaign ID.
+     * @return string Safe HTML.
+     */
+    private function render_card_kpi_html( $campaign_id ) {
+        $campaign_id = (int) $campaign_id;
+        if ( $campaign_id <= 0 ) {
+            return '';
+        }
+        if ( get_post_meta( $campaign_id, 'cw_kpi_show_progress', true ) !== 'yes' ) {
+            return '';
+        }
+        $target = (int) get_post_meta( $campaign_id, 'cw_kpi_target', true );
+        if ( $target <= 0 ) {
+            return '';
+        }
+
+        $label = trim( (string) get_post_meta( $campaign_id, 'cw_kpi_label', true ) );
+        if ( $label === '' ) {
+            $label = __( 'Participated', 'creativewings-core' );
+        }
+
+        $count = 0;
+        if ( class_exists( 'CW_Campaign_Admin' ) ) {
+            $count = (int) CW_Campaign_Admin::get_public_participant_count( $campaign_id );
+        }
+
+        $percent = round( ( $count / $target ) * 100, 1 );
+        $fill    = max( 0, min( 100, $percent ) );
+        $display = (int) round( $percent );
+        if ( $count > 0 && $percent > 0 && $display === 0 ) {
+            $percent_label = '<1%';
+        } else {
+            $percent_label = $display . '%';
+        }
+
+        $aria = sprintf(
+            /* translators: 1: current count, 2: target, 3: label, 4: percent */
+            __( '%1$s of %2$s %3$s (%4$s)', 'creativewings-core' ),
+            number_format_i18n( $count ),
+            number_format_i18n( $target ),
+            $label,
+            $percent_label
+        );
+
+        ob_start();
+        ?>
+        <div class="cwg-kpi" aria-label="<?php echo esc_attr( $aria ); ?>">
+            <div class="cwg-kpi__row">
+                <span class="cwg-kpi__count"><?php echo esc_html( number_format_i18n( $count ) ); ?></span><span class="cwg-kpi__rest"> / <?php echo esc_html( number_format_i18n( $target ) ); ?> <?php echo esc_html( $label ); ?></span>
+            </div>
+            <div class="cwg-kpi__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?php echo esc_attr( (string) (int) round( $fill ) ); ?>">
+                <span class="cwg-kpi__fill" style="width: <?php echo esc_attr( (string) $fill ); ?>%;"></span>
+            </div>
+            <span class="cwg-kpi__pct"><?php echo esc_html( $percent_label ); ?></span>
+        </div>
         <?php
         return (string) ob_get_clean();
     }
@@ -3743,6 +3807,8 @@ class CW_Shortcodes {
                             <?php endif; ?>
                             <li><i class="fas fa-tag"></i> <?php echo esc_html( $fee_text ); ?></li>
                         </ul>
+
+                        <?php echo $this->render_card_kpi_html( (int) $pid ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 
                         <?php if ( ! empty( $sdg_icons_d ) ): ?>
                         <div class="cwg-sdg-section">

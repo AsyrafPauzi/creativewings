@@ -185,12 +185,14 @@ class CW_Homepage_Blocks {
      * Manual (recommended):
      *   [cw_partners_marquee heading="Our Partners" ids="2566,2565,3877"]
      *   [cw_partners_marquee ids="2566,2565" names="Zoom Creative,Keluang Man"]
+     *   [cw_partners_marquee ids="4021,4023" links="https://yiboncreative.com/,https://sharksavers.org.my/"]
      *
      * Attrs:
      * - heading: section H2 (default "Our Partners"; empty to hide)
      * - title: optional eyebrow under the heading
      * - ids: Media Library attachment IDs (comma-separated). When set → manual only
      * - names: optional display names matched 1:1 with ids
+     * - links: optional website URLs matched 1:1 with ids (opens in new tab)
      * - source: auto | manual | both (default: manual when ids set, else auto)
      * - speed: marquee duration in seconds
      */
@@ -201,6 +203,7 @@ class CW_Homepage_Blocks {
                 'title'   => '',
                 'ids'     => '',
                 'names'   => '',
+                'links'   => '',
                 'source'  => '',
                 'speed'   => '42',
             ],
@@ -226,7 +229,10 @@ class CW_Homepage_Blocks {
             )
         );
 
-        $logos = $this->collect_partner_logos( $ids_csv, $source, $names );
+        // Keep empty slots so index alignment with ids stays intact.
+        $links = array_map( 'trim', explode( ',', (string) $atts['links'] ) );
+
+        $logos = $this->collect_partner_logos( $ids_csv, $source, $names, $links );
         if ( count( $logos ) < 2 ) {
             return '';
         }
@@ -248,12 +254,25 @@ class CW_Homepage_Blocks {
             <?php endif; ?>
             <div class="cw-home-partners__viewport">
                 <div class="cw-home-partners__track" style="--cw-marquee-duration: <?php echo esc_attr( (string) max( 18, (int) $atts['speed'] ) ); ?>s">
-                    <?php foreach ( $track as $logo ) : ?>
+                    <?php foreach ( $track as $logo ) :
+                        $img = sprintf(
+                            '<img src="%s" alt="%s" loading="lazy" decoding="async">',
+                            esc_url( $logo['url'] ),
+                            esc_attr( $logo['name'] )
+                        );
+                        $href = ! empty( $logo['link'] ) ? (string) $logo['link'] : '';
+                        ?>
                         <div class="cw-home-partners__item">
-                            <img src="<?php echo esc_url( $logo['url'] ); ?>"
-                                 alt="<?php echo esc_attr( $logo['name'] ); ?>"
-                                 loading="lazy"
-                                 decoding="async">
+                            <?php if ( $href !== '' ) : ?>
+                                <a href="<?php echo esc_url( $href ); ?>"
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   aria-label="<?php echo esc_attr( sprintf( __( 'Visit %s', 'creativewings-core' ), $logo['name'] ) ); ?>">
+                                    <?php echo $img; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- built with esc_* above ?>
+                                </a>
+                            <?php else : ?>
+                                <?php echo $img; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                            <?php endif; ?>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -398,12 +417,13 @@ class CW_Homepage_Blocks {
      * @param array<int,string>    $names   Optional names aligned with ids.
      * @return array<int,array{name:string,url:string}>
      */
-    private function collect_partner_logos( $ids_csv, $source = 'auto', $names = [] ) {
+    private function collect_partner_logos( $ids_csv, $source = 'auto', $names = [], $links = [] ) {
         $logos = [];
         $seen  = [];
         $strict = ( $source === 'manual' );
+        $link_by_aid = $this->partner_link_map();
 
-        $add = function ( $name, $attachment_id = 0, $url = '' ) use ( &$logos, &$seen, $strict ) {
+        $add = function ( $name, $attachment_id = 0, $url = '', $link = '' ) use ( &$logos, &$seen, $strict, $link_by_aid ) {
             $attachment_id = (int) $attachment_id;
             if ( $attachment_id > 0 ) {
                 $path = get_attached_file( $attachment_id );
@@ -427,12 +447,16 @@ class CW_Homepage_Blocks {
                         }
                     }
                 }
+                if ( $link === '' && isset( $link_by_aid[ $attachment_id ] ) ) {
+                    $link = $link_by_aid[ $attachment_id ];
+                }
             }
 
             $url = esc_url_raw( (string) $url );
             if ( $url === '' ) {
                 return;
             }
+            $link = esc_url_raw( (string) $link );
 
             $key = strtolower( basename( wp_parse_url( $url, PHP_URL_PATH ) ?: $url ) );
             $key = preg_replace( '/[^a-z0-9]+/', '', $key );
@@ -450,13 +474,15 @@ class CW_Homepage_Blocks {
             $logos[]      = [
                 'name' => $name !== '' ? $name : __( 'Partner', 'creativewings-core' ),
                 'url'  => $url,
+                'link' => $link,
             ];
         };
 
         $ids = array_values( array_filter( array_map( 'absint', explode( ',', (string) $ids_csv ) ) ) );
         foreach ( $ids as $i => $aid ) {
             $label = isset( $names[ $i ] ) ? $names[ $i ] : html_entity_decode( get_the_title( $aid ), ENT_QUOTES, 'UTF-8' );
-            $add( $label, $aid );
+            $href  = isset( $links[ $i ] ) ? (string) $links[ $i ] : '';
+            $add( $label, $aid, '', $href );
         }
 
         if ( $source === 'manual' ) {
@@ -493,7 +519,7 @@ class CW_Homepage_Blocks {
                     continue;
                 }
                 foreach ( CW_Campaign_Showcase::get_partners( $pid ) as $row ) {
-                    $add( $row['name'], (int) $row['attachment_id'] );
+                    $add( $row['name'], (int) $row['attachment_id'], '', (string) ( $row['url'] ?? '' ) );
                 }
             }
         }
@@ -547,5 +573,41 @@ class CW_Homepage_Blocks {
         }
 
         return $logos;
+    }
+
+    /**
+     * Map attachment ID → partner website from campaign showcase meta.
+     *
+     * @return array<int,string>
+     */
+    private function partner_link_map() {
+        static $map = null;
+        if ( is_array( $map ) ) {
+            return $map;
+        }
+        $map = [];
+        global $wpdb;
+        $rows = $wpdb->get_results(
+            "SELECT meta_value FROM {$wpdb->postmeta}
+             WHERE meta_key = 'cw_supporting_partners' AND meta_value <> ''
+             LIMIT 200"
+        );
+        foreach ( (array) $rows as $row ) {
+            $partners = maybe_unserialize( $row->meta_value );
+            if ( ! is_array( $partners ) ) {
+                continue;
+            }
+            foreach ( $partners as $partner ) {
+                if ( ! is_array( $partner ) ) {
+                    continue;
+                }
+                $aid  = (int) ( $partner['attachment_id'] ?? $partner['id'] ?? 0 );
+                $href = esc_url_raw( (string) ( $partner['url'] ?? '' ) );
+                if ( $aid > 0 && $href !== '' && empty( $map[ $aid ] ) ) {
+                    $map[ $aid ] = $href;
+                }
+            }
+        }
+        return $map;
     }
 }
