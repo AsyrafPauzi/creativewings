@@ -175,11 +175,7 @@ class CW_Certificate {
         if ( ! $deadline ) {
             return false;
         }
-        $ts = strtotime( $deadline . ' 23:59:59' );
-        if ( ! $ts ) {
-            return false;
-        }
-        return $ts < current_time( 'timestamp' );
+        return CW_Campaign_Dates::is_past( $deadline, true );
     }
 
     public static function download_url( $entry_id, $for_user_id = 0 ) {

@@ -125,6 +125,13 @@ class CW_Dashboard_Business {
             exit;
         }
 
+        $design_on = class_exists( 'CW_Design_Submission' ) && CW_Design_Submission::is_enabled( $campaign_id );
+        if ( $design_on ? ! wp_attachment_is_image( $aid ) : ! ( wp_attachment_is_image( $aid ) || 'application/pdf' === get_post_mime_type( $aid ) ) ) {
+            wp_delete_attachment( $aid, true );
+            wp_safe_redirect( add_query_arg( 'cw_art_err', 'type', $redirect_to ) );
+            exit;
+        }
+
         if ( class_exists( 'CW' ) ) {
             CW::tag_plugin_media( (int) $aid );
         } else {
@@ -594,13 +601,13 @@ class CW_Dashboard_Business {
                 <?php if ( $start || $final_date || $deadline ): ?>
                 <div class="cwcd-hero-dates">
                     <?php if ( $start ): ?>
-                        <span><i class="fas fa-flag-checkered"></i> <?php esc_html_e( 'Start', 'creativewings-core' ); ?>: <strong><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $start ) ) ); ?></strong></span>
+                        <span><i class="fas fa-flag-checkered"></i> <?php esc_html_e( 'Start', 'creativewings-core' ); ?>: <strong><?php echo esc_html( CW_Campaign_Dates::format( $start, get_option( 'date_format' ) ) ); ?></strong></span>
                     <?php endif; ?>
                     <?php if ( $final_date ): ?>
-                        <span><i class="fas fa-calendar-day"></i> <?php esc_html_e( 'Event', 'creativewings-core' ); ?>: <strong><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $final_date ) ) ); ?></strong></span>
+                        <span><i class="fas fa-calendar-day"></i> <?php esc_html_e( 'Event', 'creativewings-core' ); ?>: <strong><?php echo esc_html( CW_Campaign_Dates::format( $final_date, get_option( 'date_format' ) ) ); ?></strong></span>
                     <?php endif; ?>
                     <?php if ( $deadline ): ?>
-                        <span><i class="fas fa-hourglass-half"></i> <?php esc_html_e( 'Deadline', 'creativewings-core' ); ?>: <strong><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $deadline ) ) ); ?></strong></span>
+                        <span><i class="fas fa-hourglass-half"></i> <?php esc_html_e( 'Deadline', 'creativewings-core' ); ?>: <strong><?php echo esc_html( CW_Campaign_Dates::format( $deadline, get_option( 'date_format' ) ) ); ?></strong></span>
                     <?php endif; ?>
                 </div>
                 <?php endif; ?>
@@ -2933,6 +2940,91 @@ class CW_Dashboard_Business {
         return $html;
     }
 
+    /**
+     * Age-bracket key for a date of birth, with age taken on $on_date ('' when unreadable or no bracket fits).
+     *
+     * @param string $dob      dd/mm/yyyy
+     * @param string $on_date  Y-m-d
+     * @param array  $brackets cw_age_brackets rows
+     * @return string
+     */
+    public static function age_bracket_for_dob( $dob, $on_date, $brackets ) {
+        $dob  = trim( (string) $dob );
+        $born = '' !== $dob ? DateTime::createFromFormat( '!d/m/Y', $dob ) : false;
+        if ( ! $born ) {
+            $ts = '' !== $dob ? strtotime( str_replace( '/', '-', $dob ) ) : false;
+            if ( ! $ts ) {
+                return '';
+            }
+            $born = new DateTime( '@' . $ts );
+        }
+        $on = new DateTime( (string) $on_date );
+        if ( $born > $on ) {
+            return '';
+        }
+        $age = $born->diff( $on )->y;
+        foreach ( (array) $brackets as $b ) {
+            if ( ! is_array( $b ) ) {
+                continue;
+            }
+            if ( $age >= (int) ( $b['min_age'] ?? 0 ) && $age <= (int) ( $b['max_age'] ?? 99 ) ) {
+                return ! empty( $b['key'] ) ? (string) $b['key'] : sanitize_key( (string) ( $b['label'] ?? '' ) );
+            }
+        }
+        return '';
+    }
+
+    /**
+     * Stamps cw_age_bracket_key / cw_age_bracket_label on this campaign's entries that don't have one yet,
+     * from the participant's date of birth on the day they joined. Entries without a usable DOB get "unknown"
+     * and are re-checked on later visits.
+     *
+     * @param int      $campaign_id
+     * @param array    $brackets
+     * @param string[] $entry_types
+     */
+    private function sync_entry_age_brackets( $campaign_id, $brackets, $entry_types ) {
+        $ids = get_posts( [
+            'post_type'      => $entry_types,
+            'posts_per_page' => -1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+            'meta_query'     => [
+                [ 'key' => 'product_id', 'value' => (int) $campaign_id, 'type' => 'NUMERIC' ],
+                [
+                    'relation' => 'OR',
+                    [ 'key' => 'cw_age_bracket_key', 'compare' => 'NOT EXISTS' ],
+                    [ 'key' => 'cw_age_bracket_key', 'value' => [ '', 'unknown' ], 'compare' => 'IN' ],
+                ],
+            ],
+        ] );
+        if ( empty( $ids ) ) {
+            return;
+        }
+        $labels = [];
+        foreach ( $brackets as $b ) {
+            if ( is_array( $b ) ) {
+                $labels[ ! empty( $b['key'] ) ? $b['key'] : sanitize_key( (string) ( $b['label'] ?? '' ) ) ] = (string) ( $b['label'] ?? '' );
+            }
+        }
+        foreach ( $ids as $id ) {
+            $dob = (string) get_post_meta( $id, 'cw_guest_dob', true );
+            if ( '' === $dob ) {
+                $order = function_exists( 'wc_get_order' ) ? wc_get_order( (int) get_post_meta( $id, 'order_id', true ) ) : null;
+                $dob   = $order ? (string) $order->get_meta( 'cw_guest_dob' ) : '';
+            }
+            if ( '' === $dob ) {
+                $customer = (int) get_post_meta( $id, 'customer_id', true );
+                $dob      = $customer ? (string) get_user_meta( $customer, 'birthdate', true ) : '';
+            }
+            $key = self::age_bracket_for_dob( $dob, get_the_date( 'Y-m-d', $id ), $brackets );
+            update_post_meta( $id, 'cw_age_bracket_key', '' !== $key ? $key : 'unknown' );
+            if ( '' !== $key && isset( $labels[ $key ] ) ) {
+                update_post_meta( $id, 'cw_age_bracket_label', $labels[ $key ] );
+            }
+        }
+    }
+
     public function render_entry_management($campaign_id) {
         
         $uid = get_current_user_id();
@@ -2976,6 +3068,40 @@ class CW_Dashboard_Business {
             ? CW_Shop::entry_post_types()
             : [ 'cw_competition_entry', 'cw_activity_entry' ];
 
+        // Age categories (e.g. Primary 7–12 / Secondary 13–17) from the campaign's age brackets.
+        $age_brackets = get_post_meta( $campaign_id, 'cw_enable_age_brackets', true ) === 'yes'
+            ? get_post_meta( $campaign_id, 'cw_age_brackets', true )
+            : [];
+        $age_brackets = is_array( $age_brackets ) ? array_values( array_filter( $age_brackets, 'is_array' ) ) : [];
+        $age_labels   = [];
+        foreach ( $age_brackets as $b ) {
+            $key = ! empty( $b['key'] ) ? (string) $b['key'] : sanitize_key( (string) ( $b['label'] ?? '' ) );
+            $age_labels[ $key ] = sprintf( '%s (%d–%d)', (string) ( $b['label'] ?? $key ), (int) ( $b['min_age'] ?? 0 ), (int) ( $b['max_age'] ?? 99 ) );
+        }
+        $age_filter = sanitize_key( wp_unslash( $_GET['age'] ?? '' ) );
+        if ( ! isset( $age_labels[ $age_filter ] ) && 'unknown' !== $age_filter ) {
+            $age_filter = '';
+        }
+        $age_counts = [];
+        if ( $age_labels ) {
+            $this->sync_entry_age_brackets( $campaign_id, $age_brackets, $entry_types );
+            global $wpdb;
+            $type_in = implode( ',', array_fill( 0, count( $entry_types ), '%s' ) );
+            $rows    = $wpdb->get_results( $wpdb->prepare(
+                "SELECT COALESCE(ab.meta_value, 'unknown') AS age_key, COUNT(*) AS n
+                 FROM {$wpdb->posts} p
+                 INNER JOIN {$wpdb->postmeta} pid ON pid.post_id = p.ID AND pid.meta_key = 'product_id' AND pid.meta_value = %d
+                 LEFT JOIN {$wpdb->postmeta} ab ON ab.post_id = p.ID AND ab.meta_key = 'cw_age_bracket_key'
+                 WHERE p.post_status = 'publish' AND p.post_type IN ($type_in)
+                 GROUP BY age_key",
+                array_merge( [ (int) $campaign_id ], $entry_types )
+            ) );
+            foreach ( (array) $rows as $r ) {
+                $k = isset( $age_labels[ $r->age_key ] ) ? $r->age_key : 'unknown';
+                $age_counts[ $k ] = ( $age_counts[ $k ] ?? 0 ) + (int) $r->n;
+            }
+        }
+
         $args = [
             'post_type'      => $entry_types,
             'posts_per_page' => $per_page,
@@ -2990,6 +3116,10 @@ class CW_Dashboard_Business {
             'order'          => $sort_order,
             'no_found_rows'  => false,
         ];
+
+        if ( '' !== $age_filter ) {
+            $args['meta_query'][] = [ 'key' => 'cw_age_bracket_key', 'value' => $age_filter ];
+        }
 
         if ($sort_by === 'score') {
             $args['orderby']   = 'meta_value_num';
@@ -3014,6 +3144,10 @@ class CW_Dashboard_Business {
         $campaign_title      = get_the_title($campaign_id);
         $my_account_page_url = get_permalink(wc_get_page_id('myaccount'));
         $base_url            = add_query_arg(['tab' => 'manage_entries', 'campaign_id' => $campaign_id], $my_account_page_url);
+        $age_base_url        = $base_url;
+        if ( '' !== $age_filter ) {
+            $base_url = add_query_arg( 'age', $age_filter, $base_url );
+        }
 
         $sort_date_desc_link  = add_query_arg(['sort' => 'date',  'order' => 'DESC', 'entries_page' => 1], $base_url);
         $sort_date_asc_link   = add_query_arg(['sort' => 'date',  'order' => 'ASC',  'entries_page' => 1], $base_url);
@@ -3031,6 +3165,29 @@ class CW_Dashboard_Business {
                 </div>
                 <a href="<?php echo esc_url(add_query_arg('tab', 'campaigns', get_permalink(wc_get_page_id('myaccount')))); ?>" class="cw-btn-white small" style="text-decoration:none;"><i class="fas fa-arrow-left"></i> Back to Campaigns</a>
             </div>
+
+            <?php if ( $age_labels && array_sum( $age_counts ) > 0 ) :
+                $age_tabs = [ '' => [ __( 'All ages', 'creativewings-core' ), array_sum( $age_counts ) ] ];
+                foreach ( $age_labels as $k => $lbl ) {
+                    $age_tabs[ $k ] = [ $lbl, (int) ( $age_counts[ $k ] ?? 0 ) ];
+                }
+                if ( ! empty( $age_counts['unknown'] ) ) {
+                    $age_tabs['unknown'] = [ __( 'No date of birth', 'creativewings-core' ), (int) $age_counts['unknown'] ];
+                }
+                ?>
+            <div class="cw-age-tabs" role="tablist" aria-label="<?php esc_attr_e( 'Age category', 'creativewings-core' ); ?>" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+                <?php foreach ( $age_tabs as $k => [ $lbl, $n ] ) :
+                    $active = ( (string) $k === $age_filter );
+                    $href   = add_query_arg( [ 'sort' => $sort_by, 'order' => $sort_order, 'entries_page' => 1, 'age' => '' !== $k ? $k : false ], $age_base_url );
+                    ?>
+                <a href="<?php echo esc_url( $href ); ?>" role="tab" aria-selected="<?php echo $active ? 'true' : 'false'; ?>"
+                   style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600;text-decoration:none;border:1.5px solid <?php echo $active ? '#125B9A' : '#e2e8f0'; ?>;background:<?php echo $active ? '#125B9A' : '#fff'; ?>;color:<?php echo $active ? '#fff' : '#334155'; ?>;">
+                    <?php echo esc_html( $lbl ); ?>
+                    <span style="font-weight:700;opacity:.8;"><?php echo (int) $n; ?></span>
+                </a>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
 
             <?php if($all_entries): ?>
             <!-- Filter/Sort Bar -->
@@ -3142,17 +3299,33 @@ class CW_Dashboard_Business {
                             );
                             $file_class = 'image-preview';
                         } else {
-                            $img_display = '<i class="fas fa-file-alt file-icon"></i>';
-                            $file_class = 'document-preview';
+                            $doc_path = (string) strtok( $file_url, '?' );
+                            $is_pdf   = (bool) preg_match( '/\.pdf$/i', $doc_path );
+                            $doc_name = wp_basename( $doc_path );
+                            $img_display = '<div class="cw-entry-doc" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:14px;text-align:center;width:100%;height:100%;box-sizing:border-box;">'
+                                . '<i class="fas ' . ( $is_pdf ? 'fa-file-pdf' : 'fa-file-alt' ) . '" style="font-size:36px;color:' . ( $is_pdf ? '#dc2626' : '#64748b' ) . ';"></i>'
+                                . '<div style="font-size:12px;color:#334155;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' . esc_attr( $doc_name ) . '">' . esc_html( $doc_name ) . '</div>'
+                                . '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;" onclick="event.stopPropagation();">'
+                                . '<a href="' . esc_url( $file_url ) . '" target="_blank" rel="noopener" class="cw-btn-white small"><i class="fas fa-eye"></i> ' . esc_html__( 'View', 'creativewings-core' ) . '</a>'
+                                . '<a href="' . esc_url( $file_url ) . '" download class="cw-btn-white small"><i class="fas fa-download"></i> ' . esc_html__( 'Download', 'creativewings-core' ) . '</a>'
+                                . '</div>'
+                                . '</div>';
+                            $file_class    = 'document-preview';
+                            $download_link = '';
                         }
-                    } elseif ( $artwork_missing ) {
+                    } else {
+                        $design_on      = class_exists( 'CW_Design_Submission' ) && CW_Design_Submission::is_enabled( (int) $campaign_id );
                         $replace_action = esc_url( admin_url( 'admin-post.php' ) );
                         $replace_nonce  = esc_attr( wp_create_nonce( 'cw_replace_entry_artwork' ) );
                         $redirect_back  = esc_attr( $base_url );
+                        $art_title      = $artwork_missing ? __( 'Artwork file missing', 'creativewings-core' ) : __( 'No artwork uploaded', 'creativewings-core' );
+                        $art_help       = $design_on
+                            ? __( 'Ask the participant for the PNG, then upload it here.', 'creativewings-core' )
+                            : __( 'Ask the participant for their artwork (photo or PDF), then upload it here.', 'creativewings-core' );
                         $img_display    = '<div class="cw-entry-missing-art" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:20px;text-align:center;color:#64748b;min-height:180px;box-sizing:border-box;">'
                             . '<i class="fas fa-image" style="font-size:28px;opacity:.55;"></i>'
-                            . '<div style="font-size:13px;font-weight:600;color:#334155;">' . esc_html__( 'Artwork file missing', 'creativewings-core' ) . '</div>'
-                            . '<div style="font-size:12px;line-height:1.4;max-width:220px;">' . esc_html__( 'Ask the participant for the PNG, then re-upload it here.', 'creativewings-core' ) . '</div>'
+                            . '<div style="font-size:13px;font-weight:600;color:#334155;">' . esc_html( $art_title ) . '</div>'
+                            . '<div style="font-size:12px;line-height:1.4;max-width:220px;">' . esc_html( $art_help ) . '</div>'
                             . '<form method="post" action="' . $replace_action . '" enctype="multipart/form-data" style="margin:0;display:flex;flex-direction:column;align-items:center;gap:8px;" onclick="event.stopPropagation();">'
                             . '<input type="hidden" name="action" value="cw_replace_entry_artwork">'
                             . '<input type="hidden" name="_wpnonce" value="' . $replace_nonce . '">'
@@ -3160,15 +3333,12 @@ class CW_Dashboard_Business {
                             . '<input type="hidden" name="campaign_id" value="' . (int) $campaign_id . '">'
                             . '<input type="hidden" name="redirect_to" value="' . $redirect_back . '">'
                             . '<label class="cw-btn-white small" style="cursor:pointer;margin:0;">'
-                            . '<i class="fas fa-upload"></i> ' . esc_html__( 'Re-upload artwork', 'creativewings-core' )
-                            . '<input type="file" name="artwork_file" accept="image/png,image/jpeg,image/webp" required style="display:none;" onchange="this.form.submit()">'
+                            . '<i class="fas fa-upload"></i> ' . esc_html( $artwork_missing ? __( 'Re-upload artwork', 'creativewings-core' ) : __( 'Upload artwork', 'creativewings-core' ) )
+                            . '<input type="file" name="artwork_file" accept="' . esc_attr( $design_on ? 'image/png,image/jpeg,image/webp' : 'image/*,application/pdf,.pdf' ) . '" required style="display:none;" onchange="this.form.submit()">'
                             . '</label>'
                             . '</form>'
                             . '</div>';
                         $file_class = 'no-file is-missing-art';
-                    } else {
-                        $img_display = '<i class="fas fa-times-circle file-icon"></i>';
-                        $file_class = 'no-file';
                     }
 
                     $vote_count_val = (int) get_post_meta($entry->ID, 'vote_count', true);
@@ -3204,6 +3374,10 @@ class CW_Dashboard_Business {
                         <h4><?php echo esc_html($entry->post_title); ?></h4>
                         <div class="cw-entry-meta" style="display:flex; flex-direction:column; gap:4px;">
                             <span>By: <strong><?php echo esc_html($name); ?></strong></span>
+                            <?php if ( $age_labels ) :
+                                $entry_age_key = (string) get_post_meta( $entry->ID, 'cw_age_bracket_key', true ); ?>
+                            <span>Category: <strong><?php echo esc_html( $age_labels[ $entry_age_key ] ?? __( 'No date of birth', 'creativewings-core' ) ); ?></strong></span>
+                            <?php endif; ?>
                             <?php
                             // Show the casing variant the participant picked at
                             // checkout so judges can see which colour was chosen
@@ -3298,7 +3472,7 @@ class CW_Dashboard_Business {
             <?php else: ?>
                 <div class="cw-empty-state">
                     <i class="fas fa-inbox"></i>
-                    <p>No entries have been submitted for this campaign yet.</p>
+                    <p><?php echo '' !== $age_filter ? esc_html__( 'No entries in this age category.', 'creativewings-core' ) : 'No entries have been submitted for this campaign yet.'; ?></p>
                 </div>
             <?php endif; ?>
         </div>
@@ -3510,6 +3684,14 @@ class CW_Dashboard_Business {
                 if (window.CwDesign && typeof window.CwDesign.initPlainEntryImages === 'function') {
                     window.CwDesign.initPlainEntryImages(mediaWrap[0]);
                 }
+            } else if (data.file_url && /\.pdf(\?|$)/i.test(data.file_url)) {
+                var pdfUrl = String(data.file_url).replace(/"/g, '&quot;');
+                mediaWrap.html(
+                    '<iframe src="' + pdfUrl + '#view=FitH" title="PDF preview" loading="lazy" '
+                    + 'style="display:block;width:100%;height:480px;border:1.5px solid #e2e8f0;border-radius:12px;background:#f1f5f9;"></iframe>'
+                    + '<a href="' + pdfUrl + '" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;font-size:12px;">'
+                    + '<i class="fas fa-external-link-alt"></i> Open PDF in a new tab</a>'
+                );
             } else if (data.file_url) {
                 mediaWrap.html('<div class="cwb-eval-img-placeholder" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;width:100%;aspect-ratio:4/3;background:#f1f5f9;border-radius:12px;border:1.5px dashed #e2e8f0;color:#64748b;"><i class="fas fa-file-alt" style="font-size:32px;"></i><span>Document attached</span></div>');
             } else {
@@ -3518,7 +3700,7 @@ class CW_Dashboard_Business {
 
             // Download link
             if (data.file_url) {
-                jQuery('#eval-file-link').attr('href', data.file_url).show();
+                jQuery('#eval-file-link').attr({ href: data.file_url, download: '' }).show();
             } else {
                 jQuery('#eval-file-link').hide();
             }
@@ -3692,8 +3874,8 @@ class CW_Dashboard_Business {
                         position: 'top-end',
                         icon: artOk ? 'success' : 'error',
                         title: artOk
-                            ? <?php echo wp_json_encode( __( 'Artwork restored.', 'creativewings-core' ) ); ?>
-                            : <?php echo wp_json_encode( __( 'Could not upload artwork. Try a PNG/JPG again.', 'creativewings-core' ) ); ?>,
+                            ? <?php echo wp_json_encode( __( 'Artwork uploaded.', 'creativewings-core' ) ); ?>
+                            : <?php echo wp_json_encode( __( 'Could not upload artwork. Use a photo (JPG/PNG) or PDF and try again.', 'creativewings-core' ) ); ?>,
                         showConfirmButton: false,
                         timer: 3500,
                         timerProgressBar: true

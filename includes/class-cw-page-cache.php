@@ -1,9 +1,11 @@
 <?php
 /**
- * Lightweight guest HTML page cache (marketing pages only).
+ * Lightweight guest HTML page cache (marketing pages + campaign pages).
  *
  * Not a full CDN — stores rendered HTML for anonymous GET requests without
  * cart/checkout/account cookies. Busts on post save / CW homepage cache group.
+ * The TTL must stay well under the 12h nonce half-life (guest AJAX nonces are
+ * baked into cached HTML) and matches the early drop-in in dropins/advanced-cache.php.
  *
  * @package CreativeWings
  */
@@ -14,8 +16,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CW_Page_Cache {
 
-    const TTL     = 300; // 5 minutes
-    const VERSION = '1';
+    const TTL       = 3600;
+    const VERSION   = '1';
+    const WARM_HOOK = 'cw_page_cache_warm';
 
     public static function register_hooks() {
         if ( defined( 'CW_DISABLE_PAGE_CACHE' ) && CW_DISABLE_PAGE_CACHE ) {
@@ -30,6 +33,55 @@ class CW_Page_Cache {
         add_action( 'switch_theme', [ __CLASS__, 'bust_all' ] );
         add_action( 'activated_plugin', [ __CLASS__, 'bust_all' ] );
         add_action( 'deactivated_plugin', [ __CLASS__, 'bust_all' ] );
+
+        add_action( self::WARM_HOOK, [ __CLASS__, 'warm' ] );
+        if ( ! wp_next_scheduled( self::WARM_HOOK ) ) {
+            wp_schedule_event( time() + 300, 'hourly', self::WARM_HOOK );
+        }
+    }
+
+    /**
+     * True when a campaign opens or closes before a page cached now would expire.
+     *
+     * @param array<string,string> $milestones Stored campaign date values.
+     */
+    public static function crosses_milestone( array $milestones, $now, $ttl ) {
+        foreach ( $milestones as $key => $value ) {
+            $ts = CW_Campaign_Dates::timestamp( $value, 'deadline' === $key );
+            if ( $ts && $ts >= $now && $ts <= $now + $ttl ) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Re-render the main landing and open campaign pages so crawlers and first
+     * visitors get a cached copy.
+     */
+    public static function warm() {
+        $urls = [ home_url( '/' ) ];
+        foreach ( [ 'competitions', 'activities', 'brand-story' ] as $slug ) {
+            $page = get_page_by_path( $slug );
+            if ( $page ) {
+                $urls[] = get_permalink( $page );
+            }
+        }
+        $ids = get_posts( [
+            'post_type'   => 'product',
+            'post_status' => 'publish',
+            'numberposts' => 12,
+            'fields'      => 'ids',
+        ] );
+        foreach ( $ids as $pid ) {
+            $deadline = (string) get_post_meta( $pid, 'submission_deadline', true );
+            if ( ! $deadline || ! CW_Campaign_Dates::is_past( $deadline, true ) ) {
+                $urls[] = get_permalink( $pid );
+            }
+        }
+        foreach ( array_unique( $urls ) as $url ) {
+            wp_remote_get( $url, [ 'timeout' => 20, 'redirection' => 0, 'user-agent' => 'CW-Cache-Warm' ] );
+        }
     }
 
     private static function cache_dir() {
@@ -102,12 +154,18 @@ class CW_Page_Cache {
         if ( function_exists( 'is_cart' ) && ( is_cart() || is_checkout() || is_account_page() ) ) {
             return false;
         }
-        // Cache home + public pages; skip products (stock/price can change) and My Account.
         if ( is_front_page() || is_home() ) {
             return true;
         }
         if ( is_page() && ! is_page( [ 'cart', 'checkout', 'my-account', 'login', 'registration', 'get-started' ] ) ) {
             return true;
+        }
+        if ( is_singular( 'product' ) ) {
+            $pid = get_queried_object_id();
+            return ! self::crosses_milestone( [
+                'start'    => (string) get_post_meta( $pid, 'cw_submission_start', true ),
+                'deadline' => (string) get_post_meta( $pid, 'submission_deadline', true ),
+            ], time(), self::TTL );
         }
         return false;
     }
@@ -177,5 +235,6 @@ class CW_Page_Cache {
         foreach ( glob( $dir . '/cwpc_*.html' ) ?: [] as $file ) {
             @unlink( $file );
         }
+        wp_schedule_single_event( time() + 120, self::WARM_HOOK );
     }
 }

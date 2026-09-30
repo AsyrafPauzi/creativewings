@@ -299,30 +299,9 @@ class CW_Organizer_Profile {
             if ( $is_past ) { $past_count++; } else { $active_count++; }
 
             // Category (Competition / Activity) from product_cat taxonomy.
-            $cat_label = '';
-            $cat_slug  = '';
-            $terms = get_the_terms( $pid, 'product_cat' );
-            if ( $terms && ! is_wp_error( $terms ) ) {
-                foreach ( $terms as $t ) {
-                    if ( strtolower( $t->slug ) === 'competitions' || strtolower( $t->name ) === 'competitions' ) {
-                        $cat_label = __( 'Competition', 'creativewings-core' );
-                        $cat_slug  = 'competition';
-                        break;
-                    }
-                    if ( strtolower( $t->slug ) === 'activities' || strtolower( $t->name ) === 'activities' ) {
-                        $cat_label = __( 'Activity', 'creativewings-core' );
-                        $cat_slug  = 'activity';
-                        break;
-                    }
-                }
-                if ( $cat_label === '' ) {
-                    $first = reset( $terms );
-                    if ( $first instanceof WP_Term ) {
-                        $cat_label = $first->name;
-                        $cat_slug  = $first->slug;
-                    }
-                }
-            }
+            $main_cat  = CW_Shop::main_category( $pid );
+            $cat_label = $main_cat['label'];
+            $cat_slug  = $main_cat['key'];
 
             $thumb = get_the_post_thumbnail_url( $pid, 'medium_large' );
             $excerpt = get_the_excerpt( $c );

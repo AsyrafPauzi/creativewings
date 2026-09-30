@@ -5,6 +5,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CW_Shop {
 
+    /** @var array<int|string, array<int, string>> Upload URLs moved during validation, keyed [row][field_idx]. */
+    private $prepared_uploads = [];
+
     public function __construct() {
         if ( ! class_exists( 'WooCommerce' ) ) return;
 
@@ -216,21 +219,21 @@ class CW_Shop {
         }
 
         $deadline = get_post_meta( $product_id, 'submission_deadline', true );
-        if ( $deadline && time() > strtotime( $deadline . ' 23:59:59' ) ) {
+        if ( $deadline && CW_Campaign_Dates::is_past( $deadline, true ) ) {
             return sprintf(
                 /* translators: %s: formatted date */
                 __( 'Registration is closed — the submission deadline was %s.', 'creativewings-core' ),
-                date_i18n( 'j M Y', strtotime( $deadline ) )
+                CW_Campaign_Dates::format( $deadline )
             );
         }
 
         if ( ! $school_claim ) {
             $start = get_post_meta( $product_id, 'cw_submission_start', true );
-            if ( $start && time() < strtotime( $start . ' 00:00:00' ) ) {
+            if ( $start && CW_Campaign_Dates::is_future( $start ) ) {
                 return sprintf(
                     /* translators: %s: formatted date */
                     __( 'Registration opens on %s.', 'creativewings-core' ),
-                    date_i18n( 'j M Y', strtotime( $start ) )
+                    CW_Campaign_Dates::format( $start )
                 );
             }
         }
@@ -258,7 +261,7 @@ class CW_Shop {
         
         // Deadline Visual Check
         $deadline = get_post_meta( $post_id, 'submission_deadline', true );
-        if ( $deadline && time() > strtotime( $deadline . ' 23:59:59' ) ) {
+        if ( $deadline && CW_Campaign_Dates::is_past( $deadline, true ) ) {
             echo '<div class="cw-alert error" style="text-align:center;">Submissions Closed</div>';
             echo '<style>.single_add_to_cart_button, .quantity, .cw-shop-container { display: none !important; }</style>';
             return;
@@ -287,7 +290,7 @@ class CW_Shop {
             $btn_text      = '+ Add Participant';
             $calc_mode     = 'team';
         } else {
-            // Competition (Artwork) - NO NAMES (Use Billing Name)
+            // Competition (Artwork) — participant name per entry (certificate; may be a child, not the account holder).
             $is_multi = get_post_meta( $post_id, 'multiple_submissions', true ) === 'true';
             $min_p = (int) get_post_meta( $post_id, 'cw_multi_min', true ) ?: 1;
             $max_p = $is_multi ? ((int) get_post_meta( $post_id, 'cw_multi_max', true ) ?: 50) : 1;
@@ -423,7 +426,15 @@ class CW_Shop {
                     }
                     nameField = `<div class="cw-field-row"><label>Full Name <span style="color:red">*</span></label>${hint}<input type="text" class="cw-frontend-input cw-input-name" value="${nameVal}" required style="width:100%"></div>`;
                 } else {
-                    nameField = `<input type="hidden" class="cw-input-name" value="Self">`;
+                    const escAttr = (s) => String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                    let nameVal = '';
+                    if (rowNum === 1 && cwConfig.use_account_fullname && cwConfig.account_full_name) {
+                        nameVal = escAttr(cwConfig.account_full_name);
+                    } else if (rowNum > 1) {
+                        nameVal = escAttr($('.cw-entry-row').first().find('.cw-input-name').val());
+                    }
+                    const hint = '<p style="font-size:12px;color:#555555;margin:4px 0 8px;">This name is printed on the certificate. If the entry is for your child, enter your child\'s name.</p>';
+                    nameField = `<div class="cw-field-row"><label>Participant Full Name <span style="color:red">*</span></label>${hint}<input type="text" class="cw-frontend-input cw-input-name" value="${nameVal}" required style="width:100%"></div>`;
                 }
 
                 let html = `<div class="cw-entry-row" data-row-num="${rowNum}">
@@ -447,8 +458,8 @@ class CW_Shop {
                         } else if (ftype === 'media') {
                             const mediaId = `cw_media_${rowNum}_${idx}`;
                             input = `<div class="cw-file-wrapper">
-                                <input type="file" id="${mediaId}" class="cw-dyn-field cw-file-upload-input" data-idx="${idx}" data-row-num="${rowNum}" accept="image/*,video/*" style="width:100%" ${req}
-                                    onchange="(function(el){var r=new FileReader();r.onload=function(e){var p=el.parentNode.querySelector('.cw-media-preview');if(p){p.src=e.target.result;p.style.display='block';}};r.readAsDataURL(el.files[0]);})(this)">
+                                <input type="file" id="${mediaId}" class="cw-dyn-field cw-file-upload-input" data-idx="${idx}" data-row-num="${rowNum}" accept="image/*,video/*,application/pdf,.pdf" style="width:100%" ${req}
+                                    onchange="(function(el){var p=el.parentNode.querySelector('.cw-media-preview');if(!el.files[0]||String(el.files[0].type).indexOf('image/')!==0){if(p)p.style.display='none';return;}var r=new FileReader();r.onload=function(e){var p=el.parentNode.querySelector('.cw-media-preview');if(p){p.src=e.target.result;p.style.display='block';}};r.readAsDataURL(el.files[0]);})(this)">
                                 <input type="hidden" name="cw_data[${rowNum}][${idx}]" value="" class="cw-file-url-input">
                                 <img class="cw-media-preview" src="" alt="" style="width:80px;height:80px;object-fit:cover;border-radius:8px;margin-top:6px;border:1.5px solid #e2e8f0;display:none;">
                             </div>`;
@@ -592,7 +603,180 @@ class CW_Shop {
             return false;
         }
 
+        $upload_check = $this->prepare_participant_uploads( (int) $product_id, (array) $names );
+        if ( is_wp_error( $upload_check ) ) {
+            foreach ( $upload_check->get_error_messages() as $msg ) {
+                wc_add_notice( $msg, 'error' );
+            }
+            return false;
+        }
+
         return $passed;
+    }
+
+    /**
+     * Top-level product_cat of a campaign (a Drawing campaign reports "Competition").
+     *
+     * @param int $product_id
+     * @return array{key:string,label:string}
+     */
+    public static function main_category( $product_id ) {
+        $terms = get_the_terms( $product_id, 'product_cat' );
+        if ( ! $terms || is_wp_error( $terms ) ) {
+            return [ 'key' => '', 'label' => '' ];
+        }
+        $fallback = null;
+        foreach ( $terms as $term ) {
+            $root  = $term;
+            $guard = 0;
+            while ( $root->parent && $guard++ < 10 ) {
+                $parent = get_term( $root->parent, 'product_cat' );
+                if ( ! $parent || is_wp_error( $parent ) ) {
+                    break;
+                }
+                $root = $parent;
+            }
+            $slug = strtolower( $root->slug );
+            if ( false !== strpos( $slug, 'competition' ) ) {
+                return [ 'key' => 'competition', 'label' => __( 'Competition', 'creativewings-core' ) ];
+            }
+            if ( false !== strpos( $slug, 'seminar' ) || false !== strpos( $slug, 'talk' ) ) {
+                return [ 'key' => 'seminar', 'label' => __( 'Talk / Seminar', 'creativewings-core' ) ];
+            }
+            if ( false !== strpos( $slug, 'activit' ) ) {
+                return [ 'key' => 'activity', 'label' => __( 'Activity', 'creativewings-core' ) ];
+            }
+            if ( ! $fallback && 'uncategorized' !== $slug ) {
+                $fallback = $root;
+            }
+        }
+        return $fallback
+            ? [ 'key' => $fallback->slug, 'label' => $fallback->name ]
+            : [ 'key' => '', 'label' => '' ];
+    }
+
+    /**
+     * Required file/media slots that received nothing, as [ [ 'row' => int, 'label' => string ], ... ].
+     *
+     * @param array    $fields   Campaign custom fields (cw_custom_fields, re-indexed).
+     * @param array    $row_keys Participant row keys from cw_names.
+     * @param callable $has_file fn( $row, $field_idx ): bool
+     * @return array
+     */
+    public static function required_upload_gaps( $fields, $row_keys, $has_file ) {
+        $gaps = [];
+        foreach ( $row_keys as $row ) {
+            foreach ( array_values( (array) $fields ) as $idx => $f ) {
+                if ( ! is_array( $f ) || empty( $f['required'] ) ) {
+                    continue;
+                }
+                $type = strtolower( trim( (string) ( $f['type'] ?? 'text' ) ) );
+                if ( 'file' !== $type && 'media' !== $type ) {
+                    continue;
+                }
+                if ( ! call_user_func( $has_file, $row, $idx ) ) {
+                    $gaps[] = [ 'row' => (int) $row, 'label' => (string) ( $f['label'] ?? '' ) ];
+                }
+            }
+        }
+        return $gaps;
+    }
+
+    /**
+     * Moves each participant's uploaded file into place before the cart line is created,
+     * so a failed upload blocks the join instead of producing an entry without artwork.
+     *
+     * @param int   $product_id
+     * @param array $names cw_names payload (keys = participant rows).
+     * @return true|WP_Error
+     */
+    private function prepare_participant_uploads( $product_id, $names ) {
+        $this->prepared_uploads = [];
+        $fields = get_post_meta( $product_id, 'cw_custom_fields', true );
+        $fields = is_array( $fields ) ? array_values( $fields ) : [];
+        if ( empty( $fields ) ) {
+            return true;
+        }
+        $post = isset( $_POST['cw_data'] ) && is_array( $_POST['cw_data'] ) ? wp_unslash( $_POST['cw_data'] ) : [];
+
+        foreach ( array_keys( $names ) as $row ) {
+            foreach ( $fields as $idx => $f ) {
+                $type = is_array( $f ) ? strtolower( trim( (string) ( $f['type'] ?? 'text' ) ) ) : '';
+                if ( 'file' !== $type && 'media' !== $type ) {
+                    continue;
+                }
+                $url = $this->get_uploaded_cw_data_url( $product_id, $row, $idx );
+                if ( '' !== $url ) {
+                    $this->prepared_uploads[ $row ][ $idx ] = $url;
+                }
+            }
+        }
+
+        $gaps = self::required_upload_gaps(
+            $fields,
+            array_keys( $names ),
+            function ( $row, $idx ) use ( $product_id, $post ) {
+                if ( ! empty( $this->prepared_uploads[ $row ][ $idx ] ) ) {
+                    return true;
+                }
+                if ( WC()->session && WC()->session->get( 'cw_temp_file_' . $product_id . '_' . $row . '_' . $idx ) ) {
+                    return true;
+                }
+                return isset( $post[ $row ][ $idx ] ) && is_string( $post[ $row ][ $idx ] ) && '' !== trim( $post[ $row ][ $idx ] );
+            }
+        );
+        if ( empty( $gaps ) ) {
+            return true;
+        }
+
+        $errors = new WP_Error();
+        foreach ( $gaps as $gap ) {
+            self::log_upload_issue( 'required_upload_missing', $product_id, $gap['row'], $gap['label'] );
+            $errors->add(
+                'cw_missing_upload',
+                sprintf(
+                    /* translators: 1: participant number, 2: field label */
+                    __( 'Participant %1$d &ndash; your "%2$s" file did not upload. Please choose the file again (photo or PDF) and submit.', 'creativewings-core' ),
+                    $gap['row'],
+                    $gap['label']
+                )
+            );
+        }
+        return $errors;
+    }
+
+    /**
+     * Records a failed participant upload in WooCommerce → Status → Logs (source "cw-upload").
+     *
+     * @param string     $reason
+     * @param int        $product_id
+     * @param int|string $row
+     * @param string     $detail Field label or upload error message.
+     */
+    private static function log_upload_issue( $reason, $product_id, $row, $detail = '' ) {
+        if ( ! function_exists( 'wc_get_logger' ) ) {
+            return;
+        }
+        $slot = [];
+        if ( isset( $_FILES['cw_data']['name'][ $row ] ) && is_array( $_FILES['cw_data']['name'][ $row ] ) ) {
+            foreach ( array_keys( $_FILES['cw_data']['name'][ $row ] ) as $idx ) {
+                $slot[ $idx ] = [
+                    'name'  => (string) $_FILES['cw_data']['name'][ $row ][ $idx ],
+                    'type'  => (string) ( $_FILES['cw_data']['type'][ $row ][ $idx ] ?? '' ),
+                    'size'  => (int) ( $_FILES['cw_data']['size'][ $row ][ $idx ] ?? 0 ),
+                    'error' => (int) ( $_FILES['cw_data']['error'][ $row ][ $idx ] ?? -1 ),
+                ];
+            }
+        }
+        wc_get_logger()->warning(
+            sprintf( '%s campaign=%d row=%s %s', $reason, (int) $product_id, (string) $row, $detail ),
+            [
+                'source'     => 'cw-upload',
+                'user_id'    => get_current_user_id(),
+                'files'      => $slot,
+                'user_agent' => isset( $_SERVER['HTTP_USER_AGENT'] ) ? substr( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ), 0, 250 ) : '',
+            ]
+        );
     }
 
     /**
@@ -697,6 +881,26 @@ class CW_Shop {
     }
 
     /**
+     * Participant name typed for one entry row ("Self" is the legacy competition placeholder).
+     *
+     * @param array $fields Participant field rows ([ 'label' => ..., 'value' => ... ]).
+     * @return string Empty when no usable name was entered.
+     */
+    public static function participant_name_from_fields( $fields ) {
+        if ( ! is_array( $fields ) ) {
+            return '';
+        }
+        foreach ( $fields as $f ) {
+            if ( ! isset( $f['label'], $f['value'] ) || strcasecmp( (string) $f['label'], 'Name' ) !== 0 ) {
+                continue;
+            }
+            $name = trim( (string) $f['value'] );
+            return ( '' === $name || strcasecmp( $name, 'Self' ) === 0 ) ? '' : $name;
+        }
+        return '';
+    }
+
+    /**
      * Whether a given user already has a submission for a campaign product.
      *
      * @param int $user_id
@@ -721,6 +925,14 @@ class CW_Shop {
      * Handle direct multipart uploads for cw_data[i][x] (e.g. event-detail registration modal — no AJAX).
      */
     private function get_uploaded_cw_data_url( $product_id, $row, $field_idx ) {
+        if ( ! empty( $this->prepared_uploads[ $row ][ $field_idx ] ) ) {
+            return $this->prepared_uploads[ $row ][ $field_idx ];
+        }
+        $error = isset( $_FILES['cw_data']['error'][ $row ][ $field_idx ] ) ? (int) $_FILES['cw_data']['error'][ $row ][ $field_idx ] : UPLOAD_ERR_NO_FILE;
+        if ( UPLOAD_ERR_NO_FILE !== $error && UPLOAD_ERR_OK !== $error ) {
+            self::log_upload_issue( 'php_upload_error_' . $error, $product_id, $row );
+            return '';
+        }
         if ( empty( $_FILES['cw_data']['tmp_name'][ $row ][ $field_idx ] ) || ! is_uploaded_file( $_FILES['cw_data']['tmp_name'][ $row ][ $field_idx ] ) ) {
             return '';
         }
@@ -734,11 +946,20 @@ class CW_Shop {
             'error'    => $_FILES['cw_data']['error'][ $row ][ $field_idx ],
             'size'     => $_FILES['cw_data']['size'][ $row ][ $field_idx ],
         ];
-        if ( ! empty( $file['error'] ) ) {
-            return '';
+        // Some phone pickers send names without an extension, which wp_handle_upload rejects.
+        if ( '' === pathinfo( (string) $file['name'], PATHINFO_EXTENSION ) ) {
+            $mime = function_exists( 'wp_get_image_mime' ) ? wp_get_image_mime( $file['tmp_name'] ) : false;
+            if ( ! $mime && function_exists( 'mime_content_type' ) ) {
+                $mime = mime_content_type( $file['tmp_name'] );
+            }
+            $ext = $mime && function_exists( 'wp_get_default_extension_for_mime_type' ) ? wp_get_default_extension_for_mime_type( $mime ) : '';
+            if ( $ext ) {
+                $file['name'] = ( '' !== (string) $file['name'] ? $file['name'] : 'upload' ) . '.' . $ext;
+            }
         }
         $move = wp_handle_upload( $file, [ 'test_form' => false ] );
         if ( isset( $move['error'] ) || empty( $move['url'] ) ) {
+            self::log_upload_issue( 'wp_handle_upload_failed', $product_id, $row, (string) ( $move['error'] ?? 'no url' ) );
             return '';
         }
         // Best-effort: optimize raster uploads in place (no attachment id yet).
@@ -1106,7 +1327,6 @@ class CW_Shop {
             $product_id = $item->get_product_id();
             
             $post_type   = self::get_entry_post_type_for_product( $product_id );
-            $is_activity = ( 'cw_activity_entry' === $post_type );
 
             $staged_id = (int) $item->get_meta( '_cw_staged_id' );
             if ( $staged_id && class_exists( 'CW_Staged_Submissions' ) ) {
@@ -1121,12 +1341,11 @@ class CW_Shop {
                 $participants = json_decode( $meta_json, true );
                 foreach ( $participants as $p_num => $fields ) {
                     
-                    // NAME LOGIC:
-                    // If Activity, use the name they typed (Certificate needs specific name).
-                    // If Competition, use the Billing Name (Certificate goes to account owner).
-                    $final_name = $billing_name;
-                    if($is_activity) {
-                        foreach($fields as $f) { if($f['label'] == 'Name') $final_name = $f['value']; }
+                    // Certificate name: the participant name typed per entry (may be a child),
+                    // falling back to the billing name for older carts without one.
+                    $final_name = self::participant_name_from_fields( $fields );
+                    if ( '' === $final_name ) {
+                        $final_name = $billing_name;
                     }
 
                     $fields = self::append_checkout_message_to_fields( $fields, $product_id, $order_id );
@@ -1156,7 +1375,7 @@ class CW_Shop {
                         }
 
                         foreach ($fields as $f) {
-                            if ( isset($f['value']) && preg_match('/\.(jpg|jpeg|png|pdf)$/i', $f['value']) ) update_post_meta( $entry_id, 'upload_document', $f['value'] );
+                            if ( isset($f['value']) && preg_match('/\.(jpg|jpeg|png|gif|webp|heic|heif|pdf)$/i', $f['value']) ) update_post_meta( $entry_id, 'upload_document', $f['value'] );
                         }
 
                         // Lets feature modules (Design Submission, etc.) stamp extra meta

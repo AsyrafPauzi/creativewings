@@ -202,6 +202,12 @@ class CW_Admin {
 
         <!-- Overrides -->
         <div class="cw-admin-row">
+            <label class="cw-admin-label">Name on certificate</label>
+            <input type="text" name="cw_participant_name" value="<?php echo esc_attr( get_post_meta( $post->ID, 'cw_participant_name', true ) ); ?>" class="cw-admin-input">
+            <small>Change this if the certificate should show the child's name instead of the parent's.</small>
+        </div>
+
+        <div class="cw-admin-row">
             <label class="cw-admin-label">Main Uploaded Document (URL)</label>
             <input type="text" name="upload_document" value="<?php echo esc_attr($upload_doc); ?>" class="cw-admin-input">
             <?php if($upload_doc) echo '<br><a href="'.esc_url($upload_doc).'" target="_blank" class="button">View File</a>'; ?>
@@ -232,6 +238,13 @@ class CW_Admin {
         foreach ( $fields as $field ) {
             if ( isset( $_POST[$field] ) ) {
                 update_post_meta( $post_id, $field, sanitize_text_field( $_POST[$field] ) );
+            }
+        }
+
+        if ( isset( $_POST['cw_participant_name'] ) ) {
+            $name = trim( sanitize_text_field( wp_unslash( $_POST['cw_participant_name'] ) ) );
+            if ( '' !== $name ) {
+                update_post_meta( $post_id, 'cw_participant_name', $name );
             }
         }
     }

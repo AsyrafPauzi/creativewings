@@ -195,6 +195,8 @@ class CW_Campaign_Persistence {
                 if ( 'cw_submissions_gallery_layout' === $k ) {
                     $layout = sanitize_key( (string) $data[ $k ] );
                     update_post_meta( $product_id, $k, in_array( $layout, [ 'grid', 'map' ], true ) ? $layout : 'grid' );
+                } elseif ( 'submission_deadline' === $k ) {
+                    update_post_meta( $product_id, $k, CW_Campaign_Dates::end_of_day( sanitize_text_field( $data[ $k ] ) ) );
                 } else {
                     update_post_meta( $product_id, $k, sanitize_text_field( $data[ $k ] ) );
                 }
@@ -459,14 +461,14 @@ class CW_Campaign_Persistence {
             // become the new organiser. For brand-new campaigns save_from_array()
             // falls back to the `$author_id` argument, which the caller passes
             // in (and which is the actual creator's user id).
-            'submission_deadline'           => $_POST['submission_deadline'] ?? '',
+            'submission_deadline'           => CW_Campaign_Dates::from_post( 'submission_deadline' ),
             'cw_total_prize_value'          => $_POST['cw_total_prize_value'] ?? '',
             'cw_total_prize_amount'         => $_POST['cw_total_prize_amount'] ?? '',
             'cw_min_participants'           => $_POST['cw_min_participants'] ?? '',
             'cw_max_participants'           => $_POST['cw_max_participants'] ?? '',
-            'cw_submission_start'           => $_POST['cw_submission_start'] ?? '',
-            'cw_review_start'               => $_POST['cw_review_start'] ?? '',
-            'cw_final_event_date'           => $_POST['cw_final_event_date'] ?? '',
+            'cw_submission_start'           => CW_Campaign_Dates::from_post( 'cw_submission_start' ),
+            'cw_review_start'               => CW_Campaign_Dates::from_post( 'cw_review_start' ),
+            'cw_final_event_date'           => CW_Campaign_Dates::from_post( 'cw_final_event_date' ),
             'cw_location_details'           => $_POST['cw_location_details'] ?? '',
             'cw_enable_certificate'         => isset( $_POST['cw_enable_certificate'] ) ? 'yes' : 'no',
             'cw_judging_criteria'           => $_POST['cw_judging_criteria'] ?? '',

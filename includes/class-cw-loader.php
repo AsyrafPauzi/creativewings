@@ -27,6 +27,7 @@ class CW_Loader {
         require_once CW_PATH . 'includes/class-cw-flash-notices.php';
         require_once CW_PATH . 'includes/class-cw-audit-log.php';
         require_once CW_PATH . 'includes/class-cw-campaign-resolver.php';
+        require_once CW_PATH . 'includes/class-cw-campaign-dates.php';
         require_once CW_PATH . 'includes/class-cw-roles.php';
         require_once CW_PATH . 'includes/class-cw-post-types.php';
         require_once CW_PATH . 'includes/class-cw-submission-code.php';

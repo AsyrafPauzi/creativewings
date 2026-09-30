@@ -52,13 +52,13 @@ class CW_Homepage_Blocks {
         $days_left = null;
         $closes    = '';
         if ( $deadline !== '' ) {
-            $ts = strtotime( $deadline . ' 23:59:59' );
+            $ts = CW_Campaign_Dates::timestamp( $deadline, true );
             if ( $ts ) {
-                $days_left = (int) floor( ( $ts - current_time( 'timestamp' ) ) / DAY_IN_SECONDS );
+                $days_left = $ts < time() ? -1 : (int) CW_Campaign_Dates::days_until( $deadline );
                 $closes    = sprintf(
                     /* translators: %s: date */
                     __( 'Closes %s', 'creativewings-core' ),
-                    date_i18n( 'j M Y', strtotime( $deadline ) )
+                    CW_Campaign_Dates::format( $deadline )
                 );
             }
         }
@@ -94,7 +94,7 @@ class CW_Homepage_Blocks {
             <div class="cw-home-featured">
                 <div class="cw-home-featured__media">
                     <?php if ( $thumb ) : ?>
-                        <img src="<?php echo esc_url( $thumb ); ?>" alt="" loading="lazy" decoding="async">
+                        <img src="<?php echo esc_url( $thumb ); ?>" alt="<?php echo esc_attr( html_entity_decode( $title, ENT_QUOTES, 'UTF-8' ) ); ?>" loading="lazy" decoding="async">
                     <?php endif; ?>
                 </div>
                 <div class="cw-home-featured__body">
@@ -182,7 +182,10 @@ class CW_Homepage_Blocks {
     /**
      * Partner / logo marquee.
      *
-     * Manual (recommended):
+     * Tiered homepage (recommended):
+     *   [cw_partners_marquee heading="Our Partners" campaign_id="3361" placeholders="1"]
+     *
+     * Manual flat strip (About / Brand Story):
      *   [cw_partners_marquee heading="Our Partners" ids="2566,2565,3877"]
      *   [cw_partners_marquee ids="2566,2565" names="Zoom Creative,Keluang Man"]
      *   [cw_partners_marquee ids="4021,4023" links="https://yiboncreative.com/,https://sharksavers.org.my/"]
@@ -190,34 +193,43 @@ class CW_Homepage_Blocks {
      * Attrs:
      * - heading: section H2 (default "Our Partners"; empty to hide)
      * - title: optional eyebrow under the heading
-     * - ids: Media Library attachment IDs (comma-separated). When set → manual only
+     * - campaign_id: product ID for tiered bands (default 3361 when no ids)
+     * - placeholders|demo: "1" fills empty Champion/Hero with “Your brand here” tiles
+     * - ids: Media Library attachment IDs (comma-separated). When set → legacy flat marquee
      * - names: optional display names matched 1:1 with ids
      * - links: optional website URLs matched 1:1 with ids (opens in new tab)
      * - source: auto | manual | both (default: manual when ids set, else auto)
-     * - speed: marquee duration in seconds
+     * - speed: marquee duration in seconds (band 3 only)
      */
     public function render_partners_marquee( $atts = [] ) {
         $atts = shortcode_atts(
             [
-                'heading' => __( 'Our Partners', 'creativewings-core' ),
-                'title'   => '',
-                'ids'     => '',
-                'names'   => '',
-                'links'   => '',
-                'source'  => '',
-                'speed'   => '42',
+                'heading'      => __( 'Our Partners', 'creativewings-core' ),
+                'title'        => '',
+                'campaign_id'  => '',
+                'placeholders' => '0',
+                'demo'         => '0',
+                'ids'          => '',
+                'names'        => '',
+                'links'        => '',
+                'source'       => '',
+                'speed'        => '42',
             ],
             $atts,
             'cw_partners_marquee'
         );
 
         $ids_csv = trim( (string) $atts['ids'] );
-        $source  = strtolower( trim( (string) $atts['source'] ) );
+        if ( $ids_csv === '' ) {
+            return $this->render_tiered_partners_home( $atts );
+        }
+
+        $source = strtolower( trim( (string) $atts['source'] ) );
         if ( $source === '' ) {
-            $source = $ids_csv !== '' ? 'manual' : 'auto';
+            $source = 'manual';
         }
         if ( ! in_array( $source, [ 'auto', 'manual', 'both' ], true ) ) {
-            $source = 'auto';
+            $source = 'manual';
         }
 
         $names = array_values(
@@ -280,6 +292,218 @@ class CW_Homepage_Blocks {
         </section>
         <?php
         $this->enqueue_assets();
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * Three-band homepage partners: Champion strip, Hero row, Community/Local/In-kind marquee.
+     *
+     * @param array<string,string> $atts Shortcode atts.
+     * @return string
+     */
+    private function render_tiered_partners_home( array $atts ) {
+        if ( ! class_exists( 'CW_Campaign_Showcase' ) ) {
+            return '';
+        }
+
+        $campaign_id = absint( $atts['campaign_id'] ?? 0 );
+        if ( $campaign_id <= 0 ) {
+            $campaign_id = (int) $this->resolve_featured_campaign_id();
+        }
+        if ( $campaign_id <= 0 ) {
+            $campaign_id = 3361;
+        }
+
+        $placeholders = in_array( (string) ( $atts['placeholders'] ?? '0' ), [ '1', 'yes', 'true' ], true )
+            || in_array( (string) ( $atts['demo'] ?? '0' ), [ '1', 'yes', 'true' ], true );
+
+        $by_tier = CW_Campaign_Showcase::partners_by_tier_with_placeholders( $campaign_id, $placeholders );
+        if ( empty( $by_tier ) ) {
+            return '';
+        }
+
+        $labels = CW_Campaign_Showcase::tier_labels();
+        $label  = trim( (string) $atts['heading'] ) !== ''
+            ? (string) $atts['heading']
+            : ( (string) $atts['title'] !== '' ? (string) $atts['title'] : __( 'Partners', 'creativewings-core' ) );
+
+        $champions = $by_tier['champion'] ?? [];
+        $package_tiers = [ 'hero', 'community', 'local', 'inkind' ];
+        $has_packages = false;
+        foreach ( $package_tiers as $t ) {
+            if ( ! empty( $by_tier[ $t ] ) ) {
+                $has_packages = true;
+                break;
+            }
+        }
+        if ( empty( $champions ) && ! $has_packages ) {
+            return '';
+        }
+
+        $speed = (string) max( 18, (int) $atts['speed'] );
+
+        // Flatten non-champion packages for one marquee (order = package hierarchy).
+        $package_logos = [];
+        foreach ( $package_tiers as $t ) {
+            $rows = $by_tier[ $t ] ?? [];
+            if ( $t === 'inkind' && ! empty( $rows ) ) {
+                $split = CW_Campaign_Showcase::split_by_segment( $rows );
+                $rows  = array_merge( $split['media'] ?? [], $split['nonmedia'] ?? [] );
+            }
+            foreach ( $rows as $partner ) {
+                $partner['_package'] = $t;
+                $package_logos[]     = $partner;
+            }
+        }
+
+        ob_start();
+        ?>
+        <section class="cw-home-partners cw-home-partners--tiered cw-home-partners--combined" data-cw-home-reveal aria-label="<?php echo esc_attr( $label ); ?>">
+            <?php if ( trim( (string) $atts['heading'] ) !== '' ) : ?>
+                <h2 class="cw-home-section-heading"><?php echo esc_html( $atts['heading'] ); ?></h2>
+            <?php endif; ?>
+            <?php if ( trim( (string) $atts['title'] ) !== '' ) : ?>
+                <p class="cw-home-partners__title"><?php echo esc_html( $atts['title'] ); ?></p>
+            <?php endif; ?>
+
+            <?php if ( ! empty( $champions ) ) : ?>
+            <div class="cw-home-partners__band cw-home-partners__band--champion">
+                <p class="cw-home-partners__band-label"><?php echo esc_html( $labels['champion'] ); ?></p>
+                <div class="cw-home-partners__static cw-home-partners__static--champion">
+                    <?php foreach ( $champions as $partner ) :
+                        $cell = CW_Campaign_Showcase::render_partner_cell_html( $partner, 'large' );
+                        if ( $cell === '' ) {
+                            continue;
+                        }
+                        ?>
+                        <div class="cw-home-partners__static-item"><?php echo $cell; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <?php if ( ! empty( $package_logos ) ) : ?>
+            <div class="cw-home-partners__band cw-home-partners__band--packages">
+                <div class="cw-home-partners__viewport">
+                    <div class="cw-home-partners__track" style="--cw-marquee-duration: <?php echo esc_attr( $speed ); ?>s">
+                        <?php
+                        $track = $package_logos;
+                        if ( count( $track ) === 1 ) {
+                            $track = array_merge( $track, $track );
+                        }
+                        $track = array_merge( $track, $track );
+                        foreach ( $track as $partner ) :
+                            $pkg  = sanitize_key( (string) ( $partner['_package'] ?? 'local' ) );
+                            $size = ( $pkg === 'hero' || $pkg === 'community' ) ? 'large' : 'medium';
+                            $cell = CW_Campaign_Showcase::render_partner_cell_html( $partner, $size );
+                            if ( $cell === '' ) {
+                                continue;
+                            }
+                            ?>
+                            <div class="cw-home-partners__item cw-home-partners__item--<?php echo esc_attr( $pkg ); ?>" data-package="<?php echo esc_attr( $pkg ); ?>">
+                                <?php echo $cell; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+        </section>
+        <?php
+        $this->enqueue_assets();
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * In-kind band with Media + Non-media subgroups under one heading.
+     *
+     * @param string           $heading
+     * @param array<int,array> $partners
+     * @param string           $speed
+     * @return string
+     */
+    private function render_home_inkind_band( $heading, array $partners, $speed ) {
+        if ( empty( $partners ) || ! class_exists( 'CW_Campaign_Showcase' ) ) {
+            return '';
+        }
+        $split  = CW_Campaign_Showcase::split_by_segment( $partners );
+        $labels = CW_Campaign_Showcase::segment_labels();
+        ob_start();
+        ?>
+        <div class="cw-home-partners__band cw-home-partners__band--marquee cw-home-partners__band--inkind">
+            <p class="cw-home-partners__band-label"><?php echo esc_html( $heading ); ?></p>
+            <?php foreach ( [ 'media', 'nonmedia' ] as $seg ) :
+                $rows = $split[ $seg ] ?? [];
+                if ( empty( $rows ) ) {
+                    continue;
+                }
+                ?>
+                <div class="cw-home-partners__subgroup cw-home-partners__subgroup--<?php echo esc_attr( $seg ); ?>">
+                    <p class="cw-home-partners__subgroup-label"><?php echo esc_html( $labels[ $seg ] ); ?></p>
+                    <?php echo $this->render_home_partner_marquee_track( $rows, $speed ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <?php
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * Marquee track markup for a list of partners.
+     *
+     * @param array<int,array> $partners
+     * @param string           $speed
+     * @return string
+     */
+    private function render_home_partner_marquee_track( array $partners, $speed ) {
+        if ( empty( $partners ) || ! class_exists( 'CW_Campaign_Showcase' ) ) {
+            return '';
+        }
+        ob_start();
+        ?>
+        <div class="cw-home-partners__viewport">
+            <div class="cw-home-partners__track" style="--cw-marquee-duration: <?php echo esc_attr( $speed ); ?>s">
+                <?php
+                $track = $partners;
+                if ( count( $track ) === 1 ) {
+                    $track = array_merge( $track, $track );
+                }
+                $track = array_merge( $track, $track );
+                foreach ( $track as $partner ) :
+                    $cell = CW_Campaign_Showcase::render_partner_cell_html( $partner, 'medium' );
+                    if ( $cell === '' ) {
+                        continue;
+                    }
+                    ?>
+                    <div class="cw-home-partners__item"><?php echo $cell; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * One labeled marquee band for a lower sponsor tier.
+     *
+     * @param string              $tier   Tier key.
+     * @param string              $heading Band label.
+     * @param array<int,array>    $partners Partner rows.
+     * @param string              $speed  Marquee duration seconds.
+     * @return string
+     */
+    private function render_home_partner_marquee_band( $tier, $heading, array $partners, $speed ) {
+        if ( empty( $partners ) || ! class_exists( 'CW_Campaign_Showcase' ) ) {
+            return '';
+        }
+        $tier = sanitize_key( (string) $tier );
+        ob_start();
+        ?>
+        <div class="cw-home-partners__band cw-home-partners__band--marquee cw-home-partners__band--<?php echo esc_attr( $tier ); ?>">
+            <p class="cw-home-partners__band-label"><?php echo esc_html( $heading ); ?></p>
+            <?php echo $this->render_home_partner_marquee_track( $partners, $speed ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+        </div>
+        <?php
         return (string) ob_get_clean();
     }
 
@@ -355,8 +579,8 @@ class CW_Homepage_Blocks {
             ]
         );
 
-        $best_id   = 0;
-        $best_days = PHP_INT_MAX;
+        $best_id = 0;
+        $best_ts = PHP_INT_MAX;
         foreach ( $q->posts as $pid ) {
             $deadline = (string) get_post_meta( $pid, 'submission_deadline', true );
             if ( $deadline === '' ) {
@@ -365,17 +589,13 @@ class CW_Homepage_Blocks {
                 }
                 continue;
             }
-            $ts = strtotime( $deadline . ' 23:59:59' );
-            if ( ! $ts ) {
+            $ts = CW_Campaign_Dates::timestamp( $deadline, true );
+            if ( ! $ts || $ts < time() ) {
                 continue;
             }
-            $days = (int) floor( ( $ts - current_time( 'timestamp' ) ) / DAY_IN_SECONDS );
-            if ( $days < 0 ) {
-                continue;
-            }
-            if ( $days < $best_days ) {
-                $best_days = $days;
-                $best_id   = (int) $pid;
+            if ( $ts < $best_ts ) {
+                $best_ts = $ts;
+                $best_id = (int) $pid;
             }
         }
 
@@ -383,32 +603,8 @@ class CW_Homepage_Blocks {
     }
 
     private function campaign_type_label( $pid ) {
-        $terms = get_the_terms( $pid, 'product_cat' );
-        if ( ! $terms || is_wp_error( $terms ) ) {
-            return '';
-        }
-        foreach ( $terms as $tp ) {
-            $s = strtolower( $tp->slug );
-            if ( false !== strpos( $s, 'competition' ) ) {
-                return __( 'Competition', 'creativewings-core' );
-            }
-            if ( $s === 'talk-seminar' || false !== strpos( $s, 'seminar' ) || false !== strpos( $s, 'talk' ) ) {
-                return __( 'Talk / Seminar', 'creativewings-core' );
-            }
-            if ( false !== strpos( $s, 'running' ) || $s === 'run' ) {
-                return __( 'Running', 'creativewings-core' );
-            }
-            if ( false !== strpos( $s, 'volunteer' ) ) {
-                return __( 'Volunteer', 'creativewings-core' );
-            }
-            if ( false !== strpos( $s, 'workshop' ) ) {
-                return __( 'Workshop', 'creativewings-core' );
-            }
-            if ( false !== strpos( $s, 'community' ) ) {
-                return __( 'Community', 'creativewings-core' );
-            }
-        }
-        return $terms[0]->name;
+        $main = CW_Shop::main_category( $pid );
+        return $main['label'];
     }
 
     /**

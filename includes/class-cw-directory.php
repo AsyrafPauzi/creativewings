@@ -27,6 +27,48 @@ class CW_Directory {
         add_shortcode( 'cw_creators_directory',   [ $this, 'render_creators' ] );
     }
 
+    /**
+     * Role-only WP_User_Query args.
+     *
+     * Completeness, hide-from-directory, and industry/skill filters stay in PHP.
+     * Putting them in meta_query makes WordPress LEFT JOIN usermeta once per
+     * clause with no meta_key in ON, which cartesian-explodes (host slow log:
+     * 4.8M rows examined to return 1 user) and can OOM a small cPanel box.
+     *
+     * @param string $kind 'organizer' or 'creator'
+     * @return array
+     */
+    public static function role_query_args( $kind ) {
+        $roles = ( $kind === 'creator' )
+            ? [ 'creator_role' ]
+            : [ 'business_role', 'administrator' ];
+
+        return [
+            'role__in'    => $roles,
+            'count_total' => false,
+            'fields'      => 'ID',
+        ];
+    }
+
+    /**
+     * Slice a pre-filtered list in PHP so SQL never uses SQL_CALC_FOUND_ROWS.
+     *
+     * @param array $items
+     * @param int   $page
+     * @param int   $per_page
+     * @return array{items: array, total: int}
+     */
+    public static function paginate_list( array $items, $page, $per_page ) {
+        $page     = max( 1, (int) $page );
+        $per_page = max( 1, (int) $per_page );
+        $total    = count( $items );
+        $offset   = ( $page - 1 ) * $per_page;
+        return [
+            'items' => array_values( array_slice( $items, $offset, $per_page ) ),
+            'total' => $total,
+        ];
+    }
+
     /* ────────────────────────────────────────────────────────────────────
      *  Asset enqueuer (called from creativewings-core.php once we know the
      *  current post has one of our shortcodes).
@@ -70,7 +112,7 @@ class CW_Directory {
                 return $hit;
             }
             $html = (string) $this->render_organizers_uncached( $atts, $q, $industry, $sort, $current_page );
-            CW_Cache::set( 'org:' . $sig, 'directory', $html, 5 * MINUTE_IN_SECONDS );
+            CW_Cache::set( 'org:' . $sig, 'directory', $html, 15 * MINUTE_IN_SECONDS );
             return $html;
         }
         return (string) $this->render_organizers_uncached( $atts, $q, $industry, $sort, $current_page );
@@ -79,65 +121,15 @@ class CW_Directory {
     private function render_organizers_uncached( $atts, $q, $industry, $sort, $current_page ) {
         $prefix = self::QV_ORG;
 
-        $args = [
-            'role__in'    => [ 'business_role', 'administrator' ],
-            'number'      => $atts['per_page'],
-            'paged'       => $current_page,
-            'count_total' => true,
-            'meta_query'  => [
-                'relation' => 'AND',
-                [
-                    'relation' => 'OR',
-                    [ 'key' => self::META_HIDE, 'compare' => 'NOT EXISTS' ],
-                    [ 'key' => self::META_HIDE, 'value' => '1', 'compare' => '!=' ],
-                ],
-                // Completeness gate (SQL-side): non-empty text basics.
-                [ 'key' => 'business_name',     'value' => '', 'compare' => '!=' ],
-                [ 'key' => 'business_industry', 'value' => '', 'compare' => '!=' ],
-                [ 'key' => 'business_about',    'value' => '', 'compare' => '!=' ],
-                [
-                    'relation' => 'OR',
-                    [ 'key' => 'business_city',    'value' => '', 'compare' => '!=' ],
-                    [ 'key' => 'business_country', 'value' => '', 'compare' => '!=' ],
-                ],
-                // Logo must contain a real URL — the meta is a serialized array
-                // shaped like a:N:{s:3:"url";s:NN:"https://...";...}, so a LIKE
-                // on "http" reliably proves the URL slot is populated.
-                [ 'key' => 'business_logo', 'value' => 'http', 'compare' => 'LIKE' ],
-            ],
-        ];
-
-        if ( $industry !== '' ) {
-            $args['meta_query'][] = [
-                'key'     => 'business_industry',
-                'value'   => $industry,
-                'compare' => '=',
-            ];
-        }
-
-        $sort_map = [
-            'newest'   => [ 'orderby' => 'registered',    'order' => 'DESC' ],
-            'name_asc' => [ 'orderby' => 'display_name',  'order' => 'ASC'  ],
-        ];
-        $args = array_merge( $args, $sort_map[ $sort ] ?? $sort_map['newest'] );
-
-        if ( $q !== '' ) {
-            $matched = $this->find_user_ids_by_search( $q, 'business' );
-            $args['include'] = $matched ?: [ 0 ];
-        }
-
-        $query     = new WP_User_Query( $args );
-        $users     = (array) $query->get_results();
-
-        // Final completeness sweep — drops the rare "logo meta exists but no URL" case.
-        if ( class_exists( 'CW_Roles' ) ) {
-            $users = array_values( array_filter(
-                $users,
-                static fn( WP_User $u ) => CW_Roles::has_complete_organizer_profile( $u )
-            ) );
-        }
-
-        $total     = (int) $query->get_total();
+        $result    = $this->query_directory_users( 'organizer', [
+            'q'        => $q,
+            'filter'   => $industry,
+            'sort'     => $sort,
+            'page'     => $current_page,
+            'per_page' => $atts['per_page'],
+        ] );
+        $users     = $result['users'];
+        $total     = $result['total'];
         $max_pages = $atts['per_page'] > 0 ? (int) ceil( $total / $atts['per_page'] ) : 1;
 
         $user_ids = array_map( static fn( WP_User $u ) => (int) $u->ID, $users );
@@ -213,7 +205,7 @@ class CW_Directory {
                 return $hit;
             }
             $html = (string) $this->render_creators_uncached( $atts, $q, $skill, $sort, $current_page );
-            CW_Cache::set( 'cr:' . $sig, 'directory', $html, 5 * MINUTE_IN_SECONDS );
+            CW_Cache::set( 'cr:' . $sig, 'directory', $html, 15 * MINUTE_IN_SECONDS );
             return $html;
         }
         return (string) $this->render_creators_uncached( $atts, $q, $skill, $sort, $current_page );
@@ -222,60 +214,15 @@ class CW_Directory {
     private function render_creators_uncached( $atts, $q, $skill, $sort, $current_page ) {
         $prefix = self::QV_CR;
 
-        $args = [
-            'role__in'    => [ 'creator_role' ],
-            'number'      => $atts['per_page'],
-            'paged'       => $current_page,
-            'count_total' => true,
-            'meta_query'  => [
-                'relation' => 'AND',
-                [
-                    'relation' => 'OR',
-                    [ 'key' => self::META_HIDE, 'compare' => 'NOT EXISTS' ],
-                    [ 'key' => self::META_HIDE, 'value' => '1', 'compare' => '!=' ],
-                ],
-                // Completeness gate (SQL-side): non-empty text basics. Display name
-                // can fall back to WP display_name in PHP, so it's not required here.
-                [ 'key' => 'creator_tagline', 'value' => '', 'compare' => '!=' ],
-                [ 'key' => 'creator_address', 'value' => '', 'compare' => '!=' ],
-                // Avatar must contain a real URL — same serialized-array shape as
-                // business_logo, so LIKE "http" proves the URL slot is populated.
-                [ 'key' => 'creator_profile_image', 'value' => 'http', 'compare' => 'LIKE' ],
-            ],
-        ];
-
-        if ( $skill !== '' ) {
-            $args['meta_query'][] = [
-                'key'     => 'creator_skills',
-                'value'   => $skill,
-                'compare' => 'LIKE',
-            ];
-        }
-
-        $sort_map = [
-            'newest'   => [ 'orderby' => 'registered',    'order' => 'DESC' ],
-            'name_asc' => [ 'orderby' => 'display_name',  'order' => 'ASC'  ],
-        ];
-        $args = array_merge( $args, $sort_map[ $sort ] ?? $sort_map['newest'] );
-
-        if ( $q !== '' ) {
-            $matched = $this->find_user_ids_by_search( $q, 'creator' );
-            $args['include'] = $matched ?: [ 0 ];
-        }
-
-        $query     = new WP_User_Query( $args );
-        $users     = (array) $query->get_results();
-
-        // Final completeness sweep — drops the rare "avatar meta exists but no URL"
-        // case plus any user missing a usable display name.
-        if ( class_exists( 'CW_Roles' ) ) {
-            $users = array_values( array_filter(
-                $users,
-                static fn( WP_User $u ) => CW_Roles::has_complete_creator_profile( $u )
-            ) );
-        }
-
-        $total     = (int) $query->get_total();
+        $result    = $this->query_directory_users( 'creator', [
+            'q'        => $q,
+            'filter'   => $skill,
+            'sort'     => $sort,
+            'page'     => $current_page,
+            'per_page' => $atts['per_page'],
+        ] );
+        $users     = $result['users'];
+        $total     = $result['total'];
         $max_pages = $atts['per_page'] > 0 ? (int) ceil( $total / $atts['per_page'] ) : 1;
 
         $user_ids = array_map( static fn( WP_User $u ) => (int) $u->ID, $users );
@@ -320,6 +267,185 @@ class CW_Directory {
         </section>
         <?php
         return ob_get_clean();
+    }
+
+    /**
+     * Load directory candidates by role only, then filter + paginate in PHP.
+     *
+     * @param string $kind  'organizer' or 'creator'
+     * @param array  $opts  q, filter, sort, page, per_page
+     * @return array{users: WP_User[], total: int}
+     */
+    private function query_directory_users( $kind, array $opts ) {
+        $q        = (string) ( $opts['q'] ?? '' );
+        $filter   = (string) ( $opts['filter'] ?? '' );
+        $sort     = (string) ( $opts['sort'] ?? 'newest' );
+        $page     = (int) ( $opts['page'] ?? 1 );
+        $per_page = (int) ( $opts['per_page'] ?? 12 );
+
+        $ids = $this->get_eligible_directory_ids( $kind );
+
+        $search_kind = ( $kind === 'creator' ) ? 'creator' : 'business';
+        if ( $q !== '' ) {
+            $matched = array_flip( $this->find_user_ids_by_search( $q, $search_kind ) );
+            $ids     = array_values( array_filter( $ids, static function ( $id ) use ( $matched ) {
+                return isset( $matched[ (int) $id ] );
+            } ) );
+        }
+
+        if ( $filter !== '' ) {
+            $ids = array_values( array_filter( $ids, function ( $id ) use ( $kind, $filter ) {
+                return $this->id_matches_directory_filter( (int) $id, $kind, $filter );
+            } ) );
+        }
+
+        if ( $sort === 'name_asc' ) {
+            $ids = $this->sort_directory_ids_by_name( $ids );
+        }
+
+        $page_data = self::paginate_list( $ids, $page, $per_page );
+        $users     = [];
+        foreach ( $page_data['items'] as $id ) {
+            $u = get_userdata( (int) $id );
+            if ( $u instanceof WP_User ) {
+                $users[] = $u;
+            }
+        }
+
+        return [
+            'users' => $users,
+            'total' => $page_data['total'],
+        ];
+    }
+
+    /**
+     * Role IDs that pass hide + completeness, cached until directory bust.
+     *
+     * @param string $kind
+     * @return int[]
+     */
+    private function get_eligible_directory_ids( $kind ) {
+        $cache_key = 'eligible_ids:' . $kind;
+        if ( class_exists( 'CW_Cache' ) ) {
+            $hit = CW_Cache::get( $cache_key, 'directory' );
+            if ( is_array( $hit ) ) {
+                return array_map( 'intval', $hit );
+            }
+        }
+
+        $ids = $this->fetch_role_user_ids( $kind );
+        if ( $ids && function_exists( 'update_meta_cache' ) ) {
+            update_meta_cache( 'user', $ids );
+        }
+
+        $ids = array_values( array_filter( $ids, function ( $id ) use ( $kind ) {
+            $u = get_userdata( (int) $id );
+            return $u instanceof WP_User && $this->user_passes_directory_gates( $u, $kind, '' );
+        } ) );
+
+        if ( class_exists( 'CW_Cache' ) ) {
+            $ttl = defined( 'HOUR_IN_SECONDS' ) ? HOUR_IN_SECONDS : 3600;
+            CW_Cache::set( $cache_key, 'directory', $ids, $ttl );
+        }
+
+        return $ids;
+    }
+
+    /**
+     * One INNER JOIN with meta_key in ON — never an unconstrained usermeta cartesian.
+     *
+     * @param string $kind
+     * @return int[]
+     */
+    private function fetch_role_user_ids( $kind ) {
+        global $wpdb;
+
+        $cap_key = $wpdb->get_blog_prefix() . 'capabilities';
+        if ( $kind === 'creator' ) {
+            $ids = $wpdb->get_col( $wpdb->prepare(
+                "SELECT u.ID
+                 FROM {$wpdb->users} u
+                 INNER JOIN {$wpdb->usermeta} um
+                   ON ( u.ID = um.user_id AND um.meta_key = %s )
+                 WHERE um.meta_value LIKE %s
+                 ORDER BY u.user_registered DESC",
+                $cap_key,
+                '%' . $wpdb->esc_like( '"creator_role"' ) . '%'
+            ) );
+        } else {
+            $ids = $wpdb->get_col( $wpdb->prepare(
+                "SELECT u.ID
+                 FROM {$wpdb->users} u
+                 INNER JOIN {$wpdb->usermeta} um
+                   ON ( u.ID = um.user_id AND um.meta_key = %s )
+                 WHERE um.meta_value LIKE %s
+                    OR um.meta_value LIKE %s
+                 ORDER BY u.user_registered DESC",
+                $cap_key,
+                '%' . $wpdb->esc_like( '"business_role"' ) . '%',
+                '%' . $wpdb->esc_like( '"administrator"' ) . '%'
+            ) );
+        }
+
+        return array_values( array_filter( array_map( 'intval', (array) $ids ) ) );
+    }
+
+    /**
+     * @param int    $id
+     * @param string $kind
+     * @param string $filter
+     * @return bool
+     */
+    private function id_matches_directory_filter( $id, $kind, $filter ) {
+        if ( $kind === 'creator' ) {
+            $skills = (string) get_user_meta( $id, 'creator_skills', true );
+            return $skills !== '' && stripos( $skills, $filter ) !== false;
+        }
+        return (string) get_user_meta( $id, 'business_industry', true ) === $filter;
+    }
+
+    /**
+     * @param int[] $ids
+     * @return int[]
+     */
+    private function sort_directory_ids_by_name( array $ids ) {
+        if ( empty( $ids ) ) {
+            return [];
+        }
+        global $wpdb;
+        $in      = implode( ',', array_map( 'intval', $ids ) );
+        $ordered = $wpdb->get_col( "SELECT ID FROM {$wpdb->users} WHERE ID IN ($in) ORDER BY display_name ASC" );
+        return array_values( array_filter( array_map( 'intval', (array) $ordered ) ) );
+    }
+
+    /**
+     * Hide flag, profile completeness, and optional industry/skill filter.
+     */
+    private function user_passes_directory_gates( WP_User $u, $kind, $filter ) {
+        if ( (string) get_user_meta( (int) $u->ID, self::META_HIDE, true ) === '1' ) {
+            return false;
+        }
+
+        if ( class_exists( 'CW_Roles' ) ) {
+            if ( $kind === 'creator' ) {
+                if ( ! CW_Roles::has_complete_creator_profile( $u ) ) {
+                    return false;
+                }
+            } elseif ( ! CW_Roles::has_complete_organizer_profile( $u ) ) {
+                return false;
+            }
+        }
+
+        if ( $filter === '' ) {
+            return true;
+        }
+
+        if ( $kind === 'creator' ) {
+            $skills = (string) get_user_meta( (int) $u->ID, 'creator_skills', true );
+            return $skills !== '' && stripos( $skills, $filter ) !== false;
+        }
+
+        return (string) get_user_meta( (int) $u->ID, 'business_industry', true ) === $filter;
     }
 
     /* ────────────────────────────────────────────────────────────────────

@@ -219,6 +219,45 @@ class CW_Business_Save {
         // 4) Write the gallery meta (dedupe, preserve order).
         $gallery_ids = array_values( array_unique( array_filter( $gallery_ids ) ) );
         update_post_meta( $pid, '_product_image_gallery', implode( ',', $gallery_ids ) );
+
+        // ─── Additional gallery tab (cw_extra_gallery_ids / cw_extra_gallery_label) ───
+        if ( isset( $_POST['cw_extra_gallery_label'] ) ) {
+            update_post_meta( $pid, 'cw_extra_gallery_label', sanitize_text_field( wp_unslash( $_POST['cw_extra_gallery_label'] ) ) );
+        }
+        if ( isset( $_POST['cw_extra_gallery_keep'] ) ) {
+            $extra_ids = array_filter( array_map( 'intval', explode( ',', (string) wp_unslash( $_POST['cw_extra_gallery_keep'] ) ) ), 'wp_attachment_is_image' );
+            if ( ! empty( $_FILES['cw_extra_gallery_files']['name'] ) && is_array( $_FILES['cw_extra_gallery_files']['name'] ) ) {
+                $count = count( $_FILES['cw_extra_gallery_files']['name'] );
+                for ( $i = 0; $i < $count; $i++ ) {
+                    if ( empty( $_FILES['cw_extra_gallery_files']['name'][ $i ] ) || $_FILES['cw_extra_gallery_files']['error'][ $i ] !== UPLOAD_ERR_OK ) {
+                        continue;
+                    }
+                    $_FILES['cw_extra_gallery_one'] = [
+                        'name'     => $_FILES['cw_extra_gallery_files']['name'][ $i ],
+                        'type'     => $_FILES['cw_extra_gallery_files']['type'][ $i ],
+                        'tmp_name' => $_FILES['cw_extra_gallery_files']['tmp_name'][ $i ],
+                        'error'    => $_FILES['cw_extra_gallery_files']['error'][ $i ],
+                        'size'     => $_FILES['cw_extra_gallery_files']['size'][ $i ],
+                    ];
+                    $new_id = media_handle_upload( 'cw_extra_gallery_one', $pid );
+                    if ( is_wp_error( $new_id ) || ! wp_attachment_is_image( $new_id ) ) {
+                        if ( ! is_wp_error( $new_id ) ) {
+                            wp_delete_attachment( $new_id, true );
+                        }
+                        continue;
+                    }
+                    if ( class_exists( 'CW' ) ) {
+                        CW::tag_plugin_media( (int) $new_id );
+                    }
+                    if ( class_exists( 'CW_Image_Optimizer' ) ) {
+                        CW_Image_Optimizer::optimize_attachment( $new_id, 'campaign_thumb' );
+                    }
+                    $extra_ids[] = (int) $new_id;
+                }
+                unset( $_FILES['cw_extra_gallery_one'] );
+            }
+            update_post_meta( $pid, 'cw_extra_gallery_ids', implode( ',', array_values( array_unique( $extra_ids ) ) ) );
+        }
         if ( ! empty( $_FILES['cw_cert_template']['name'] ) ) {
             $cid = media_handle_upload( 'cw_cert_template', $pid );
             if ( ! is_wp_error( $cid ) ) {

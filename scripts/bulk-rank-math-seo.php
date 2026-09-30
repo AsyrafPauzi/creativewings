@@ -94,7 +94,6 @@ function cw_bulk_seo_product_payload( WP_Post $post ) {
     if ( ! $excerpt ) {
         $excerpt = wp_trim_words( wp_strip_all_tags( $post->post_content ), 40, '' );
     }
-    $deadline = (string) get_post_meta( $post->ID, 'submission_deadline', true );
     $fee      = (string) get_post_meta( $post->ID, '_regular_price', true );
     $terms    = get_the_terms( $post->ID, 'product_cat' );
     $cats     = [];
@@ -108,13 +107,8 @@ function cw_bulk_seo_product_payload( WP_Post $post ) {
     if ( $fee !== '' && $fee !== '0' ) {
         $desc .= ' Entry from RM' . $fee . '.';
     }
-    if ( $deadline ) {
-        $ts = strtotime( $deadline );
-        if ( $ts ) {
-            $desc .= ' Closes ' . gmdate( 'j M Y', $ts ) . '.';
-        }
-    }
-    $desc = cw_bulk_seo_clean( $desc, 160 );
+    // The live deadline is appended at render time by CW_Structured_Data::campaign_meta_description().
+    $desc = cw_bulk_seo_clean( $desc, 150 );
 
     $seo_title = cw_bulk_seo_clean( $title, 0 );
     if ( mb_strlen( $seo_title ) > 52 ) {
@@ -382,4 +376,5 @@ function cw_bulk_seo_run() {
         ],
         'report' => $report,
     ];
+}
 }

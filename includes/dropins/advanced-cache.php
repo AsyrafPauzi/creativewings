@@ -45,7 +45,7 @@ if ( ! empty( $parts['query'] ) ) {
 if ( $query ) {
     return;
 }
-if ( ! preg_match( '#^/(?:[a-z0-9\-\_/]*)?$#i', $path ) ) {
+if ( ! preg_match( '#^/(?:[a-z0-9\-\_/%]*)?$#i', $path ) ) {
     return;
 }
 
@@ -57,7 +57,7 @@ if ( ! is_readable( $file ) ) {
     return;
 }
 $mtime = filemtime( $file );
-if ( ! $mtime || ( time() - $mtime ) > 300 ) {
+if ( ! $mtime || ( time() - $mtime ) > 3600 ) { // CW_Page_Cache::TTL
     return;
 }
 
@@ -68,7 +68,7 @@ if ( ! is_string( $html ) || strlen( $html ) < 500 ) {
 
 header( 'Content-Type: text/html; charset=UTF-8' );
 header( 'X-CW-Page-Cache: HIT-EARLY' );
-header( 'Cache-Control: public, max-age=60, s-maxage=300' );
+header( 'Cache-Control: public, max-age=60, s-maxage=3600' );
 header( 'Expires: ' . gmdate( 'D, d M Y H:i:s', time() + 60 ) . ' GMT' );
 echo $html;
 exit;

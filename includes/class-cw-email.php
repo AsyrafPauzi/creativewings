@@ -144,26 +144,26 @@ class CW_Email {
         $start_raw    = (string) get_post_meta( $product_id, 'cw_submission_start', true );
         $deadline_raw = (string) get_post_meta( $product_id, 'submission_deadline', true );
         $when_line    = '';
-        $start_ts     = $start_raw ? strtotime( $start_raw ) : false;
-        $deadline_ts  = $deadline_raw ? strtotime( $deadline_raw ) : false;
-        if ( $start_ts && $deadline_ts ) {
+        $start_label    = CW_Campaign_Dates::format( $start_raw );
+        $deadline_label = CW_Campaign_Dates::format( $deadline_raw );
+        if ( $start_label && $deadline_label ) {
             $when_line = sprintf(
                 /* translators: 1: campaign start date, 2: campaign end date */
                 esc_html__( 'Runs from %1$s to %2$s.', 'creativewings-core' ),
-                date_i18n( 'j M Y', $start_ts ),
-                date_i18n( 'j M Y', $deadline_ts )
+                esc_html( $start_label ),
+                esc_html( $deadline_label )
             );
-        } elseif ( $start_ts ) {
+        } elseif ( $start_label ) {
             $when_line = sprintf(
                 /* translators: %s: campaign start date */
                 esc_html__( 'Starts on %s.', 'creativewings-core' ),
-                date_i18n( 'j M Y', $start_ts )
+                esc_html( $start_label )
             );
-        } elseif ( $deadline_ts ) {
+        } elseif ( $deadline_label ) {
             $when_line = sprintf(
                 /* translators: %s: campaign end/submission date */
                 esc_html__( 'Closes on %s.', 'creativewings-core' ),
-                date_i18n( 'j M Y', $deadline_ts )
+                esc_html( $deadline_label )
             );
         }
 

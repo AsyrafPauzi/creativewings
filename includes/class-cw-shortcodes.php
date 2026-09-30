@@ -28,10 +28,10 @@ class CW_Shortcodes {
         add_shortcode('current_page_redirect_param', [ $this, 'redirect_param' ]);
         
         // 5. Campaign Data (Elementor Helpers)
-        add_shortcode('cw_campaign_start', function(){ $d=get_post_meta(get_the_ID(),'cw_submission_start',true); return $d?date('d M Y',strtotime($d)):''; });
-        add_shortcode('cw_campaign_deadline', function(){ $d=get_post_meta(get_the_ID(),'submission_deadline',true); return $d?date('d M Y',strtotime($d)):''; });
-        add_shortcode('cw_review_date', function(){ $d=get_post_meta(get_the_ID(),'cw_review_start',true); return $d?date('d M Y',strtotime($d)):''; });
-        add_shortcode('cw_event_date', function(){ $d=get_post_meta(get_the_ID(),'cw_final_event_date',true); return $d?date('d M Y',strtotime($d)):''; });
+        add_shortcode('cw_campaign_start', function(){ return esc_html( CW_Campaign_Dates::format( get_post_meta(get_the_ID(),'cw_submission_start',true), 'd M Y' ) ); });
+        add_shortcode('cw_campaign_deadline', function(){ return esc_html( CW_Campaign_Dates::format( get_post_meta(get_the_ID(),'submission_deadline',true), 'd M Y' ) ); });
+        add_shortcode('cw_review_date', function(){ return esc_html( CW_Campaign_Dates::format( get_post_meta(get_the_ID(),'cw_review_start',true), 'd M Y' ) ); });
+        add_shortcode('cw_event_date', function(){ return esc_html( CW_Campaign_Dates::format( get_post_meta(get_the_ID(),'cw_final_event_date',true), 'd M Y' ) ); });
         
         // Location Logic: Shows "Online Event" if online, otherwise address
         add_shortcode('cw_location', function(){ 
@@ -57,6 +57,7 @@ class CW_Shortcodes {
 
         // 9. Full Event Detail Page
         add_shortcode('cw_event_detail', [ $this, 'render_event_detail' ]);
+        add_shortcode( 'cw_sponsors', [ $this, 'render_sponsors' ] );
         
         // NEW: FAQs and Prizes List
         add_shortcode('cw_faq', [ $this, 'render_faq' ]);
@@ -167,8 +168,8 @@ class CW_Shortcodes {
 
         $start = get_post_meta($pid, 'cw_submission_start', true);
         $min = (int) get_post_meta($pid, 'cw_min_participants', true) ?: 1;
-        $date = $start ? date('j M Y', strtotime($start)) : '-';
-        $time = $start ? date('g:i A', strtotime($start)) : '-';
+        $date = $start ? wp_date('j M Y', CW_Campaign_Dates::timestamp($start)) : '-';
+        $time = CW_Campaign_Dates::format_time($start) ?: '-';
         
         $price = $product->get_price();
         $fee_text = ($price > 0) ? wc_price($price) . ($min>1 ? ' per team' : ' per entry') : 'Free';
@@ -195,10 +196,10 @@ class CW_Shortcodes {
         ?>
         <div class="cw-timeline-box">
             <h3>Timeline</h3>
-            <?php if($sub_open): ?><p class="cw-timeline-item cw-open"><span class="dot" style="background:#8bc34a;"></span>Submission Open<br><strong><?php echo date('d M Y', strtotime($sub_open)); ?></strong></p><?php endif; ?>
-            <?php if($sub_close): ?><p class="cw-timeline-item cw-close"><span class="dot" style="background:#f44336;"></span>Deadline<br><strong><?php echo date('d M Y', strtotime($sub_close)); ?></strong></p><?php endif; ?>
-            <?php if($review): ?><p class="cw-timeline-item"><span class="dot" style="background:#f39c12;"></span>Review<br><strong><?php echo date('d M Y', strtotime($review)); ?></strong></p><?php endif; ?>
-            <?php if($final): ?><p class="cw-timeline-item"><span class="dot" style="background:#555;"></span>Campaign Date<br><strong><?php echo date('d M Y', strtotime($final)); ?></strong></p><?php endif; ?>
+            <?php if($sub_open): ?><p class="cw-timeline-item cw-open"><span class="dot" style="background:#8bc34a;"></span>Submission Open<br><strong><?php echo esc_html(CW_Campaign_Dates::format($sub_open, 'd M Y')); ?></strong></p><?php endif; ?>
+            <?php if($sub_close): ?><p class="cw-timeline-item cw-close"><span class="dot" style="background:#f44336;"></span>Deadline<br><strong><?php echo esc_html(CW_Campaign_Dates::format($sub_close, 'd M Y')); ?></strong></p><?php endif; ?>
+            <?php if($review): ?><p class="cw-timeline-item"><span class="dot" style="background:#f39c12;"></span>Review<br><strong><?php echo esc_html(CW_Campaign_Dates::format($review, 'd M Y')); ?></strong></p><?php endif; ?>
+            <?php if($final): ?><p class="cw-timeline-item"><span class="dot" style="background:#555;"></span>Campaign Date<br><strong><?php echo esc_html(CW_Campaign_Dates::format($final, 'd M Y')); ?></strong></p><?php endif; ?>
         </div>
         <?php
         return ob_get_clean();
@@ -763,7 +764,7 @@ class CW_Shortcodes {
                 if ( false !== strpos( $root_slug, 'workshop' ) )  { $cat_type = 'workshop'; $cat_label = 'Workshop'; $cat_key = 'workshop'; break; }
                 if ( false !== strpos( $root_slug, 'community' ) ) { $cat_type = 'community'; $cat_label = 'Community'; $cat_key = 'community'; break; }
                 if ( false !== strpos( $root_slug, 'activit' ) )   { $cat_type = 'activity'; $cat_label = 'Activity'; $cat_key = 'activity'; break; }
-                $cat_label = $t->name; $cat_key = $t->slug;
+                $cat_label = $parent ? $parent->name : $t->name; $cat_key = $parent ? $parent->slug : $t->slug;
             }
         }
         $is_competition  = ( $cat_type === 'competition' );
@@ -784,16 +785,16 @@ class CW_Shortcodes {
         $deadline    = $g('submission_deadline');
         $review_date = $g('cw_review_start');
         $final_date  = $g('cw_final_event_date');
-        $now         = current_time('timestamp');
-        $is_closed   = $deadline && strtotime($deadline) < $now;
+        $now         = time();
+        $is_closed   = $deadline && CW_Campaign_Dates::is_past($deadline, true);
         // Registration hasn't opened yet — start date is in the future.
-        $is_upcoming = $date_start && strtotime($date_start) > $now;
-        $days_left   = $deadline ? max(0, (int) ceil((strtotime($deadline) - $now) / DAY_IN_SECONDS)) : null;
-        $days_to_start = $is_upcoming ? max(0, (int) ceil((strtotime($date_start) - $now) / DAY_IN_SECONDS)) : null;
+        $is_upcoming = $date_start && CW_Campaign_Dates::is_future($date_start);
+        $days_left   = $deadline ? max(0, (int) CW_Campaign_Dates::days_until($deadline)) : null;
+        $days_to_start = $is_upcoming ? max(0, (int) CW_Campaign_Dates::days_until($date_start)) : null;
 
-        $fmt_date = function($d) { return $d ? date_i18n('j M Y', strtotime($d)) : '—'; };
-        $fmt_day  = function($d) { return $d ? date_i18n('j M Y (l)', strtotime($d)) : '—'; };
-        $fmt_time = function($d) { return $d ? date_i18n('g:i A', strtotime($d)) . ' (GMT +08:00)' : ''; };
+        $fmt_date = function($d) { return $d ? CW_Campaign_Dates::format($d) : '—'; };
+        $fmt_day  = function($d) { return $d ? wp_date('j M Y (l)', CW_Campaign_Dates::timestamp($d)) : '—'; };
+        $fmt_time = function($d) { $t = CW_Campaign_Dates::format_time($d); return $t ? $t . ' (GMT +08:00)' : ''; };
 
         // ── Pricing ───────────────────────────────────────────────────────────
         $price       = floatval( $wcp->get_price() );
@@ -854,6 +855,7 @@ class CW_Shortcodes {
         // ── Product image gallery (WooCommerce) ───────────────────────────────
         $gallery_ids = method_exists( $wcp, 'get_gallery_image_ids' ) ? (array) $wcp->get_gallery_image_ids() : [];
         $gallery_images = [];
+        $alt_title      = html_entity_decode( get_the_title( $pid ), ENT_QUOTES, 'UTF-8' );
         foreach ( $gallery_ids as $gid ) {
             $full  = wp_get_attachment_image_url( (int) $gid, 'full' );
             $thumb_url = wp_get_attachment_image_url( (int) $gid, 'medium_large' );
@@ -864,7 +866,27 @@ class CW_Shortcodes {
                 'id'     => (int) $gid,
                 'full'   => $full,
                 'thumb'  => $thumb_url ?: $full,
-                'alt'    => trim( (string) get_post_meta( (int) $gid, '_wp_attachment_image_alt', true ) ),
+                'alt'    => trim( (string) get_post_meta( (int) $gid, '_wp_attachment_image_alt', true ) )
+                    ?: sprintf( '%s — photo %d', $alt_title, count( $gallery_images ) + 1 ),
+            ];
+        }
+
+        // ── Extra gallery tab (organizer-uploaded, e.g. "Artwork") ─────────────
+        $extra_gallery_label  = trim( (string) get_post_meta( $pid, 'cw_extra_gallery_label', true ) );
+        $extra_gallery_label  = $extra_gallery_label !== '' ? $extra_gallery_label : __( 'Artwork', 'creativewings-core' );
+        $extra_gallery_images = [];
+        foreach ( array_filter( array_map( 'intval', explode( ',', (string) get_post_meta( $pid, 'cw_extra_gallery_ids', true ) ) ) ) as $gid ) {
+            $full = wp_get_attachment_image_url( $gid, 'full' );
+            if ( ! $full ) {
+                continue;
+            }
+            $thumb_url = wp_get_attachment_image_url( $gid, 'medium_large' );
+            $extra_gallery_images[] = [
+                'id'    => $gid,
+                'full'  => $full,
+                'thumb' => $thumb_url ?: $full,
+                'alt'   => trim( (string) get_post_meta( $gid, '_wp_attachment_image_alt', true ) )
+                    ?: sprintf( '%s — %s %d', $alt_title, $extra_gallery_label, count( $extra_gallery_images ) + 1 ),
             ];
         }
 
@@ -946,7 +968,7 @@ class CW_Shortcodes {
         $reg_max         = $is_competition ? ( $is_multi_sub ? ( (int) get_post_meta( $pid, 'cw_multi_max', true ) ?: 50 ) : 1 ) : ( $allow_multi_p ? ( $max_p ?: 10 ) : 1 );
         $reg_label       = $is_competition ? 'Artwork Entry' : 'Participant';
         $reg_btn         = $is_competition ? '+ Add Artwork' : '+ Add Participant';
-        $show_name_field = $is_activity || $is_seminar;
+        $show_name_field = true;
         $use_account_fn  = get_post_meta( $pid, 'cw_use_account_fullname', true );
         if ( $use_account_fn === '' ) {
             $use_account_fn = 'yes';
@@ -968,6 +990,7 @@ class CW_Shortcodes {
             'label'             => $reg_label,
             'btnText'           => $reg_btn,
             'showName'          => $show_name_field,
+            'isCompetition'     => (bool) $is_competition,
             'allowMultiple'     => $allow_multi_p,
             'useAccountFullname'=> ( $use_account_fn === 'yes' ),
             'accountFullName'   => $account_full_name,
@@ -1064,6 +1087,13 @@ class CW_Shortcodes {
 
                     <h1 class="cwd-hero-title"><?php the_title(); ?></h1>
                     <p class="cwd-hero-org"><i class="fas fa-building"></i> <?php echo esc_html($org_name); ?></p>
+                    <?php
+                    if ( class_exists( 'CW_Campaign_Showcase' ) ) {
+                        // Opt-in demo tiles only: ?cw_sponsor_demo=1
+                        $cw_sponsor_placeholders = isset( $_GET['cw_sponsor_demo'] ) && (string) wp_unslash( $_GET['cw_sponsor_demo'] ) === '1'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+                        echo CW_Campaign_Showcase::render_champion_strip_html( $pid, $cw_sponsor_placeholders ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+                    }
+                    ?>
 
                     <!-- Quick stats -->
                     <div class="cwd-hero-stats">
@@ -1158,7 +1188,7 @@ class CW_Shortcodes {
                             <i class="fas fa-calendar-alt"></i>
                             <span>
                                 <?php if ( $days_to_start === 0 ): ?>
-                                    <strong style="color:#0369a1;">Opens today!</strong>
+                                    <strong style="color:#0369a1;">Opens today<?php echo CW_Campaign_Dates::has_time($date_start) ? ' at ' . esc_html(CW_Campaign_Dates::format_time($date_start)) : ''; ?>!</strong>
                                 <?php elseif ( $days_to_start !== null && $days_to_start <= 14 ): ?>
                                     <strong style="color:#0369a1;">Opens in <?php echo $days_to_start; ?> day<?php echo $days_to_start === 1 ? '' : 's'; ?></strong>
                                 <?php else: ?>
@@ -1172,7 +1202,7 @@ class CW_Shortcodes {
                             <span>
                                 <?php if ( $days_left !== null ): ?>
                                     <?php if ( $days_left === 0 ): ?>
-                                        <strong style="color:#dc2626;">Closes today!</strong>
+                                        <strong style="color:#dc2626;">Closes today<?php echo CW_Campaign_Dates::has_time($deadline) ? ' at ' . esc_html(CW_Campaign_Dates::format_time($deadline)) : ''; ?>!</strong>
                                     <?php elseif ( $days_left <= 7 ): ?>
                                         <strong style="color:#d97706;"><?php echo $days_left; ?> days left</strong>
                                     <?php else: ?>
@@ -1219,7 +1249,7 @@ class CW_Shortcodes {
                         <h4 class="cwd-card-heading"><i class="fas fa-stream"></i> Timeline</h4>
                         <div class="cwd-timeline">
                             <?php foreach ( $tl_items as $i => $item ):
-                                $is_past = strtotime($item['date']) < $now; ?>
+                                $is_past = CW_Campaign_Dates::timestamp($item['date']) < $now; ?>
                             <div class="cwd-tl-item <?php echo $is_past ? 'cwd-tl-past' : 'cwd-tl-future'; ?>">
                                 <div class="cwd-tl-dot" style="background:<?php echo esc_attr($item['color']); ?>">
                                     <i class="fas <?php echo esc_attr($item['icon']); ?>"></i>
@@ -1881,17 +1911,21 @@ class CW_Shortcodes {
                     if ( $content ): ?>
                     <section class="cwd-section">
                         <h2 class="cwd-section-title"><i class="fas fa-info-circle"></i> About</h2>
-                        <div class="cwd-prose"><?php echo wp_kses_post(wpautop($content)); ?></div>
+                        <?php
+                        // The hero title is the page's only H1; organiser headings drop to H2 at the same size.
+                        $about_html = wp_filter_content_tags( wp_kses_post( wpautop( $content ) ) );
+                        $about_html = preg_replace_callback( '/<h1\b([^>]*)>/i', function ( $m ) {
+                            return '<h2' . $m[1] . ( stripos( $m[1], 'style=' ) === false ? ' style="font-size:1.35em"' : '' ) . '>';
+                        }, $about_html );
+                        $about_html = preg_replace( '#</h1>#i', '</h2>', $about_html );
+                        ?>
+                        <div class="cwd-prose"><?php echo $about_html; ?></div>
                     </section>
                     <?php endif; ?>
 
-                    <!-- Supporting Partners -->
+                    <!-- Supporting Partners (tiered) -->
                     <?php if ( ! empty( $supporting_partners ) || ! empty( $campaign_mentors ) ) : ?>
                     <style>
-                    .cwd-partners-grid{display:grid!important;grid-template-columns:repeat(8,minmax(0,1fr))!important;gap:16px;align-items:stretch;width:100%}
-                    .cwd-partner-item{min-width:0}
-                    .cwd-partner-logo{display:flex;align-items:center;justify-content:center;width:100%;min-width:0;height:72px;padding:10px 12px;background:#fff;border:1px solid #e5e9ef;border-radius:10px}
-                    .cwd-partner-logo img{max-width:100%;max-height:52px;width:auto;height:auto;object-fit:contain}
                     .cwd-mentors-grid{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:20px;width:100%}
                     .cwd-mentor-card{display:flex;flex-direction:column;align-items:center;text-align:center;background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:18px 16px}
                     .cwd-mentor-avatar{width:100%!important;aspect-ratio:3/4!important;min-height:220px!important;height:auto!important;border-radius:8px;overflow:hidden;flex-shrink:0;margin-bottom:12px;background:#f8fafc;border:1px solid #e5e9ef;position:relative}
@@ -1912,45 +1946,16 @@ class CW_Shortcodes {
                     .cwd-mentor-modal-bio-scroll .cwd-mentor-bio{font-size:14px;line-height:1.65;color:#334155;margin:0}
                     .cwd-mentor-modal .cwd-modal-close{position:absolute;top:12px;right:12px;z-index:2;background:#fff}
                     @media (max-width:640px){.cwd-mentor-modal-layout{flex-direction:column;max-height:90vh}.cwd-mentor-modal-photo{flex:none;max-width:none;border-right:0;border-bottom:1px solid #e5e9ef}.cwd-mentor-modal-photo img{min-height:220px;max-height:240px}.cwd-mentor-modal-bio-scroll{max-height:180px}}
-                    @media (max-width:1100px){.cwd-partners-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}.cwd-mentors-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
-                    @media (max-width:640px){.cwd-partners-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.cwd-mentors-grid{grid-template-columns:1fr!important}}
+                    @media (max-width:1100px){.cwd-mentors-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+                    @media (max-width:640px){.cwd-mentors-grid{grid-template-columns:1fr!important}}
                     </style>
                     <?php endif; ?>
-                    <?php if ( ! empty( $supporting_partners ) ) : ?>
-                    <section class="cwd-section cwd-partners-section">
-                        <h2 class="cwd-section-title"><i class="fas fa-handshake"></i> <?php esc_html_e( 'Supporting Partners', 'creativewings-core' ); ?></h2>
-                        <div class="cwd-partners-grid">
-                            <?php foreach ( $supporting_partners as $partner ) :
-                                $logo_url = wp_get_attachment_image_url( (int) $partner['attachment_id'], 'medium' );
-                                if ( ! $logo_url ) {
-                                    continue;
-                                }
-                                $partner_name = $partner['name'];
-                                $partner_url  = ! empty( $partner['url'] ) ? $partner['url'] : '';
-                            ?>
-                            <div class="cwd-partner-item">
-                                <?php if ( $partner_url ) : ?>
-                                <a href="<?php echo esc_url( $partner_url ); ?>"
-                                   class="cwd-partner-logo"
-                                   target="_blank"
-                                   rel="noopener noreferrer"
-                                   title="<?php echo esc_attr( $partner_name ); ?>">
-                                    <img src="<?php echo esc_url( $logo_url ); ?>"
-                                         alt="<?php echo esc_attr( $partner_name ); ?>"
-                                         loading="lazy">
-                                </a>
-                                <?php else : ?>
-                                <div class="cwd-partner-logo" title="<?php echo esc_attr( $partner_name ); ?>">
-                                    <img src="<?php echo esc_url( $logo_url ); ?>"
-                                         alt="<?php echo esc_attr( $partner_name ); ?>"
-                                         loading="lazy">
-                                </div>
-                                <?php endif; ?>
-                            </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </section>
-                    <?php endif; ?>
+                    <?php
+                    if ( class_exists( 'CW_Campaign_Showcase' ) && ! empty( $supporting_partners ) ) {
+                        $cw_sponsor_placeholders = isset( $_GET['cw_sponsor_demo'] ) && (string) wp_unslash( $_GET['cw_sponsor_demo'] ) === '1'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+                        echo CW_Campaign_Showcase::render_tiered_partners_html( $pid, false, $cw_sponsor_placeholders ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+                    }
+                    ?>
 
                     <!-- Mentors -->
                     <?php if ( ! empty( $campaign_mentors ) ) : ?>
@@ -2069,9 +2074,24 @@ class CW_Shortcodes {
 
                     <!-- GALLERY (WooCommerce product image gallery) — sits
                          below About so the page reads: Submissions → About → Partners → Mentors → Gallery. -->
-                    <?php if ( ! empty( $gallery_images ) ): ?>
-                    <section class="cwd-section cwd-gallery-section">
-                        <h2 class="cwd-section-title"><i class="fas fa-images"></i> Gallery</h2>
+                    <?php
+                    $has_photo_tab = ! empty( $gallery_images );
+                    $has_extra_tab = ! empty( $extra_gallery_images );
+                    if ( $has_photo_tab || $has_extra_tab ):
+                    ?>
+                    <section class="cwd-section cwd-gallery-section" id="cwd-gallery">
+                        <h2 class="cwd-section-title"><i class="fas fa-images"></i> <?php esc_html_e( 'Gallery', 'creativewings-core' ); ?></h2>
+                        <?php if ( $has_photo_tab && $has_extra_tab ) : ?>
+                        <div class="cwd-gallery-tabs" role="tablist">
+                            <button type="button" class="cwd-gallery-tab is-active" role="tab" id="cwd-gallery-tab-photos" aria-controls="cwd-gallery-panel-photos" aria-selected="true" data-cwd-gallery-tab="photos"><?php esc_html_e( 'Photos', 'creativewings-core' ); ?></button>
+                            <button type="button" class="cwd-gallery-tab" role="tab" id="cwd-gallery-tab-extra" aria-controls="cwd-gallery-panel-extra" aria-selected="false" data-cwd-gallery-tab="extra"><?php echo esc_html( $extra_gallery_label ); ?></button>
+                        </div>
+                        <?php elseif ( $has_extra_tab ) : ?>
+                        <p class="cwd-gallery-subtitle"><?php echo esc_html( $extra_gallery_label ); ?></p>
+                        <?php endif; ?>
+
+                        <?php if ( $has_photo_tab ) : ?>
+                        <div class="cwd-gallery-panel" role="tabpanel" id="cwd-gallery-panel-photos" aria-labelledby="cwd-gallery-tab-photos">
                         <div class="cwd-gallery-grid" id="cwd-gallery-grid">
                             <?php foreach ( $gallery_images as $idx => $img ): ?>
                             <button type="button"
@@ -2086,6 +2106,51 @@ class CW_Shortcodes {
                             </button>
                             <?php endforeach; ?>
                         </div>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ( $has_extra_tab ) :
+                            $extra_index_base = count( $gallery_images );
+                        ?>
+                        <div class="cwd-gallery-panel" role="tabpanel" id="cwd-gallery-panel-extra" aria-labelledby="cwd-gallery-tab-extra"<?php echo $has_photo_tab ? ' hidden' : ''; ?>>
+                        <div class="cwd-gallery-grid" id="cwd-gallery-grid-extra">
+                            <?php foreach ( $extra_gallery_images as $idx => $img ): ?>
+                            <button type="button"
+                                class="cwd-gallery-item"
+                                data-cwd-gallery-index="<?php echo (int) ( $extra_index_base + $idx ); ?>"
+                                data-full="<?php echo esc_url( $img['full'] ); ?>"
+                                aria-label="<?php echo esc_attr( $img['alt'] ?: 'Open image ' . ( $idx + 1 ) ); ?>">
+                                <img src="<?php echo esc_url( $img['thumb'] ); ?>"
+                                     alt="<?php echo esc_attr( $img['alt'] ); ?>"
+                                     loading="lazy">
+                                <span class="cwd-gallery-zoom-icon" aria-hidden="true"><i class="fas fa-search-plus"></i></span>
+                            </button>
+                            <?php endforeach; ?>
+                        </div>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ( $has_photo_tab && $has_extra_tab ) : ?>
+                        <script>
+                        (function(){
+                            var root = document.getElementById('cwd-gallery');
+                            if (!root) return;
+                            var tabs = root.querySelectorAll('[data-cwd-gallery-tab]');
+                            function show(name){
+                                tabs.forEach(function(tab){
+                                    var on = tab.getAttribute('data-cwd-gallery-tab') === name;
+                                    tab.classList.toggle('is-active', on);
+                                    tab.setAttribute('aria-selected', on ? 'true' : 'false');
+                                    var panel = document.getElementById(tab.getAttribute('aria-controls'));
+                                    if (panel) panel.hidden = !on;
+                                });
+                            }
+                            tabs.forEach(function(tab){
+                                tab.addEventListener('click', function(){ show(tab.getAttribute('data-cwd-gallery-tab')); });
+                            });
+                        })();
+                        </script>
+                        <?php endif; ?>
                     </section>
                     <?php endif; ?>
 
@@ -2268,10 +2333,8 @@ class CW_Shortcodes {
         if ( $thumb ) {
             $lightbox_images[] = [ 'full' => $thumb, 'alt' => get_the_title( $pid ) ];
         }
-        if ( ! empty( $gallery_images ) ) {
-            foreach ( $gallery_images as $gi ) {
-                $lightbox_images[] = [ 'full' => $gi['full'], 'alt' => $gi['alt'] ];
-            }
+        foreach ( array_merge( $gallery_images, $extra_gallery_images ) as $gi ) {
+            $lightbox_images[] = [ 'full' => $gi['full'], 'alt' => $gi['alt'] ];
         }
         $hero_offset = $thumb ? 1 : 0;
         // Always render lightbox when there are product images OR a public map gallery
@@ -2345,15 +2408,16 @@ class CW_Shortcodes {
             window.cwdGalleryClose = close;
             window.cwdGalleryStep  = step;
 
-            var grid = document.getElementById('cwd-gallery-grid');
-            if (grid) {
+            ['cwd-gallery-grid', 'cwd-gallery-grid-extra'].forEach(function(gridId){
+                var grid = document.getElementById(gridId);
+                if (!grid) return;
                 grid.addEventListener('click', function(e){
                     var t = e.target.closest('.cwd-gallery-item');
                     if (!t) return;
                     e.preventDefault();
                     open( heroOffset + (parseInt(t.getAttribute('data-cwd-gallery-index'), 10) || 0) );
                 });
-            }
+            });
 
             function openPublicList(idx, pubList) {
                 if (!pubList || !pubList.length) return;
@@ -2437,6 +2501,15 @@ class CW_Shortcodes {
                 var live   = root.querySelector('[data-cwd-hero-live]');
                 var idx    = 0;
 
+                function syncHeight() {
+                    var active = slides[idx];
+                    if (!active) return;
+                    // Height follows the active poster only — prevents tall
+                    // neighbor slides (or late lazy-loads) from leaving a gap.
+                    var h = active.offsetHeight;
+                    if (h > 0) root.style.height = h + 'px';
+                }
+
                 function show(i) {
                     idx = ((i % total) + total) % total;
                     track.style.transform = 'translate3d(' + (-100 * idx) + '%, 0, 0)';
@@ -2445,10 +2518,24 @@ class CW_Shortcodes {
                         s.setAttribute('aria-hidden', active ? 'false' : 'true');
                         s.setAttribute('tabindex', active ? '0' : '-1');
                         s.classList.toggle('is-active', active);
+                        if (active || j === ((idx + 1) % total) || j === ((idx - 1 + total) % total)) {
+                            var img = s.querySelector('img');
+                            if (img && img.loading === 'lazy') img.loading = 'eager';
+                        }
                     });
                     if (curr) curr.textContent = String(idx + 1);
                     if (live) live.textContent = 'Image ' + (idx + 1) + ' of ' + total;
+                    syncHeight();
                 }
+
+                slides.forEach(function(s){
+                    var img = s.querySelector('img');
+                    if (!img) return;
+                    if (img.complete) syncHeight();
+                    else img.addEventListener('load', syncHeight);
+                });
+                window.addEventListener('resize', syncHeight);
+                show(0);
 
                 if (prev) prev.addEventListener('click', function(e){ e.stopPropagation(); show(idx - 1); });
                 if (next) next.addEventListener('click', function(e){ e.stopPropagation(); show(idx + 1); });
@@ -2868,16 +2955,27 @@ class CW_Shortcodes {
             }
             html += '<h4 class="cwd-reg-row-title">' + rowTitle + '</h4>';
             if (cfg.showName) {
+                var escAttr = function(s) {
+                    return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+                };
                 var nameVal = '';
                 var nameHint = '';
-                if (num === 1 && cfg.useAccountFullname && cfg.accountFullName) {
-                    nameVal = cfg.accountFullName.replace(/"/g, '&quot;');
+                if (cfg.isCompetition) {
+                    if (num === 1 && cfg.useAccountFullname && cfg.accountFullName) {
+                        nameVal = escAttr(cfg.accountFullName);
+                    } else if (num > 1) {
+                        var firstName = document.querySelector('#cwd-reg-rows input[name="cw_names[1]"]');
+                        if (firstName) nameVal = escAttr(firstName.value);
+                    }
+                    nameHint = '<p class="cwd-reg-hint">This name is printed on the certificate. If the entry is for your child, enter your child\'s name.</p>';
+                } else if (num === 1 && cfg.useAccountFullname && cfg.accountFullName) {
+                    nameVal = escAttr(cfg.accountFullName);
                     nameHint = '<p class="cwd-reg-hint">Prefilled from your account — edit if this certificate should show a different name.</p>';
                 } else if (num > 1 && cfg.useAccountFullname) {
                     nameHint = '<p class="cwd-reg-hint">Enter the full name for this participant (certificate).</p>';
                 }
                 html += '<div class="cwd-reg-field">'
-                      + '<label class="cwd-reg-label">Full Name <span class="cwd-req">*</span></label>'
+                      + '<label class="cwd-reg-label">' + (cfg.isCompetition ? 'Participant Full Name' : 'Full Name') + ' <span class="cwd-req">*</span></label>'
                       + nameHint
                       + '<input type="text" name="cw_names[' + num + ']" class="cwd-reg-input" placeholder="Enter full name" value="' + nameVal + '" required>'
                       + '</div>';
@@ -2929,8 +3027,9 @@ class CW_Shortcodes {
                     if (ftype === 'file') {
                         html += '<input type="file" name="cw_data[' + num + '][' + idx + ']" class="cwd-reg-input" accept=".pdf,.doc,.docx,.zip,.jpg,.jpeg,.png"' + req + '>';
                     } else if (ftype === 'media') {
+                        html += '<p class="cwd-reg-hint">Upload a photo (JPG, PNG, HEIC) or a PDF.</p>';
                         html += '<div class="cwd-reg-file-wrap">';
-                        html += '<input type="file" name="cw_data[' + num + '][' + idx + ']" class="cwd-reg-input cwd-reg-file-media" accept="image/*"' + req + ' data-preview="cwd-reg-prev-' + num + '-' + idx + '">';
+                        html += '<input type="file" name="cw_data[' + num + '][' + idx + ']" class="cwd-reg-input cwd-reg-file-media" accept="image/*,application/pdf,.pdf"' + req + ' data-preview="cwd-reg-prev-' + num + '-' + idx + '">';
                         html += '<img class="cwd-reg-media-preview" id="cwd-reg-prev-' + num + '-' + idx + '" alt="" style="display:none;max-width:120px;border-radius:8px;margin-top:8px;border:1px solid var(--cwd-border);">';
                         html += '</div>';
                     } else if (ftype === 'textarea' || ftype === 'wysiwyg') {
@@ -3130,6 +3229,10 @@ class CW_Shortcodes {
             var pid = e.target.getAttribute('data-preview');
             var img = pid ? document.getElementById(pid) : null;
             if (!img || !e.target.files || !e.target.files[0]) return;
+            if (String(e.target.files[0].type).indexOf('image/') !== 0) {
+                img.style.display = 'none';
+                return;
+            }
             var r = new FileReader();
             r.onload = function(ev) { img.src = ev.target.result; img.style.display = 'block'; };
             r.readAsDataURL(e.target.files[0]);
@@ -3182,6 +3285,64 @@ class CW_Shortcodes {
         </script>
         <?php
         return ob_get_clean();
+    }
+
+    /* ==========================================================================
+       Sponsors page  [cw_sponsors]
+       ========================================================================== */
+    public function render_sponsors( $atts = [] ) {
+        $atts = shortcode_atts(
+            [
+                'campaign_id'  => '3361',
+                'heading'      => __( 'Our Sponsors', 'creativewings-core' ),
+                'placeholders' => '0',
+                'demo'         => '0',
+            ],
+            $atts,
+            'cw_sponsors'
+        );
+
+        if ( ! class_exists( 'CW_Campaign_Showcase' ) ) {
+            return '';
+        }
+
+        $campaign_id = absint( $atts['campaign_id'] );
+        if ( $campaign_id <= 0 ) {
+            $campaign_id = 3361;
+        }
+
+        $placeholders = in_array( (string) $atts['placeholders'], [ '1', 'yes', 'true' ], true )
+            || in_array( (string) $atts['demo'], [ '1', 'yes', 'true' ], true );
+
+        $partners = CW_Campaign_Showcase::get_partners( $campaign_id );
+        if ( empty( $partners ) && ! $placeholders ) {
+            return '';
+        }
+
+        $campaign_title = get_the_title( $campaign_id );
+        $heading        = sanitize_text_field( (string) $atts['heading'] );
+
+        ob_start();
+        ?>
+        <div class="cw-sponsors-page">
+            <?php if ( $heading !== '' ) : ?>
+                <h1 class="cw-sponsors-page__title"><?php echo esc_html( $heading ); ?></h1>
+                <?php if ( $campaign_title ) : ?>
+                <p class="cw-sponsors-page__intro">
+                    <?php
+                    printf(
+                        /* translators: %s: campaign title */
+                        esc_html__( 'Brand sponsors supporting %s on Creative Wings.', 'creativewings-core' ),
+                        esc_html( $campaign_title )
+                    );
+                    ?>
+                </p>
+                <?php endif; ?>
+            <?php endif; ?>
+            <?php echo CW_Campaign_Showcase::render_tiered_partners_html( $campaign_id, true, $placeholders ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+        </div>
+        <?php
+        return (string) ob_get_clean();
     }
 
     /* ==========================================================================
@@ -3287,6 +3448,7 @@ class CW_Shortcodes {
             'community'   => 'cwg-chip-community',
             'workshop'    => 'cwg-chip-workshop',
             'volunteer'   => 'cwg-chip-volunteer',
+            'activity'    => 'cwg-chip-activity',
         ];
 
         $cards_html = [];
@@ -3303,35 +3465,19 @@ class CW_Shortcodes {
             }
 
             $deadline  = get_post_meta( $pid, 'submission_deadline', true );
-            $is_closed = $deadline && strtotime( $deadline ) < current_time( 'timestamp' );
+            $is_closed = $deadline && CW_Campaign_Dates::is_past( $deadline, true );
             if ( $active && $is_closed ) {
                 continue;
             }
 
-            $terms_p  = get_the_terms( $pid, 'product_cat' );
-            $type_lbl = '';
-            $type_key = '';
-            if ( $terms_p && ! is_wp_error( $terms_p ) ) {
-                foreach ( $terms_p as $tp ) {
-                    $s = strtolower( $tp->slug );
-                    if ( false !== strpos( $s, 'competition' ) ) { $type_lbl = 'Competition'; $type_key = 'competition'; break; }
-                    if ( $s === 'talk-seminar' || false !== strpos( $s, 'seminar' ) || false !== strpos( $s, 'talk' ) ) { $type_lbl = 'Talk / Seminar'; $type_key = 'seminar'; break; }
-                    if ( false !== strpos( $s, 'running' ) )   { $type_lbl = 'Running';    $type_key = 'running';    break; }
-                    if ( false !== strpos( $s, 'volunteer' ) ) { $type_lbl = 'Volunteer';  $type_key = 'volunteer';  break; }
-                    if ( false !== strpos( $s, 'workshop' ) )  { $type_lbl = 'Workshop';   $type_key = 'workshop';   break; }
-                    if ( false !== strpos( $s, 'community' ) ) { $type_lbl = 'Community';  $type_key = 'community';  break; }
-                }
-                if ( ! $type_lbl ) {
-                    $t0       = reset( $terms_p );
-                    $type_lbl = $t0->name;
-                    $type_key = $t0->slug;
-                }
-            }
+            $main_cat = CW_Shop::main_category( $pid );
+            $type_lbl = $main_cat['label'];
+            $type_key = $main_cat['key'];
 
             $start      = get_post_meta( $pid, 'cw_submission_start', true );
-            $date_str   = $start ? date_i18n( 'j M Y (l)', strtotime( $start ) ) : '—';
-            $time_str   = $start ? date_i18n( 'g:i A', strtotime( $start ) ) . ' (GMT +08:00)' : '';
-            $closes_str = $deadline ? sprintf( __( 'Closes %s', 'creativewings-core' ), date_i18n( 'j M Y', strtotime( $deadline ) ) ) : '';
+            $date_str   = $start ? wp_date( 'j M Y (l)', CW_Campaign_Dates::timestamp( $start ) ) : '—';
+            $time_str   = CW_Campaign_Dates::has_time( $start ) ? CW_Campaign_Dates::format_time( $start ) . ' (GMT +08:00)' : '';
+            $closes_str = $deadline ? sprintf( __( 'Closes %s', 'creativewings-core' ), CW_Campaign_Dates::format( $deadline ) ) : '';
             $price      = floatval( $wcp->get_price() );
             $cert_type  = get_post_meta( $pid, 'cw_certificate_type', true );
             $fee_text   = $price > 0 ? 'RM ' . number_format( $price, 2 ) : ( $cert_type ? 'E Certificate' : 'Free' );
@@ -3557,13 +3703,13 @@ class CW_Shortcodes {
 
     /** Proxy: competitions grid */
     public function render_competitions_grid( $atts ) {
-        $atts = shortcode_atts( [ 'parent_cats' => 'competitions', 'columns' => 3 ], $atts, 'cw_competitions_grid' );
+        $atts = shortcode_atts( [ 'parent_cats' => 'competitions', 'columns' => 3, 'heading' => 'Creative Competitions in Malaysia' ], $atts, 'cw_competitions_grid' );
         return $this->render_event_grid( $atts );
     }
 
     /** Proxy: activities grid (shows activities + talk/seminar by default) */
     public function render_activities_grid( $atts ) {
-        $atts = shortcode_atts( [ 'parent_cats' => 'activities,talk-seminar', 'columns' => 3 ], $atts, 'cw_activities_grid' );
+        $atts = shortcode_atts( [ 'parent_cats' => 'activities,talk-seminar', 'columns' => 3, 'heading' => 'Community Activities & Events in Malaysia' ], $atts, 'cw_activities_grid' );
         return $this->render_event_grid( $atts );
     }
 
@@ -3675,6 +3821,9 @@ class CW_Shortcodes {
         ob_start();
         ?>
         <div class="cwg-wrap" id="cwg-top">
+            <?php if ( ! empty( $atts['heading'] ) && is_page() ) : ?>
+            <h1 class="screen-reader-text"><?php echo esc_html( $atts['heading'] ); ?></h1>
+            <?php endif; ?>
 
             <!-- ── Filter Tabs ── -->
             <div class="cwg-tabs-wrap">
@@ -3724,27 +3873,16 @@ class CW_Shortcodes {
                     if ( ! $wcp ) continue;
 
                     // Type detection
-                    $terms_p  = get_the_terms( $pid, 'product_cat' );
-                    $type_lbl = ''; $type_key = '';
-                    if ( $terms_p && ! is_wp_error( $terms_p ) ) {
-                        foreach ( $terms_p as $tp ) {
-                            $s = strtolower( $tp->slug );
-                            if ( false !== strpos( $s, 'competition' ) ) { $type_lbl = 'Competition'; $type_key = 'competition'; break; }
-                            if ( $s === 'talk-seminar' || false !== strpos( $s, 'seminar' ) || false !== strpos( $s, 'talk' ) ) { $type_lbl = 'Talk / Seminar'; $type_key = 'seminar'; break; }
-                            if ( false !== strpos( $s, 'running' ) )    { $type_lbl = 'Running';    $type_key = 'running';    break; }
-                            if ( false !== strpos( $s, 'volunteer' ) )  { $type_lbl = 'Volunteer';  $type_key = 'volunteer';  break; }
-                            if ( false !== strpos( $s, 'workshop' ) )   { $type_lbl = 'Workshop';   $type_key = 'workshop';   break; }
-                            if ( false !== strpos( $s, 'community' ) )  { $type_lbl = 'Community';  $type_key = 'community';  break; }
-                        }
-                        if ( ! $type_lbl ) { $t0 = reset( $terms_p ); $type_lbl = $t0->name; $type_key = $t0->slug; }
-                    }
+                    $main_cat = CW_Shop::main_category( $pid );
+                    $type_lbl = $main_cat['label'];
+                    $type_key = $main_cat['key'];
 
                     // Meta
                     $start       = get_post_meta( $pid, 'cw_submission_start', true );
                     $deadline    = get_post_meta( $pid, 'submission_deadline', true );
-                    $is_closed   = $deadline && strtotime( $deadline ) < current_time( 'timestamp' );
-                    $date_str    = $start ? date_i18n( 'j M Y (l)', strtotime( $start ) ) : '—';
-                    $time_str    = $start ? date_i18n( 'g:i A', strtotime( $start ) ) . ' (GMT +08:00)' : '';
+                    $is_closed   = $deadline && CW_Campaign_Dates::is_past( $deadline, true );
+                    $date_str    = $start ? wp_date( 'j M Y (l)', CW_Campaign_Dates::timestamp( $start ) ) : '—';
+                    $time_str    = CW_Campaign_Dates::has_time( $start ) ? CW_Campaign_Dates::format_time( $start ) . ' (GMT +08:00)' : '';
                     $price       = floatval( $wcp->get_price() );
                     $cert_type   = get_post_meta( $pid, 'cw_certificate_type', true );
                     if ( $price > 0 ) {
@@ -3801,7 +3939,7 @@ class CW_Shortcodes {
                         <ul class="cwg-card-meta">
                             <li><i class="fas fa-calendar-alt"></i> <?php echo esc_html( $date_str ); ?></li>
                             <?php if ( $deadline ) : ?>
-                            <li class="cwg-meta-closes"><i class="fas fa-hourglass-half"></i> <?php echo esc_html( sprintf( __( 'Closes %s', 'creativewings-core' ), date_i18n( 'j M Y', strtotime( $deadline ) ) ) ); ?></li>
+                            <li class="cwg-meta-closes"><i class="fas fa-hourglass-half"></i> <?php echo esc_html( sprintf( __( 'Closes %s', 'creativewings-core' ), CW_Campaign_Dates::format( $deadline ) ) ); ?></li>
                             <?php elseif ( $time_str ): ?>
                             <li><i class="fas fa-clock"></i> <?php echo esc_html( $time_str ); ?></li>
                             <?php endif; ?>

@@ -131,6 +131,7 @@ class CW_Cron {
             'cw_design_variants',
             'cw_variant_images',
             '_product_image_gallery',
+            'cw_extra_gallery_ids',
             '_thumbnail_id',
             'cw_design_artwork_id',
             'cw_design_source_id',
@@ -151,7 +152,7 @@ class CW_Cron {
                 $mark( $row->meta_value );
                 continue;
             }
-            if ( $row->meta_key === '_product_image_gallery' && is_string( $row->meta_value ) ) {
+            if ( in_array( $row->meta_key, [ '_product_image_gallery', 'cw_extra_gallery_ids' ], true ) && is_string( $row->meta_value ) ) {
                 foreach ( explode( ',', $row->meta_value ) as $token ) {
                     $mark( trim( $token ) );
                 }

@@ -17,6 +17,376 @@ class CW_Structured_Data {
         add_filter( 'rank_math/opengraph/twitter/image', [ __CLASS__, 'fallback_og_image' ] );
         add_filter( 'rank_math/sitemap/http_headers', [ __CLASS__, 'fix_sitemap_headers' ], 10, 2 );
         add_filter( 'rank_math/sitemap/urlimages', [ __CLASS__, 'filter_sitemap_images' ], 10, 2 );
+        add_filter( 'rank_math/frontend/description', [ __CLASS__, 'campaign_meta_description' ], 20 );
+        add_filter( 'wp_get_attachment_image_attributes', [ __CLASS__, 'fallback_image_alt' ], 10, 2 );
+        add_filter( 'wp_content_img_tag', [ __CLASS__, 'fill_content_image_alt' ], 10, 3 );
+        add_filter( 'language_attributes', [ __CLASS__, 'localize_lang' ] );
+        add_filter( 'rank_math/schema/language', [ __CLASS__, 'localize_lang' ] );
+        add_filter( 'rank_math/opengraph/facebook/og_locale', [ __CLASS__, 'localize_og_locale' ] );
+        add_filter( 'rank_math/frontend/robots', [ __CLASS__, 'noindex_utility_singles' ] );
+        add_filter( 'rank_math/llms_txt/extra_content', [ __CLASS__, 'llms_campaign_facts' ] );
+    }
+
+    /** Post types that exist for plumbing or hold participant (often minor) names. */
+    const NOINDEX_POST_TYPES = [ 'cw_competition_entry', 'cw_activity_entry', 'slider', 'jet-engine', 'e-floating-buttons', 'ha_library', 'elementor_library' ];
+
+    /** Malaysian English site-wide; a page can override with a `cw_lang` meta such as ms-MY. */
+    private static function page_lang() {
+        if ( is_singular() ) {
+            $lang = (string) get_post_meta( get_queried_object_id(), 'cw_lang', true );
+            if ( preg_match( '/^[a-z]{2}-[A-Z]{2}$/', $lang ) ) {
+                return $lang;
+            }
+        }
+        return 'en-MY';
+    }
+
+    public static function localize_lang( $output ) {
+        $lang = self::page_lang();
+        return 'en-US' === $output ? $lang : str_replace( 'lang="en-US"', 'lang="' . $lang . '"', (string) $output );
+    }
+
+    public static function localize_og_locale( $locale ) {
+        $lang = self::page_lang();
+        return 'en-MY' === $lang ? $locale : str_replace( '-', '_', $lang );
+    }
+
+    public static function noindex_utility_singles( $robots ) {
+        if ( is_singular( self::NOINDEX_POST_TYPES ) || isset( $_GET['jet-engine'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+            $robots          = is_array( $robots ) ? $robots : [];
+            $robots['index'] = 'noindex';
+            unset( $robots['max-snippet'], $robots['max-video-preview'], $robots['max-image-preview'] );
+        }
+        return $robots;
+    }
+
+    /**
+     * Live campaign facts for AI answer engines, appended to Rank Math's llms.txt.
+     * Rank Math runs esc_html over this, so the text avoids & ' " < >.
+     */
+    public static function llms_campaign_facts( $extra ) {
+        $nap   = self::get_nap();
+        $lines = [
+            '## About Creative Wings',
+            'Creative Wings (' . $nap['legal_name'] . ') runs creative competitions, community activities and campaigns for students, families and creators across Malaysia. Based in ' . $nap['locality'] . ', ' . $nap['region'] . '. Contact: ' . $nap['email'] . ', ' . $nap['telephone'] . '. All dates and times are Malaysia time (GMT+8). Entry fees are in Malaysian Ringgit (RM).',
+            '',
+        ];
+
+        $groups = [ 'open' => [], 'upcoming' => [], 'past' => [] ];
+        $ids    = get_posts( [
+            'post_type'   => 'product',
+            'post_status' => 'publish',
+            'numberposts' => 30,
+            'fields'      => 'ids',
+            'orderby'     => 'date',
+            'order'       => 'DESC',
+        ] );
+        foreach ( $ids as $pid ) {
+            $start    = (string) get_post_meta( $pid, 'cw_submission_start', true );
+            $deadline = (string) get_post_meta( $pid, 'submission_deadline', true );
+            if ( $deadline && CW_Campaign_Dates::is_past( $deadline, true ) ) {
+                $groups['past'][] = $pid;
+            } elseif ( $start && CW_Campaign_Dates::is_future( $start ) ) {
+                $groups['upcoming'][] = $pid;
+            } else {
+                $groups['open'][] = $pid;
+            }
+        }
+
+        $labels = [ 'open' => 'Open for entries now', 'upcoming' => 'Opening soon', 'past' => 'Past campaigns' ];
+        foreach ( $groups as $group => $pids ) {
+            if ( ! $pids ) {
+                continue;
+            }
+            $lines[] = '## ' . $labels[ $group ];
+            foreach ( $pids as $pid ) {
+                $lines[] = self::llms_campaign_line( $pid, 'past' !== $group );
+            }
+            $lines[] = '';
+        }
+
+        $facts = self::llms_plain( implode( "\n", $lines ) );
+        return trim( (string) $extra ) ? trim( (string) $extra ) . "\n\n" . $facts : $facts;
+    }
+
+    private static function llms_campaign_line( $pid, $with_faq ) {
+        $g = function ( $key ) use ( $pid ) {
+            return (string) get_post_meta( $pid, $key, true );
+        };
+        $when = function ( $key ) use ( $g ) {
+            $value = $g( $key );
+            return CW_Campaign_Dates::format( '00:00' === CW_Campaign_Dates::time_part( $value ) ? CW_Campaign_Dates::date_part( $value ) : $value );
+        };
+        $parts = [];
+        $cats  = wp_get_post_terms( $pid, 'product_cat', [ 'fields' => 'names' ] );
+        if ( $cats && ! is_wp_error( $cats ) ) {
+            $parts[] = 'Category: ' . implode( ', ', $cats ) . '.';
+        }
+        if ( $g( 'cw_submission_start' ) && $g( 'submission_deadline' ) ) {
+            $parts[] = 'Entries: ' . $when( 'cw_submission_start' ) . ' to ' . $when( 'submission_deadline' ) . '.';
+        } elseif ( $g( 'submission_deadline' ) ) {
+            $parts[] = 'Closing date: ' . $when( 'submission_deadline' ) . '.';
+        }
+        if ( $g( 'cw_final_event_date' ) ) {
+            $parts[] = 'Results or final event: ' . $when( 'cw_final_event_date' ) . '.';
+        }
+        $product = function_exists( 'wc_get_product' ) ? wc_get_product( $pid ) : null;
+        if ( $product ) {
+            $price   = (float) $product->get_price();
+            $parts[] = 'Entry fee: ' . ( $price > 0 ? 'RM' . rtrim( rtrim( number_format( $price, 2, '.', '' ), '0' ), '.' ) : 'Free' ) . '.';
+        }
+        $where = 'online' === $g( 'cw_event_mode' ) ? 'Online' : trim( wp_strip_all_tags( $g( 'cw_location_details' ) ) );
+        if ( $where ) {
+            $parts[] = 'Where: ' . $where . '.';
+        }
+        $summary = trim( wp_strip_all_tags( $g( 'rank_math_description' ) ) );
+        if ( $summary ) {
+            $parts[] = preg_replace( '/\s*Closes \d{1,2} [A-Za-z]{3} \d{4}[^.]*\.?$/', '', $summary );
+        }
+
+        $line = '- [' . html_entity_decode( get_the_title( $pid ), ENT_QUOTES, 'UTF-8' ) . '](' . get_permalink( $pid ) . '): ' . implode( ' ', $parts );
+        if ( $with_faq ) {
+            foreach ( array_slice( self::get_faq_items( $pid ), 0, 8 ) as $item ) {
+                $line .= "\n  - Q: " . $item['question'] . ' A: ' . wp_trim_words( $item['answer'], 40, '…' );
+            }
+        }
+        return $line;
+    }
+
+    private static function llms_plain( $text ) {
+        $text = html_entity_decode( (string) $text, ENT_QUOTES, 'UTF-8' );
+        $text = preg_replace( '/\s*&\s*/', ' and ', $text );
+        return strtr( $text, [ "'" => '’', '"' => '”', '<' => '', '>' => '' ] );
+    }
+
+    /**
+     * Content images saved with an empty alt pick up the Media Library alt text.
+     */
+    public static function fill_content_image_alt( $img, $context, $attachment_id ) {
+        if ( ! $attachment_id || preg_match( '/\balt="[^"]+"/', $img ) ) {
+            return $img;
+        }
+        $alt = trim( (string) get_post_meta( $attachment_id, '_wp_attachment_image_alt', true ) );
+        if ( '' === $alt ) {
+            return $img;
+        }
+        $alt = 'alt="' . esc_attr( $alt ) . '"';
+        return preg_match( '/\balt=""/', $img )
+            ? preg_replace( '/\balt=""/', $alt, $img, 1 )
+            : preg_replace( '/^<img\b/', '<img ' . $alt, $img, 1 );
+    }
+
+    /**
+     * Campaign descriptions carry the live deadline, so stored copy never goes stale.
+     */
+    public static function campaign_meta_description( $description ) {
+        if ( ! is_singular( 'product' ) || ! class_exists( 'CW_Campaign_Dates' ) ) {
+            return $description;
+        }
+        $description = trim( preg_replace( '/\s*Closes \d{1,2} [A-Za-z]{3} \d{4}[^.]*\.?\s*$/', '', (string) $description ) );
+        $deadline    = (string) get_post_meta( get_queried_object_id(), 'submission_deadline', true );
+        if ( '' === $description || '' === $deadline || CW_Campaign_Dates::is_past( $deadline, true ) ) {
+            return $description;
+        }
+        $suffix = ' Closes ' . wp_date( 'j M Y', CW_Campaign_Dates::timestamp( $deadline ) ) . '.';
+        return mb_strlen( $description . $suffix ) <= 175 ? $description . $suffix : $description;
+    }
+
+    /**
+     * Campaign images without alt text fall back to the campaign title.
+     */
+    public static function fallback_image_alt( $attr, $attachment ) {
+        if ( ! empty( $attr['alt'] ) || ! $attachment instanceof WP_Post ) {
+            return $attr;
+        }
+        $parent = (int) $attachment->post_parent;
+        if ( $parent && 'product' === get_post_type( $parent ) ) {
+            $attr['alt'] = html_entity_decode( get_the_title( $parent ), ENT_QUOTES, 'UTF-8' );
+        }
+        return $attr;
+    }
+
+    /**
+     * schema.org Event for a campaign, built from live campaign meta.
+     *
+     * @return array<string,mixed>
+     */
+    public static function campaign_event_node( $pid ) {
+        $pid      = (int) $pid;
+        $url      = get_permalink( $pid );
+        $name     = self::schema_text( get_the_title( $pid ) );
+        $start    = (string) get_post_meta( $pid, 'cw_submission_start', true );
+        $deadline = (string) get_post_meta( $pid, 'submission_deadline', true );
+        $final    = (string) get_post_meta( $pid, 'cw_final_event_date', true );
+        $location = trim( wp_strip_all_tags( (string) get_post_meta( $pid, 'cw_location_details', true ) ) );
+        $mode     = (string) get_post_meta( $pid, 'cw_event_mode', true );
+
+        $desc = (string) get_post_meta( $pid, 'rank_math_description', true );
+        if ( '' === trim( $desc ) ) {
+            $desc = wp_trim_words( wp_strip_all_tags( (string) get_post_field( 'post_content', $pid ) ), 45, '…' );
+        }
+        $desc = self::schema_text( wp_strip_all_tags( $desc ) );
+
+        $node = [
+            '@type'       => 'Event',
+            'name'        => $name,
+            'description' => $desc,
+            'url'         => $url,
+            'eventStatus' => 'https://schema.org/EventScheduled',
+        ];
+
+        $end_raw = $final ?: $deadline;
+        if ( ! $start ) {
+            $start = $end_raw;
+        }
+        $start_iso = CW_Campaign_Dates::schema_date( $start );
+        $end_iso   = CW_Campaign_Dates::schema_date( $end_raw );
+        if ( $start_iso ) {
+            $node['startDate'] = $start_iso;
+        }
+        if ( $end_iso && CW_Campaign_Dates::timestamp( $end_raw, true ) >= CW_Campaign_Dates::timestamp( $start ) ) {
+            $node['endDate'] = $end_iso;
+        }
+
+        $is_online = 'online' === $mode || preg_match( '/\bonline\b/i', $location );
+        if ( $is_online ) {
+            $node['eventAttendanceMode'] = 'https://schema.org/OnlineEventAttendanceMode';
+            $node['location']            = [ '@type' => 'VirtualLocation', 'url' => $url ];
+        } else {
+            $node['eventAttendanceMode'] = 'https://schema.org/OfflineEventAttendanceMode';
+            $node['location']            = [
+                '@type'   => 'Place',
+                'name'    => $location ? self::schema_text( $location ) : 'Malaysia',
+                'address' => array_filter( [
+                    '@type'           => 'PostalAddress',
+                    'streetAddress'   => self::schema_text( $location ),
+                    'addressCountry'  => 'MY',
+                ] ),
+            ];
+        }
+
+        $thumb = (int) get_post_thumbnail_id( $pid );
+        if ( $thumb && ( $img = wp_get_attachment_image_url( $thumb, 'full' ) ) ) {
+            $node['image'] = [ $img ];
+        }
+
+        $product = function_exists( 'wc_get_product' ) ? wc_get_product( $pid ) : null;
+        if ( $product ) {
+            $closed = $deadline && CW_Campaign_Dates::is_past( $deadline, true );
+            $offer  = [
+                '@type'         => 'Offer',
+                'url'           => $url,
+                'price'         => (string) (float) $product->get_price(),
+                'priceCurrency' => 'MYR',
+                'availability'  => $closed ? 'https://schema.org/SoldOut' : 'https://schema.org/InStock',
+            ];
+            if ( $start_iso ) {
+                $offer['validFrom'] = $start_iso;
+            }
+            $node['offers'] = $offer;
+        }
+
+        $org_id   = (int) get_post_meta( $pid, 'organizer_id', true );
+        $org_user = $org_id ? get_userdata( $org_id ) : null;
+        $org_name = $org_user ? trim( (string) get_user_meta( $org_id, 'business_name', true ) ) : '';
+        if ( $org_user && '' !== $org_name ) {
+            $org_url = class_exists( 'CW_Organizer_Profile' )
+                ? home_url( '/' . CW_Organizer_Profile::ORG_BASE . '/' . rawurlencode( $org_user->user_login ) . '/' )
+                : home_url( '/' );
+            $node['organizer'] = [ '@type' => 'Organization', 'name' => self::schema_text( $org_name ), 'url' => $org_url ];
+        } else {
+            $node['organizer'] = [ '@type' => 'Organization', 'name' => 'Creative Wings', 'url' => home_url( '/' ) ];
+        }
+
+        return $node;
+    }
+
+    /**
+     * Replace Rank Math's stub Event (and any WooCommerce Product node) with the full campaign Event.
+     */
+    private static function apply_campaign_event( array $data, $pid ) {
+        $event     = self::campaign_event_node( $pid );
+        $event_key = null;
+        foreach ( $data as $key => $node ) {
+            if ( ! is_array( $node ) ) {
+                continue;
+            }
+            $type = self::node_type( $node );
+            if ( 'Event' === $type && null === $event_key ) {
+                $event_key = $key;
+            } elseif ( 'Product' === $type ) {
+                unset( $data[ $key ] );
+            }
+        }
+        if ( null !== $event_key ) {
+            $data[ $event_key ] = array_merge( $data[ $event_key ], $event );
+        } else {
+            $url             = get_permalink( $pid );
+            $data['cwEvent'] = array_merge(
+                [ '@id' => $url . '#event', 'mainEntityOfPage' => [ '@id' => $url . '#webpage' ] ],
+                $event
+            );
+        }
+        return $data;
+    }
+
+    /**
+     * Listing pages become a CollectionPage whose main entity is the campaign list.
+     *
+     * @param string[] $parent_cats product_cat slugs (children included).
+     */
+    private static function add_campaign_list( array $data, array $parent_cats, $name ) {
+        $ids = get_posts( [
+            'post_type'   => 'product',
+            'post_status' => 'publish',
+            'numberposts' => 30,
+            'fields'      => 'ids',
+            'orderby'     => 'date',
+            'order'       => 'DESC',
+            'tax_query'   => [ [ 'taxonomy' => 'product_cat', 'field' => 'slug', 'terms' => $parent_cats, 'include_children' => true ] ],
+        ] );
+        if ( ! $ids ) {
+            return $data;
+        }
+
+        $url   = get_permalink();
+        $items = [];
+        foreach ( array_values( $ids ) as $i => $pid ) {
+            $items[] = [
+                '@type'    => 'ListItem',
+                'position' => $i + 1,
+                'url'      => get_permalink( $pid ),
+                'name'     => self::schema_text( get_the_title( $pid ) ),
+            ];
+        }
+        $data['cwCampaignList'] = [
+            '@type'           => 'ItemList',
+            '@id'             => $url . '#campaigns',
+            'name'            => $name,
+            'numberOfItems'   => count( $items ),
+            'itemListElement' => $items,
+        ];
+
+        foreach ( $data as $key => $node ) {
+            if ( is_array( $node ) && 'WebPage' === self::node_type( $node ) ) {
+                $data[ $key ]['@type']      = 'CollectionPage';
+                $data[ $key ]['mainEntity'] = [ '@id' => $url . '#campaigns' ];
+            }
+        }
+        return $data;
+    }
+
+    /**
+     * Rank Math passes JSON-LD through wp_kses, which turns a bare "&" into "&amp;".
+     */
+    private static function schema_text( $text ) {
+        $text = html_entity_decode( (string) $text, ENT_QUOTES, 'UTF-8' );
+        return trim( preg_replace( '/\s*&\s*/', ' and ', $text ) );
+    }
+
+    private static function node_type( $node ) {
+        $type = $node['@type'] ?? '';
+        return is_array( $type ) ? (string) ( $type[0] ?? '' ) : (string) $type;
     }
 
     /**
@@ -95,6 +465,11 @@ class CW_Structured_Data {
             return;
         }
         self::set_product_og_image( $post_id, true );
+
+        $thumb_id = (int) get_post_thumbnail_id( $post_id );
+        if ( $thumb_id && '' === trim( (string) get_post_meta( $thumb_id, '_wp_attachment_image_alt', true ) ) ) {
+            update_post_meta( $thumb_id, '_wp_attachment_image_alt', sanitize_text_field( html_entity_decode( get_the_title( $post_id ), ENT_QUOTES, 'UTF-8' ) ) );
+        }
     }
 
     /**
@@ -145,7 +520,7 @@ class CW_Structured_Data {
     }
 
     public static function output_faq_json_ld() {
-        if ( ! is_singular( 'product' ) ) {
+        if ( ! is_singular( [ 'product', 'page' ] ) ) {
             return;
         }
 
@@ -213,6 +588,21 @@ class CW_Structured_Data {
     public static function enhance_json_ld( $data, $jsonld ) {
         if ( ! is_array( $data ) ) {
             return $data;
+        }
+
+        if ( is_singular( 'product' ) ) {
+            $data = self::apply_campaign_event( $data, get_queried_object_id() );
+        } elseif ( is_page() || is_front_page() ) {
+            foreach ( $data as $key => $node ) {
+                if ( is_array( $node ) && in_array( self::node_type( $node ), [ 'Article', 'BlogPosting', 'NewsArticle', 'Person' ], true ) ) {
+                    unset( $data[ $key ] );
+                }
+            }
+            if ( is_page( 'competitions' ) ) {
+                $data = self::add_campaign_list( $data, [ 'competitions' ], 'Creative competitions in Malaysia' );
+            } elseif ( is_page( 'activities' ) ) {
+                $data = self::add_campaign_list( $data, [ 'activities', 'talk-seminar' ], 'Community activities and events in Malaysia' );
+            }
         }
 
         $nap = self::get_nap();

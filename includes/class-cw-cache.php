@@ -257,6 +257,7 @@ class CW_Cache {
 
     public static function on_user_meta_update( $meta_id, $object_id, $meta_key, $_meta_value ) {
         $watched = [
+            'cw_hide_from_directory',
             'business_name', 'business_logo', 'business_cover', 'business_tagline',
             'business_about', 'business_industry', 'business_city', 'business_country',
             'business_website', 'business_phone', 'business_address',

@@ -392,6 +392,36 @@ class CW_Business_Form {
                                     <small class="cw-gallery-sort-hint">Drag images to change gallery order on the campaign page.</small>
                                 </div>
 
+                                <?php
+                                $extra_gallery_ids   = $mode === 'edit'
+                                    ? array_filter( array_map( 'intval', explode( ',', (string) get_post_meta( $edit_id, 'cw_extra_gallery_ids', true ) ) ) )
+                                    : [];
+                                $extra_gallery_label = $mode === 'edit' ? (string) get_post_meta( $edit_id, 'cw_extra_gallery_label', true ) : '';
+                                ?>
+                                <div class="cw-field full cw-gallery-field">
+                                    <label>Additional Gallery Tab <small style="font-weight:400;color:var(--cw-text-soft);">(optional · shows as a second tab next to Photos)</small></label>
+                                    <input type="text" name="cw_extra_gallery_label" maxlength="40" placeholder="Artwork" value="<?php echo esc_attr( $extra_gallery_label ); ?>" style="margin-bottom:10px;">
+                                    <div class="cw-upload-box cw-gallery-upload" onclick="document.getElementById('cwExtraGalleryFiles').click()">
+                                        <i class="fas fa-images"></i> Click to add images for this tab
+                                        <small style="display:block;margin-top:4px;font-size:11px;color:var(--cw-text-soft);">PNG / JPG / WEBP · e.g. artwork, past winners</small>
+                                    </div>
+                                    <input type="file" id="cwExtraGalleryFiles" name="cw_extra_gallery_files[]" accept="image/*" multiple style="display:none;" onchange="cwExtraGalleryAdd(this)">
+                                    <input type="hidden" name="cw_extra_gallery_keep" id="cwExtraGalleryKeep" value="<?php echo esc_attr( implode( ',', $extra_gallery_ids ) ); ?>">
+                                    <div id="cwExtraGalleryGrid" class="cw-gallery-grid">
+                                        <?php foreach ( $extra_gallery_ids as $aid ):
+                                            $src = wp_get_attachment_image_url( $aid, 'thumbnail' );
+                                            if ( ! $src ) continue;
+                                        ?>
+                                        <div class="cw-gallery-tile" data-attachment-id="<?php echo (int) $aid; ?>">
+                                            <img src="<?php echo esc_url( $src ); ?>" alt="" loading="lazy">
+                                            <button type="button" class="cw-gallery-remove" onclick="cwExtraGalleryRemove(this)" aria-label="Remove">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+
                                 <div class="cw-field full cw-field-rich-text">
                                     <label><?php esc_html_e( 'Description *', 'creativewings-core' ); ?></label>
                                     <p style="font-size:12px;color:var(--cw-text-soft);margin:0 0 8px;">
@@ -436,10 +466,31 @@ class CW_Business_Form {
                                 </small>
 
                                 <p class="cw-mini-head">Important Dates</p>
-                                <div class="cw-field"><label>Submission Start *</label><input type="date" name="cw_submission_start" required class="cw-input-dark" value="<?php echo $val('cw_submission_start'); ?>"></div>
-                                <div class="cw-field"><label>Submission Deadline *</label><input type="date" name="submission_deadline" required class="cw-input-dark" value="<?php echo $val('submission_deadline'); ?>"></div>
-                                <div class="cw-field"><label>Review Start</label><input type="date" name="cw_review_start" class="cw-input-dark" value="<?php echo $val('cw_review_start'); ?>"></div>
-                                <div class="cw-field"><label>Final Campaign Date</label><input type="date" name="cw_final_event_date" class="cw-input-dark" value="<?php echo $val('cw_final_event_date'); ?>"></div>
+                                <small style="display:block;color:var(--cw-text-soft, #555555);margin:-4px 0 10px;font-size:12px;line-height:1.5;">
+                                    <i class="fas fa-clock" style="margin-right:4px;"></i>
+                                    Times are Malaysia time (GMT+8). The submission deadline closes at 11:59 PM unless you set another time.
+                                </small>
+                                <?php
+                                $cw_date_fields = [
+                                    'cw_submission_start' => [ 'Submission Start *', true ],
+                                    'submission_deadline' => [ 'Submission Deadline *', true ],
+                                    'cw_review_start'     => [ 'Review Start', false ],
+                                    'cw_final_event_date' => [ 'Final Campaign Date', false ],
+                                ];
+                                foreach ( $cw_date_fields as $cw_key => $cw_field ) :
+                                    $cw_stored = $val( $cw_key );
+                                    $cw_time   = CW_Campaign_Dates::time_part( $cw_stored );
+                                    if ( 'submission_deadline' === $cw_key && '' === $cw_time ) {
+                                        $cw_time = '23:59';
+                                    }
+                                ?>
+                                <div class="cw-field"><label><?php echo esc_html( $cw_field[0] ); ?></label>
+                                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                        <input type="date" name="<?php echo esc_attr( $cw_key ); ?>" <?php echo $cw_field[1] ? 'required' : ''; ?> class="cw-input-dark" style="flex:1 1 160px;min-width:0;" value="<?php echo esc_attr( CW_Campaign_Dates::date_part( $cw_stored ) ); ?>">
+                                        <input type="time" name="<?php echo esc_attr( $cw_key ); ?>_time" class="cw-input-dark" style="flex:0 1 140px;min-width:0;" aria-label="<?php echo esc_attr( trim( $cw_field[0], ' *' ) . ' time' ); ?>" value="<?php echo esc_attr( $cw_time ); ?>">
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
                             </div>
 
                             <!-- ════════════ STEP 3: SPECIFICS ════════════ -->
@@ -820,21 +871,40 @@ class CW_Business_Form {
 
                                     <p class="cw-mini-head"><?php esc_html_e( 'Supporting Partners', 'creativewings-core' ); ?></p>
                                     <p style="font-size:12px;color:var(--cw-text-soft);margin:-6px 0 10px;">
-                                        <?php esc_html_e( 'Logo row for schools, NGOs, and community partners.', 'creativewings-core' ); ?>
+                                        <?php esc_html_e( 'Brand sponsors and partners. Set a tier for campaign page and /sponsors/ display.', 'creativewings-core' ); ?>
                                     </p>
+                                    <?php
+                                    $cw_partner_tier_opts = [
+                                        'champion'  => __( 'Champion', 'creativewings-core' ),
+                                        'hero'      => __( 'Hero', 'creativewings-core' ),
+                                        'community' => __( 'Community Partner', 'creativewings-core' ),
+                                        'local'     => __( 'Local Brand', 'creativewings-core' ),
+                                        'inkind'    => __( 'In-kind', 'creativewings-core' ),
+                                    ];
+                                    $cw_partner_seg_opts = [
+                                        'media'    => __( 'Media', 'creativewings-core' ),
+                                        'nonmedia' => __( 'Non-media', 'creativewings-core' ),
+                                    ];
+                                    ?>
                                     <div id="cw-supporting-partners-list">
                                         <?php
                                         $pidx = 0;
                                         $partner_rows = ! empty( $existing_supporting_partners )
                                             ? $existing_supporting_partners
-                                            : [ [ 'name' => '', 'attachment_id' => 0, 'url' => '' ] ];
+                                            : [ [ 'name' => '', 'attachment_id' => 0, 'url' => '', 'tier' => 'local', 'segment' => 'nonmedia' ] ];
                                         foreach ( $partner_rows as $partner ) :
                                             $pname = sanitize_text_field( $partner['name'] ?? '' );
                                             $paid  = (int) ( $partner['attachment_id'] ?? 0 );
                                             $purl  = isset( $partner['url'] ) ? (string) $partner['url'] : '';
+                                            $ptier = class_exists( 'CW_Campaign_Showcase' )
+                                                ? CW_Campaign_Showcase::normalize_tier( $partner['tier'] ?? 'local' )
+                                                : 'local';
+                                            $pseg  = class_exists( 'CW_Campaign_Showcase' )
+                                                ? CW_Campaign_Showcase::normalize_segment( $partner['segment'] ?? 'nonmedia' )
+                                                : 'nonmedia';
                                             $pimg  = $paid ? wp_get_attachment_url( $paid ) : '';
                                         ?>
-                                        <div class="cww-rep-row cw-showcase-row cw-showcase-partner-row" data-idx="<?php echo (int) $pidx; ?>" style="grid-template-columns:80px 1fr 1fr 1.2fr auto;align-items:center;">
+                                        <div class="cww-rep-row cw-showcase-row cw-showcase-partner-row" data-idx="<?php echo (int) $pidx; ?>" style="grid-template-columns:80px 1fr 1fr 120px 110px 1.2fr auto;align-items:center;">
                                             <div class="cw-showcase-thumb cw-design-variant-thumb" style="width:70px;height:46px;background:<?php echo $pimg ? '#fff' : '#f1f5f9'; ?>;border:1px <?php echo $pimg ? 'solid' : 'dashed'; ?> #cbd5e1;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;">
                                                 <?php if ( $pimg ) : ?>
                                                     <img src="<?php echo esc_url( $pimg ); ?>" style="max-width:100%;max-height:100%;object-fit:contain;" alt="">
@@ -844,6 +914,16 @@ class CW_Business_Form {
                                             </div>
                                             <input type="text" name="cw_supporting_partners[<?php echo (int) $pidx; ?>][name]" value="<?php echo esc_attr( $pname ); ?>" placeholder="<?php esc_attr_e( 'Partner name', 'creativewings-core' ); ?>" class="cw-input-dark">
                                             <input type="url" name="cw_supporting_partners[<?php echo (int) $pidx; ?>][url]" value="<?php echo esc_attr( $purl ); ?>" placeholder="<?php esc_attr_e( 'Website (optional)', 'creativewings-core' ); ?>" class="cw-input-dark">
+                                            <select name="cw_supporting_partners[<?php echo (int) $pidx; ?>][tier]" class="cw-input-dark" style="min-width:0;">
+                                                <?php foreach ( $cw_partner_tier_opts as $tkey => $tlabel ) : ?>
+                                                    <option value="<?php echo esc_attr( $tkey ); ?>" <?php selected( $ptier, $tkey ); ?>><?php echo esc_html( $tlabel ); ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <select name="cw_supporting_partners[<?php echo (int) $pidx; ?>][segment]" class="cw-input-dark" style="min-width:0;" title="<?php esc_attr_e( 'Media / Non-media (for In-kind)', 'creativewings-core' ); ?>">
+                                                <?php foreach ( $cw_partner_seg_opts as $skey => $slabel ) : ?>
+                                                    <option value="<?php echo esc_attr( $skey ); ?>" <?php selected( $pseg, $skey ); ?>><?php echo esc_html( $slabel ); ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
                                             <div>
                                                 <button type="button" class="cww-rep-add cw-showcase-media-pick" style="margin:0 0 6px;padding:6px 10px;font-size:11px;"><i class="fas fa-images"></i> <?php esc_html_e( 'Select logo', 'creativewings-core' ); ?></button>
                                                 <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" name="cw_supporting_partner_file[<?php echo (int) $pidx; ?>]" class="cw-showcase-media-file" style="width:100%;font-size:11px;">
@@ -1078,7 +1158,7 @@ class CW_Business_Form {
                                     <p style="font-size:13px;color:var(--cw-text-soft);margin:0 0 12px;">Shown on the public registration form. Each participant name is printed on their e-certificate.</p>
                                     <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;">
                                         <input type="checkbox" name="cw_use_account_fullname" value="yes" <?php checked( $use_account_fullname, 'yes' ); ?>>
-                                        <span><strong>Use registrant account full name for Participant 1</strong><br><small>Prefills from signup (editable). Other participants always enter their own names.</small></span>
+                                        <span><strong>Use registrant account full name for Participant 1</strong><br><small>Prefills from signup (editable). Other participants always enter their own names. Untick for kids' campaigns so parents type the child's name instead of seeing their own.</small></span>
                                     </label>
                                 </div>
 
@@ -1419,7 +1499,7 @@ class CW_Business_Form {
 
                 const nameBlock = document.getElementById('cw-step5-name-block');
                 if (nameBlock) {
-                    nameBlock.style.display = isActivity ? 'block' : 'none';
+                    nameBlock.style.display = 'block';
                 }
 
                 window.toggleMultiLimits();
@@ -1671,6 +1751,49 @@ class CW_Business_Form {
                 window.cwGallerySyncOrder();
             };
 
+            // ── Additional gallery tab ──
+            window.cwExtraGalleryFiles = [];
+            window.cwExtraGallerySync = function() {
+                const grid  = document.getElementById('cwExtraGalleryGrid');
+                const keep  = document.getElementById('cwExtraGalleryKeep');
+                const input = document.getElementById('cwExtraGalleryFiles');
+                if (!grid || !keep || !input) return;
+                keep.value = Array.from(grid.querySelectorAll('.cw-gallery-tile[data-attachment-id]'))
+                    .map(function(t) { return t.getAttribute('data-attachment-id'); })
+                    .join(',');
+                if (typeof DataTransfer !== 'undefined') {
+                    const dt = new DataTransfer();
+                    window.cwExtraGalleryFiles.forEach(function(file) { dt.items.add(file); });
+                    input.files = dt.files;
+                }
+            };
+            window.cwExtraGalleryAdd = function(input) {
+                const grid = document.getElementById('cwExtraGalleryGrid');
+                if (!grid || !input.files || !input.files.length) return;
+                Array.from(input.files).forEach(function(file) {
+                    if (!file.type || file.type.indexOf('image/') !== 0) return;
+                    window.cwExtraGalleryFiles.push(file);
+                    const tile = document.createElement('div');
+                    tile.className = 'cw-gallery-tile is-new';
+                    tile.cwGalleryFile = file;
+                    tile.innerHTML =
+                        '<img src="' + URL.createObjectURL(file) + '" alt="" />' +
+                        '<span class="cw-gallery-new-flag" aria-hidden="true">NEW</span>' +
+                        '<button type="button" class="cw-gallery-remove" onclick="cwExtraGalleryRemove(this)" aria-label="Remove"><i class="fas fa-times"></i></button>';
+                    grid.appendChild(tile);
+                });
+                window.cwExtraGallerySync();
+            };
+            window.cwExtraGalleryRemove = function(btn) {
+                const tile = btn.closest('.cw-gallery-tile');
+                if (!tile) return;
+                if (tile.cwGalleryFile) {
+                    window.cwExtraGalleryFiles = window.cwExtraGalleryFiles.filter(function(f) { return f !== tile.cwGalleryFile; });
+                }
+                tile.remove();
+                window.cwExtraGallerySync();
+            };
+
             // ── Design Submission variants ──
             window.addDesignVariantRow = function() {
                 var list = document.getElementById('cw-design-variants-list');
@@ -1721,10 +1844,21 @@ class CW_Business_Form {
                 if (!list) return;
                 var idx = Date.now();
                 list.insertAdjacentHTML('beforeend',
-                    '<div class="cww-rep-row cw-showcase-row cw-showcase-partner-row" data-idx="' + idx + '" style="grid-template-columns:80px 1fr 1fr 1.2fr auto;align-items:center;">' +
+                    '<div class="cww-rep-row cw-showcase-row cw-showcase-partner-row" data-idx="' + idx + '" style="grid-template-columns:80px 1fr 1fr 120px 110px 1.2fr auto;align-items:center;">' +
                       '<div class="cw-showcase-thumb cw-design-variant-thumb" style="width:70px;height:46px;background:#f1f5f9;border:1px dashed #cbd5e1;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;"><span style="font-size:10px;color:#94a3b8;">Logo</span></div>' +
                       '<input type="text" name="cw_supporting_partners[' + idx + '][name]" placeholder="Partner name" class="cw-input-dark">' +
                       '<input type="url" name="cw_supporting_partners[' + idx + '][url]" placeholder="Website (optional)" class="cw-input-dark">' +
+                      '<select name="cw_supporting_partners[' + idx + '][tier]" class="cw-input-dark" style="min-width:0;">' +
+                        '<option value="champion">Champion</option>' +
+                        '<option value="hero">Hero</option>' +
+                        '<option value="community">Community Partner</option>' +
+                        '<option value="local" selected>Local Brand</option>' +
+                        '<option value="inkind">In-kind</option>' +
+                      '</select>' +
+                      '<select name="cw_supporting_partners[' + idx + '][segment]" class="cw-input-dark" style="min-width:0;" title="Media / Non-media (for In-kind)">' +
+                        '<option value="media">Media</option>' +
+                        '<option value="nonmedia" selected>Non-media</option>' +
+                      '</select>' +
                       '<div>' +
                         '<button type="button" class="cww-rep-add cw-showcase-media-pick" style="margin:0 0 6px;padding:6px 10px;font-size:11px;"><i class="fas fa-images"></i> Select logo</button>' +
                         '<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" name="cw_supporting_partner_file[' + idx + ']" class="cw-showcase-media-file" style="width:100%;font-size:11px;">' +
