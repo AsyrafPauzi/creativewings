@@ -494,11 +494,11 @@
     var detectedAreas = typeof WeakMap === 'function' ? new WeakMap() : null;
 
     /**
-     * Find the transparent window in the middle of a casing PNG: the clear
-     * run through the centre row gives the left/right edges, and clear runs
-     * down columns at 25% / 75% of that width give the top/bottom edges
-     * (the centre column can be broken by an engraved logo). Returns null
-     * when the casing has no usable window or its pixels can't be read.
+     * Find the see-through interior of a casing PNG: flood-fill the clear
+     * pixels connected to the centre and take their bounding box, so the
+     * artwork also fills the gaps around the cap and the rounded ends.
+     * Returns null when the casing has no enclosed clear interior (the fill
+     * leaks to the image edge) or its pixels can't be read.
      */
     function detectPrintArea(casing) {
         if (!casing) return null;
@@ -514,29 +514,38 @@
             var octx = off.getContext('2d');
             octx.drawImage(casing, 0, 0);
             var data = octx.getImageData(0, 0, w, h).data;
-            var clear = function (x, y) { return data[(y * w + x) * 4 + 3] < 16; };
+            var clear = function (i) { return data[i * 4 + 3] < 16; };
 
+            // The centre pixel can sit on an engraved logo; walk down to the first clear one.
             var midX = Math.floor(w / 2);
-            var midY = Math.floor(h / 2);
-            if (clear(midX, midY)) {
-                var x0 = midX, x1 = midX;
-                while (x0 > 0 && clear(x0 - 1, midY)) x0--;
-                while (x1 < w - 1 && clear(x1 + 1, midY)) x1++;
+            var start = -1;
+            for (var sy = Math.floor(h / 2); sy < h && start < 0; sy++) {
+                if (clear(sy * w + midX)) start = sy * w + midX;
+            }
 
-                var y0 = midY, y1 = midY;
-                [0.25, 0.75].forEach(function (f) {
-                    var cx = Math.round(x0 + (x1 - x0) * f);
-                    var top = midY, bottom = midY;
-                    if (!clear(cx, midY)) return;
-                    while (top > 0 && clear(cx, top - 1)) top--;
-                    while (bottom < h - 1 && clear(cx, bottom + 1)) bottom++;
-                    y0 = Math.min(y0, top);
-                    y1 = Math.max(y1, bottom);
-                });
+            if (start >= 0) {
+                var seen = new Uint8Array(w * h);
+                var stack = [start];
+                seen[start] = 1;
+                var x0 = w, x1 = 0, y0 = h, y1 = 0;
+                while (stack.length) {
+                    var i = stack.pop();
+                    var px = i % w;
+                    var py = (i - px) / w;
+                    if (px < x0) x0 = px;
+                    if (px > x1) x1 = px;
+                    if (py < y0) y0 = py;
+                    if (py > y1) y1 = py;
+                    if (px > 0 && !seen[i - 1] && clear(i - 1)) { seen[i - 1] = 1; stack.push(i - 1); }
+                    if (px < w - 1 && !seen[i + 1] && clear(i + 1)) { seen[i + 1] = 1; stack.push(i + 1); }
+                    if (py > 0 && !seen[i - w] && clear(i - w)) { seen[i - w] = 1; stack.push(i - w); }
+                    if (py < h - 1 && !seen[i + w] && clear(i + w)) { seen[i + w] = 1; stack.push(i + w); }
+                }
 
+                var enclosed = x0 > 0 && y0 > 0 && x1 < w - 1 && y1 < h - 1;
                 var aw = x1 - x0 + 1;
                 var ah = y1 - y0 + 1;
-                if (aw >= w * 0.1 && ah >= h * 0.1) {
+                if (enclosed && aw >= w * 0.1 && ah >= h * 0.1) {
                     area = { x: x0, y: y0, w: aw, h: ah };
                 }
             }
