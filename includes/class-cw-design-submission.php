@@ -672,7 +672,7 @@ class CW_Design_Submission {
             ?>
             <h4 style="margin:18px 0 4px;"><?php esc_html_e( 'Print area on casing (optional)', 'creativewings-core' ); ?></h4>
             <p style="color:#555;font-size:12px;margin:0 0 8px;">
-                <?php esc_html_e( 'If your casing PNG has a visible "front face" smaller than the full artwork (e.g. customer uploads 3.6 cm wide but only 2.7 cm shows on the case), enter the visible rectangle here in PIXELS relative to the casing PNG. The wrap-around portion gets cropped automatically in the preview and order mockups. Leave at zero to disable cropping.', 'creativewings-core' ); ?>
+                <?php esc_html_e( 'Leave blank to auto-detect: the preview finds the transparent window in the casing PNG and fits the artwork into it (full height, wrap-around sides cropped). Only fill these in to override, in PIXELS of the casing PNG itself — values that fall outside the casing image are ignored.', 'creativewings-core' ); ?>
             </p>
             <p style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
                 <span>
@@ -713,7 +713,7 @@ class CW_Design_Submission {
                 </span>
             </p>
             <p style="color:#888;font-size:11px;margin-top:-2px;">
-                <?php esc_html_e( 'Example: artwork 425×2362, casing 425×2598, visible front face 2.7/3.6 of the width centered → X=53, Y=118, W=319, H=2362.', 'creativewings-core' ); ?>
+                <?php esc_html_e( 'Example: casing PNG 262×1600 whose clear window starts 30 px from the left and 204 px from the top → X=30, Y=204, W=201, H=1351.', 'creativewings-core' ); ?>
             </p>
 
             <h4 style="margin:18px 0 4px;"><?php esc_html_e( 'Product variants', 'creativewings-core' ); ?></h4>

@@ -389,7 +389,7 @@
             //    front), or contain-fit when no print area is configured
             //    (legacy campaigns).
             if (artwork) {
-                drawArtwork(ctx, artwork, cW, cH, cfg.printArea);
+                drawArtwork(ctx, artwork, cW, cH, cfg.printArea, base);
             }
 
             // 3. Variant casing on top — transparent centre lets the
@@ -459,25 +459,93 @@
     }
 
     /**
-     * Compositor "draw the artwork" helper. Picks between cover-crop (when
-     * the campaign has a print-area window configured — the casing's
-     * visible front face) and contain-fit (legacy behaviour, no crop).
+     * Compositor "draw the artwork" helper. Cover-crops into the casing's
+     * visible front face when one is known, otherwise contain-fits.
      *
-     * `printArea` may be either an object {x, y, w, h} or null/undefined.
+     * The configured `printArea` {x, y, w, h} is used only when it fits
+     * inside the casing canvas; otherwise the window is detected from the
+     * casing PNG's transparent centre, so any casing resolution works.
      */
-    function drawArtwork(ctx, img, canvasW, canvasH, printArea) {
+    function drawArtwork(ctx, img, canvasW, canvasH, printArea, casing) {
         if (!img) return;
-        if (printArea && printArea.w > 0 && printArea.h > 0) {
-            drawCover(
-                ctx, img,
-                +printArea.x || 0,
-                +printArea.y || 0,
-                +printArea.w,
-                +printArea.h
-            );
+        var area = resolvePrintArea(printArea, casing, canvasW, canvasH);
+        if (area) {
+            drawCover(ctx, img, area.x, area.y, area.w, area.h);
         } else {
             drawContain(ctx, img, canvasW, canvasH);
         }
+    }
+
+    function resolvePrintArea(printArea, casing, canvasW, canvasH) {
+        if (printArea && +printArea.w > 0 && +printArea.h > 0) {
+            var area = {
+                x: +printArea.x || 0,
+                y: +printArea.y || 0,
+                w: +printArea.w,
+                h: +printArea.h
+            };
+            if (area.x + area.w <= canvasW && area.y + area.h <= canvasH) {
+                return area;
+            }
+        }
+        return detectPrintArea(casing);
+    }
+
+    var detectedAreas = typeof WeakMap === 'function' ? new WeakMap() : null;
+
+    /**
+     * Find the transparent window in the middle of a casing PNG: the clear
+     * run through the centre row gives the left/right edges, and clear runs
+     * down columns at 25% / 75% of that width give the top/bottom edges
+     * (the centre column can be broken by an engraved logo). Returns null
+     * when the casing has no usable window or its pixels can't be read.
+     */
+    function detectPrintArea(casing) {
+        if (!casing) return null;
+        if (detectedAreas && detectedAreas.has(casing)) return detectedAreas.get(casing);
+
+        var area = null;
+        try {
+            var w = casing.naturalWidth || casing.width;
+            var h = casing.naturalHeight || casing.height;
+            var off = document.createElement('canvas');
+            off.width = w;
+            off.height = h;
+            var octx = off.getContext('2d');
+            octx.drawImage(casing, 0, 0);
+            var data = octx.getImageData(0, 0, w, h).data;
+            var clear = function (x, y) { return data[(y * w + x) * 4 + 3] < 16; };
+
+            var midX = Math.floor(w / 2);
+            var midY = Math.floor(h / 2);
+            if (clear(midX, midY)) {
+                var x0 = midX, x1 = midX;
+                while (x0 > 0 && clear(x0 - 1, midY)) x0--;
+                while (x1 < w - 1 && clear(x1 + 1, midY)) x1++;
+
+                var y0 = midY, y1 = midY;
+                [0.25, 0.75].forEach(function (f) {
+                    var cx = Math.round(x0 + (x1 - x0) * f);
+                    var top = midY, bottom = midY;
+                    if (!clear(cx, midY)) return;
+                    while (top > 0 && clear(cx, top - 1)) top--;
+                    while (bottom < h - 1 && clear(cx, bottom + 1)) bottom++;
+                    y0 = Math.min(y0, top);
+                    y1 = Math.max(y1, bottom);
+                });
+
+                var aw = x1 - x0 + 1;
+                var ah = y1 - y0 + 1;
+                if (aw >= w * 0.1 && ah >= h * 0.1) {
+                    area = { x: x0, y: y0, w: aw, h: ah };
+                }
+            }
+        } catch (e) {
+            area = null;
+        }
+
+        if (detectedAreas) detectedAreas.set(casing, area);
+        return area;
     }
 
     /**
@@ -544,7 +612,7 @@
             ctx.fillStyle = '#f1f5f9';
             ctx.fillRect(0, 0, cW, cH);
             if (ready.art) {
-                drawArtwork(ctx, ready.art, cW, cH, cfg.printArea);
+                drawArtwork(ctx, ready.art, cW, cH, cfg.printArea, ready.variant);
             }
             if (ready.variant) {
                 ctx.drawImage(ready.variant, 0, 0, cW, cH);
@@ -650,7 +718,7 @@
             ctx.fillStyle = '#f1f5f9';
             ctx.fillRect(0, 0, cW, cH);
             if (state.art) {
-                drawArtwork(ctx, state.art, cW, cH, cfg.printArea);
+                drawArtwork(ctx, state.art, cW, cH, cfg.printArea, state.variant);
             }
             if (state.variant) {
                 ctx.drawImage(state.variant, 0, 0, cW, cH);
@@ -789,7 +857,7 @@
                 ctx.fillStyle = '#f1f5f9';
                 ctx.fillRect(0, 0, cW, cH);
                 if (ready.art) {
-                    drawArtwork(ctx, ready.art, cW, cH, cfg.printArea);
+                    drawArtwork(ctx, ready.art, cW, cH, cfg.printArea, ready.variant);
                 }
                 if (ready.variant) {
                     ctx.drawImage(ready.variant, 0, 0, cW, cH);
