@@ -4982,7 +4982,7 @@ button#cwd-reg-submit.cwd-reg-submit-primary i {
 }
 .cw-home-partners__track {
     --cw-partners-gap: 20px;
-    --cw-partners-visible: 4;
+    --cw-partners-visible: 5;
     display: flex;
     align-items: center;
     gap: var(--cw-partners-gap);
@@ -4993,7 +4993,7 @@ button#cwd-reg-submit.cwd-reg-submit-primary i {
     animation-play-state: paused;
 }
 .cw-home-partners__item {
-    /* Show ~4 logos in the viewport at once */
+    /* Show ~5 logos in the viewport at once */
     flex: 0 0 calc((100cqw - (var(--cw-partners-visible) - 1) * var(--cw-partners-gap)) / var(--cw-partners-visible));
     width: calc((100cqw - (var(--cw-partners-visible) - 1) * var(--cw-partners-gap)) / var(--cw-partners-visible));
     height: 120px;
