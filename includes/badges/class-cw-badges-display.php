@@ -61,6 +61,9 @@ class CW_Badges_Display {
 
         $size_cls = 'cw-badge--' . preg_replace( '/[^a-z]/', '', $opts['size'] );
         $extra_cls = $opts['show_label'] ? '' : ' cw-badge--icon-only';
+        if ( $icon_url ) {
+            $extra_cls .= ' cw-badge--has-art';
+        }
 
         // Tooltip text: "Title — Tier" when a real tier exists, otherwise just title.
         // We surface it via BOTH `title=""` (accessible / touch / screen-reader fallback)
@@ -161,7 +164,16 @@ class CW_Badges_Display {
         }
 
         ob_start();
-        echo '<div class="cw-badges cw-badges-progress">';
+        ?>
+        <div class="cw-badges-progress-wrap" data-cw-badges-filter>
+            <div class="cw-badges-tabs" role="tablist" aria-label="<?php esc_attr_e( 'Filter badges', 'creativewings-core' ); ?>">
+                <button type="button" class="cw-badges-tab is-active" role="tab" aria-selected="true" data-cw-badge-filter="all"><?php esc_html_e( 'All', 'creativewings-core' ); ?></button>
+                <button type="button" class="cw-badges-tab" role="tab" aria-selected="false" data-cw-badge-filter="complete"><?php esc_html_e( 'Complete', 'creativewings-core' ); ?></button>
+                <button type="button" class="cw-badges-tab" role="tab" aria-selected="false" data-cw-badge-filter="incomplete"><?php esc_html_e( 'Not complete', 'creativewings-core' ); ?></button>
+            </div>
+            <div class="cw-badges cw-badges-progress">
+        <?php
+        $shown = 0;
         foreach ( $catalog as $b ) {
             // Filter by role.
             if ( $b['target_role'] !== 'any' && $b['target_role'] !== $role ) continue;
@@ -194,10 +206,13 @@ class CW_Badges_Display {
                 'earned_at'  => $earned_at,
             ] );
 
-            $is_locked = ( $tier_w < 0 && ! $owned_row );
+            $is_complete = (bool) $owned_row;
+            $is_locked   = ! $is_complete;
+            $state       = $is_complete ? 'complete' : 'incomplete';
+            $shown++;
 
             ?>
-            <div class="cw-badge-card <?php echo $is_locked ? 'cw-badge-card--locked' : ''; ?>">
+            <div class="cw-badge-card <?php echo $is_locked ? 'cw-badge-card--locked' : ''; ?>" data-cw-badge-state="<?php echo esc_attr( $state ); ?>">
                 <?php echo self::render_badge( $hydrated, [ 'size' => 'lg', 'show_label' => false, 'show_tier' => false ] ); ?>
                 <div class="cw-badge-card-body">
                     <h4 class="cw-badge-card-title"><?php echo esc_html( $b['title'] ); ?></h4>
@@ -218,11 +233,11 @@ class CW_Badges_Display {
                         </div>
                     <?php elseif ( $b['is_admin_only'] ) : ?>
                         <div class="cw-badge-card-status">
-                            <span class="cw-badge-locked"><i class="fas fa-lock"></i> <?php esc_html_e( 'Admin-awarded only', 'creativewings-core' ); ?></span>
+                            <span class="cw-badge-locked"><?php esc_html_e( 'Admin-awarded only', 'creativewings-core' ); ?></span>
                         </div>
                     <?php else : ?>
                         <div class="cw-badge-card-status">
-                            <span class="cw-badge-locked"><i class="fas fa-lock"></i> <?php esc_html_e( 'Locked', 'creativewings-core' ); ?></span>
+                            <span class="cw-badge-locked"><?php esc_html_e( 'Locked', 'creativewings-core' ); ?></span>
                         </div>
                     <?php endif; ?>
 
@@ -246,7 +261,14 @@ class CW_Badges_Display {
             </div>
             <?php
         }
-        echo '</div>';
+        if ( $shown === 0 ) {
+            echo '<div class="cw-badges-empty"><p>' . esc_html__( 'No badges available for your role yet.', 'creativewings-core' ) . '</p></div>';
+        }
+        ?>
+            </div>
+            <p class="cw-badges-filter-empty" hidden><?php esc_html_e( 'No badges in this filter.', 'creativewings-core' ); ?></p>
+        </div>
+        <?php
         return (string) ob_get_clean();
     }
 

@@ -362,7 +362,11 @@ class CW_Campaign_Admin {
         if ( '' === get_post_meta( $post_id, '_stock_status', true ) ) {
             update_post_meta( $post_id, '_stock_status', 'instock' );
         }
-        update_post_meta( $post_id, '_manage_stock', 'no' );
+        // Leave an intentional stock cap alone. This default only fills products
+        // that have never had stock management set.
+        if ( '' === get_post_meta( $post_id, '_manage_stock', true ) ) {
+            update_post_meta( $post_id, '_manage_stock', 'no' );
+        }
 
         if ( '' === get_post_meta( $post_id, '_virtual', true ) ) {
             update_post_meta( $post_id, '_virtual', 'yes' );

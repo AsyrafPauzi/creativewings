@@ -725,12 +725,47 @@ class CW_Shortcodes {
     /* ==========================================================================
        10. FULL EVENT DETAIL PAGE  [cw_event_detail]
        ========================================================================== */
+
+    /**
+     * Remaining places when the product manages stock. Null means no limit.
+     *
+     * @param WC_Product|null $product
+     * @return int|null
+     */
+    private function places_remaining( $product ) {
+        if ( ! $product instanceof WC_Product || ! $product->managing_stock() ) {
+            return null;
+        }
+        $qty = $product->get_stock_quantity();
+        if ( null === $qty ) {
+            return null;
+        }
+        return max( 0, (int) $qty );
+    }
+
+    /**
+     * @param int $qty
+     * @return string
+     */
+    private function places_left_label( $qty ) {
+        $qty = (int) $qty;
+        if ( $qty <= 0 ) {
+            return __( 'Full', 'creativewings-core' );
+        }
+        return sprintf(
+            _n( '%d place left', '%d places left', $qty, 'creativewings-core' ),
+            $qty
+        );
+    }
+
     public function render_event_detail() {
         $pid = get_the_ID();
         if ( ! $pid ) return '';
 
         $wcp = wc_get_product( $pid );
         if ( ! $wcp ) return '';
+
+        $places_left = $this->places_remaining( $wcp );
 
         // ── Meta helpers ──────────────────────────────────────────────────────
         $g = function( $key ) use ( $pid ) { return get_post_meta( $pid, $key, true ); };
@@ -1110,6 +1145,9 @@ class CW_Shortcodes {
                         <div class="cwd-hero-stat"><i class="fas fa-clock"></i> <?php echo esc_html($fmt_time($date_start)); ?></div>
                         <?php endif; ?>
                         <div class="cwd-hero-stat"><i class="fas fa-tag"></i> <?php echo $fee_label; ?></div>
+                        <?php if ( $places_left !== null ) : ?>
+                        <div class="cwd-hero-stat"><i class="fas fa-users"></i> <?php echo esc_html( $this->places_left_label( $places_left ) ); ?></div>
+                        <?php endif; ?>
                         <div class="cwd-hero-stat"><i class="fas <?php echo esc_attr($loc_icon); ?>"></i> <?php echo esc_html($location); ?></div>
                     </div>
 
@@ -1182,6 +1220,12 @@ class CW_Shortcodes {
                     <div class="cwd-card cwd-reg-card">
                         <div class="cwd-reg-price"><?php echo $fee_label; ?></div>
                         <div class="cwd-reg-label">Entry Fee</div>
+                        <?php if ( $places_left !== null ) : ?>
+                        <div class="cwd-deadline-row">
+                            <i class="fas fa-users"></i>
+                            <span><?php echo esc_html( $this->places_left_label( $places_left ) ); ?></span>
+                        </div>
+                        <?php endif; ?>
 
                         <?php if ( $is_upcoming ): ?>
                         <div class="cwd-deadline-row cwd-deadline-upcoming">
@@ -1219,6 +1263,8 @@ class CW_Shortcodes {
 
                         <?php if ( $is_closed ): ?>
                             <button class="cwd-cta-btn cwd-cta-closed" disabled><i class="fas fa-lock"></i> Already Closed</button>
+                        <?php elseif ( $places_left === 0 ): ?>
+                            <button class="cwd-cta-btn cwd-cta-closed" disabled><i class="fas fa-users"></i> <?php esc_html_e( 'Full', 'creativewings-core' ); ?></button>
                         <?php elseif ( $already ): ?>
                             <button class="cwd-cta-btn cwd-cta-joined" disabled><i class="fas fa-check-circle"></i> Already Joined</button>
                         <?php elseif ( $is_upcoming ): ?>
@@ -1377,6 +1423,15 @@ class CW_Shortcodes {
                                 <div>
                                     <span class="cwd-il-label">Max Submissions</span>
                                     <span class="cwd-il-value"><?php echo $max_sub; ?></span>
+                                </div>
+                            </li>
+                            <?php endif; ?>
+                            <?php if ( $places_left !== null ) : ?>
+                            <li>
+                                <span class="cwd-il-icon"><i class="fas fa-users"></i></span>
+                                <div>
+                                    <span class="cwd-il-label"><?php esc_html_e( 'Places left', 'creativewings-core' ); ?></span>
+                                    <span class="cwd-il-value"><?php echo esc_html( (string) $places_left ); ?></span>
                                 </div>
                             </li>
                             <?php endif; ?>
@@ -1942,6 +1997,7 @@ class CW_Shortcodes {
                     .cwd-mentor-modal-content .cwd-mentor-title{display:block;font-size:14px;font-weight:600;color:#125b9a;margin:0 0 14px;line-height:1.45}
                     .cwd-mentor-modal-link{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#125b9a;text-decoration:none;margin:0 0 14px}
                     .cwd-mentor-modal-link:hover{text-decoration:underline}
+                    .cwd-mentor-modal-content [hidden]{display:none!important}
                     .cwd-mentor-modal-bio-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-right:6px}
                     .cwd-mentor-modal-bio-scroll .cwd-mentor-bio{font-size:14px;line-height:1.65;color:#334155;margin:0}
                     .cwd-mentor-modal .cwd-modal-close{position:absolute;top:12px;right:12px;z-index:2;background:#fff}
@@ -1960,7 +2016,11 @@ class CW_Shortcodes {
                     <!-- Mentors -->
                     <?php if ( ! empty( $campaign_mentors ) ) : ?>
                     <section class="cwd-section cwd-mentors-section">
+                        <?php if ( $is_seminar ) : ?>
+                        <h2 class="cwd-section-title"><i class="fas fa-microphone-alt"></i> <?php esc_html_e( 'Speakers', 'creativewings-core' ); ?></h2>
+                        <?php else : ?>
                         <h2 class="cwd-section-title"><i class="fas fa-user-graduate"></i> <?php esc_html_e( 'Mentors', 'creativewings-core' ); ?></h2>
+                        <?php endif; ?>
                         <div class="cwd-mentors-grid">
                             <?php foreach ( $campaign_mentors as $mentor ) :
                                 $photo_url = wp_get_attachment_image_url( (int) $mentor['attachment_id'], 'medium' );
@@ -2264,7 +2324,7 @@ class CW_Shortcodes {
                     <?php endif; ?>
 
                     <!-- SPEAKER (Talk/Seminar only) -->
-                    <?php if ( $is_seminar && $speaker ): ?>
+                    <?php if ( $is_seminar && $speaker && empty( $campaign_mentors ) ): ?>
                     <section class="cwd-section">
                         <h2 class="cwd-section-title"><i class="fas fa-microphone-alt"></i> Speaker</h2>
                         <div class="cwd-speaker-card">
@@ -3528,6 +3588,12 @@ class CW_Shortcodes {
                             <li><i class="fas fa-clock"></i> <?php echo esc_html( $time_str ); ?></li>
                         <?php endif; ?>
                         <li><i class="fas fa-tag"></i> <?php echo esc_html( $fee_text ); ?></li>
+                        <?php
+                        $places_left = $this->places_remaining( $wcp );
+                        if ( $places_left !== null ) :
+                        ?>
+                        <li><i class="fas fa-users"></i> <?php echo esc_html( $this->places_left_label( $places_left ) ); ?></li>
+                        <?php endif; ?>
                     </ul>
                     <?php echo $this->render_card_kpi_html( (int) $pid ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
                     <?php if ( ! empty( $sdg_icons_d ) ) : ?>
@@ -3703,13 +3769,13 @@ class CW_Shortcodes {
 
     /** Proxy: competitions grid */
     public function render_competitions_grid( $atts ) {
-        $atts = shortcode_atts( [ 'parent_cats' => 'competitions', 'columns' => 3, 'heading' => 'Creative Competitions in Malaysia' ], $atts, 'cw_competitions_grid' );
+        $atts = shortcode_atts( [ 'parent_cats' => 'competitions', 'columns' => 3, 'heading' => 'Creative Competitions in Malaysia', 'view_toggle' => '0', 'per_page' => 9, 'pagination' => 'numbers' ], $atts, 'cw_competitions_grid' );
         return $this->render_event_grid( $atts );
     }
 
     /** Proxy: activities grid (shows activities + talk/seminar by default) */
     public function render_activities_grid( $atts ) {
-        $atts = shortcode_atts( [ 'parent_cats' => 'activities,talk-seminar', 'columns' => 3, 'heading' => 'Community Activities & Events in Malaysia' ], $atts, 'cw_activities_grid' );
+        $atts = shortcode_atts( [ 'parent_cats' => 'activities,talk-seminar', 'columns' => 3, 'heading' => 'Community Activities & Events in Malaysia', 'view_toggle' => '0', 'per_page' => 9, 'pagination' => 'numbers' ], $atts, 'cw_activities_grid' );
         return $this->render_event_grid( $atts );
     }
 
@@ -3722,8 +3788,13 @@ class CW_Shortcodes {
         $active_cat  = sanitize_text_field( $_GET['tab'] ?? ($_GET['product_category'] ?? '') );
         $search_term = sanitize_text_field( $_GET['cw_q'] ?? '' );
         $paged       = max( 1, intval( $_GET['cw_page'] ?? 1 ) );
-        $per_page    = 9;
+        $per_page    = max( 1, intval( $atts['per_page'] ?? 9 ) );
+        $load_more   = 'more' === ( $atts['pagination'] ?? 'numbers' );
         $base_url    = get_permalink();
+        $view_toggle = ! empty( $atts['view_toggle'] ) && '0' !== (string) $atts['view_toggle'];
+        $view        = ( $view_toggle && 'list' === sanitize_key( $_GET['view'] ?? '' ) ) ? 'list' : 'card';
+        // add_query_arg() drops a key whose value is false, so card view keeps clean URLs.
+        $view_arg    = 'list' === $view ? 'list' : false;
 
         // ── Resolve all parent terms + their sub-categories ───────────────────
         $all_parent_terms = [];
@@ -3820,15 +3891,16 @@ class CW_Shortcodes {
 
         ob_start();
         ?>
-        <div class="cwg-wrap" id="cwg-top">
+        <div class="cwg-wrap<?php echo $view_toggle ? ' cwg-view-' . esc_attr( $view ) : ''; ?>" id="cwg-top">
             <?php if ( ! empty( $atts['heading'] ) && is_page() ) : ?>
             <h1 class="screen-reader-text"><?php echo esc_html( $atts['heading'] ); ?></h1>
             <?php endif; ?>
 
+            <?php if ( $view_toggle ) : ?><div class="cwg-toolbar"><?php endif; ?>
             <!-- ── Filter Tabs ── -->
             <div class="cwg-tabs-wrap">
                 <div class="cwg-tabs">
-                    <a href="<?php echo esc_url( $base_url ); ?>"
+                    <a href="<?php echo esc_url( add_query_arg( 'view', $view_arg, $base_url ) ); ?>"
                        class="cwg-tab <?php echo ! $active_cat ? 'active' : ''; ?>">
                         <i class="fas fa-th-large"></i>
                         <span><?php echo esc_html( $all_label ); ?></span>
@@ -3836,7 +3908,7 @@ class CW_Shortcodes {
                     <?php foreach ( $all_sub_cats as $sc ):
                         $icon = $tab_icons[ $sc->slug ] ?? 'fa-flag';
                     ?>
-                    <a href="<?php echo esc_url( add_query_arg( [ 'tab' => $sc->slug, 'cw_page' => 1 ], $base_url ) ); ?>"
+                    <a href="<?php echo esc_url( add_query_arg( [ 'tab' => $sc->slug, 'cw_page' => 1, 'view' => $view_arg ], $base_url ) ); ?>"
                        class="cwg-tab <?php echo ( $active_cat === $sc->slug ) ? 'active' : ''; ?>">
                         <i class="fas <?php echo esc_attr( $icon ); ?>"></i>
                         <span><?php echo esc_html( $sc->name ); ?></span>
@@ -3844,6 +3916,17 @@ class CW_Shortcodes {
                     <?php endforeach; ?>
                 </div>
             </div>
+            <?php if ( $view_toggle ) : ?>
+            <div class="cwg-view-toggle" role="group" aria-label="<?php esc_attr_e( 'Layout', 'creativewings-core' ); ?>">
+                <button type="button" class="cwg-view-btn<?php echo 'card' === $view ? ' is-active' : ''; ?>" data-cwg-view-btn="card" aria-pressed="<?php echo 'card' === $view ? 'true' : 'false'; ?>">
+                    <i class="fas fa-th-large" aria-hidden="true"></i><span><?php esc_html_e( 'Card', 'creativewings-core' ); ?></span>
+                </button>
+                <button type="button" class="cwg-view-btn<?php echo 'list' === $view ? ' is-active' : ''; ?>" data-cwg-view-btn="list" aria-pressed="<?php echo 'list' === $view ? 'true' : 'false'; ?>">
+                    <i class="fas fa-list" aria-hidden="true"></i><span><?php esc_html_e( 'List', 'creativewings-core' ); ?></span>
+                </button>
+            </div>
+            </div><!-- .cwg-toolbar -->
+            <?php endif; ?>
 
             <!-- ── Active filter bar ── -->
             <?php if ( $search_term || $active_cat ): ?>
@@ -3944,6 +4027,12 @@ class CW_Shortcodes {
                             <li><i class="fas fa-clock"></i> <?php echo esc_html( $time_str ); ?></li>
                             <?php endif; ?>
                             <li><i class="fas fa-tag"></i> <?php echo esc_html( $fee_text ); ?></li>
+                            <?php
+                            $places_left = $this->places_remaining( $wcp );
+                            if ( $places_left !== null ) :
+                            ?>
+                            <li><i class="fas fa-users"></i> <?php echo esc_html( $this->places_left_label( $places_left ) ); ?></li>
+                            <?php endif; ?>
                         </ul>
 
                         <?php echo $this->render_card_kpi_html( (int) $pid ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
@@ -3980,7 +4069,28 @@ class CW_Shortcodes {
             <?php if ( $total_pages > 1 ):
                 $pg_base = $active_cat ? add_query_arg( 'tab', $active_cat, $base_url ) : $base_url;
                 if ( $search_term ) $pg_base = add_query_arg( 'cw_q', $search_term, $pg_base );
+                $pg_base = add_query_arg( 'view', $view_arg, $pg_base );
             ?>
+            <?php if ( $load_more ) :
+                $total_found = (int) $query->found_posts;
+                $shown_from  = ( $paged - 1 ) * $per_page + 1;
+                $shown_to    = min( $paged * $per_page, $total_found );
+            ?>
+            <div class="cwg-more" data-cwg-more data-total="<?php echo esc_attr( $total_found ); ?>">
+                <p class="cwg-more-count" aria-live="polite">
+                    <?php
+                    if ( $paged > 1 ) {
+                        echo esc_html( sprintf( __( 'Showing %1$d-%2$d of %3$d', 'creativewings-core' ), $shown_from, $shown_to, $total_found ) );
+                    } else {
+                        echo esc_html( sprintf( __( 'Showing %1$d of %2$d', 'creativewings-core' ), $shown_to, $total_found ) );
+                    }
+                    ?>
+                </p>
+                <?php if ( $paged < $total_pages ) : ?>
+                <a href="<?php echo esc_url( add_query_arg( 'cw_page', $paged + 1, $pg_base ) ); ?>" class="cwg-more-btn" data-cwg-more-btn><?php esc_html_e( 'Show more activities', 'creativewings-core' ); ?></a>
+                <?php endif; ?>
+            </div>
+            <?php else : ?>
             <div class="cwg-pagination">
                 <?php if ( $paged > 1 ): ?>
                     <a href="<?php echo esc_url( add_query_arg( 'cw_page', $paged - 1, $pg_base ) ); ?>" class="cwg-pg-btn cwg-pg-arrow"><i class="fas fa-chevron-left"></i></a>
@@ -3998,6 +4108,7 @@ class CW_Shortcodes {
                 <?php endif; ?>
             </div>
             <?php endif; ?>
+            <?php endif; ?>
 
             <?php else: ?>
             <div class="cwg-empty">
@@ -4008,6 +4119,100 @@ class CW_Shortcodes {
                     <a href="<?php echo esc_url( $base_url ); ?>" class="cwg-cta cwg-cta-join">View All Activities</a>
                 <?php endif; ?>
             </div>
+            <?php endif; ?>
+
+            <?php if ( $view_toggle ) : ?>
+            <script>
+            (function () {
+              var wrap = document.getElementById('cwg-top');
+              if (!wrap || wrap.dataset.cwgViewReady === '1') return;
+              wrap.dataset.cwgViewReady = '1';
+              var btns = wrap.querySelectorAll('[data-cwg-view-btn]');
+
+              function withView(href, view) {
+                var u = new URL(href, window.location.href);
+                if (view === 'list') { u.searchParams.set('view', 'list'); } else { u.searchParams.delete('view'); }
+                return u.toString();
+              }
+
+              function setView(view) {
+                wrap.classList.toggle('cwg-view-list', view === 'list');
+                wrap.classList.toggle('cwg-view-card', view !== 'list');
+                btns.forEach(function (b) {
+                  var on = b.getAttribute('data-cwg-view-btn') === view;
+                  b.classList.toggle('is-active', on);
+                  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+                });
+                wrap.querySelectorAll('a.cwg-tab, a.cwg-pg-btn, a.cwg-more-btn, a.cwg-filter-clear').forEach(function (a) {
+                  a.href = withView(a.href, view);
+                });
+                if (window.history && history.replaceState) {
+                  history.replaceState(null, '', withView(window.location.href, view));
+                }
+              }
+
+              btns.forEach(function (b) {
+                b.addEventListener('click', function () { setView(b.getAttribute('data-cwg-view-btn')); });
+              });
+            })();
+            </script>
+            <?php endif; ?>
+
+            <?php if ( $load_more && $query->have_posts() && $paged < $total_pages ) : ?>
+            <script>
+            (function () {
+              var wrap = document.getElementById('cwg-top');
+              if (!wrap || wrap.dataset.cwgMoreReady === '1' || !window.fetch || !window.DOMParser) return;
+              wrap.dataset.cwgMoreReady = '1';
+              var grid = wrap.querySelector('.cwg-grid');
+              var label = <?php echo wp_json_encode( __( 'Show more activities', 'creativewings-core' ) ); ?>;
+              var loading = <?php echo wp_json_encode( __( 'Loading…', 'creativewings-core' ) ); ?>;
+              var countTpl = <?php echo wp_json_encode( __( 'Showing %1$d of %2$d', 'creativewings-core' ) ); ?>;
+
+              wrap.addEventListener('click', function (e) {
+                var btn = e.target.closest('[data-cwg-more-btn]');
+                if (!btn || !grid) return;
+                e.preventDefault();
+                if (btn.getAttribute('aria-busy') === 'true') return;
+                btn.setAttribute('aria-busy', 'true');
+                btn.textContent = loading;
+
+                fetch(btn.href, { credentials: 'same-origin' })
+                  .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+                  .then(function (html) {
+                    var doc = new DOMParser().parseFromString(html, 'text/html');
+                    var next = doc.getElementById('cwg-top');
+                    var cards = next ? next.querySelectorAll('.cwg-grid > .cwg-card') : [];
+                    var firstNew = null;
+                    cards.forEach(function (card) {
+                      var node = document.importNode(card, true);
+                      grid.appendChild(node);
+                      if (!firstNew) firstNew = node;
+                    });
+
+                    var more = wrap.querySelector('[data-cwg-more]');
+                    var total = more ? parseInt(more.getAttribute('data-total'), 10) : 0;
+                    var shown = grid.querySelectorAll('.cwg-card').length;
+                    var nextBtn = next ? next.querySelector('[data-cwg-more-btn]') : null;
+                    var count = more ? more.querySelector('.cwg-more-count') : null;
+                    if (count) count.textContent = countTpl.replace('%1$d', shown).replace('%2$d', total);
+                    if (nextBtn) {
+                      btn.href = nextBtn.getAttribute('href');
+                      btn.removeAttribute('aria-busy');
+                      btn.textContent = label;
+                    } else {
+                      btn.remove();
+                    }
+
+                    var focusTarget = firstNew ? firstNew.querySelector('.cwg-card-body a') : null;
+                    if (focusTarget) focusTarget.focus({ preventScroll: true });
+                  })
+                  .catch(function () {
+                    window.location.href = btn.href;
+                  });
+              });
+            })();
+            </script>
             <?php endif; ?>
 
         </div><!-- .cwg-wrap -->

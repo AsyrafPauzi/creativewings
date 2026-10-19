@@ -133,27 +133,33 @@ class CW_Claim_Flow {
 
     private function render_claim_shell_open( $title, $subtitle = '' ) {
         echo '<div class="cw-content-wrapper cw-claim-page">';
-        echo '<div class="cw-dash-header">';
-        echo '<h2>' . esc_html( $title ) . '</h2>';
+        echo '<header class="cw-claim-hero">';
+        echo '<h1 class="cw-claim-hero-title">' . esc_html( $title ) . '</h1>';
         if ( $subtitle ) {
-            echo '<p>' . esc_html( $subtitle ) . '</p>';
+            echo '<p class="cw-claim-hero-sub">' . esc_html( $subtitle ) . '</p>';
         }
-        echo '</div>';
+        echo '</header>';
     }
 
     private function render_claim_shell_close() {
         echo '</div>';
     }
 
-    private function render_enter_step_form( $base ) {
+    /**
+     * Shared enter-code form (full page + Overview modal).
+     *
+     * @param string $input_id Unique input id for the page or modal instance.
+     */
+    private function render_enter_step_form( $base, $input_id = 'cw-claim-code-input' ) {
+        unset( $base ); // Reserved for future return URLs; form posts to admin-post.
         ?>
-        <div class="cw-claim-card">
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+        <div class="cw-claim-enter">
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cw-claim-enter-form">
                 <?php wp_nonce_field( 'cw_claim_lookup', 'cw_claim_nonce' ); ?>
                 <input type="hidden" name="action" value="cw_claim_lookup">
-                <div class="cw-settings-field">
-                    <label for="cw-claim-code-input"><?php esc_html_e( 'Submission code', 'creativewings-core' ); ?></label>
-                    <input type="text" id="cw-claim-code-input" name="submission_code" required minlength="13" maxlength="14" inputmode="numeric" class="cw-claim-input" placeholder="0020500100001" autocomplete="off">
+                <div class="cw-claim-enter-field">
+                    <label for="<?php echo esc_attr( $input_id ); ?>"><?php esc_html_e( 'Submission code', 'creativewings-core' ); ?></label>
+                    <input type="text" id="<?php echo esc_attr( $input_id ); ?>" name="submission_code" required minlength="13" maxlength="14" inputmode="numeric" class="cw-claim-input" placeholder="0020500100001" autocomplete="off">
                 </div>
                 <div class="cw-claim-actions">
                     <button type="submit" class="cw-btn-primary"><?php esc_html_e( 'Continue', 'creativewings-core' ); ?></button>
@@ -161,6 +167,15 @@ class CW_Claim_Flow {
             </form>
         </div>
         <?php
+    }
+
+    /**
+     * Public wrapper so Overview can reuse the same enter form markup.
+     *
+     * @param string $input_id Unique input id.
+     */
+    public function render_quick_link_form( $input_id = 'cw-ov-link-code-input' ) {
+        $this->render_enter_step_form( $this->get_link_submission_url(), $input_id );
     }
 
     /**
@@ -176,6 +191,7 @@ class CW_Claim_Flow {
         if ( ! $compact ) {
             echo '<p class="cw-claim-section-note">' . esc_html__( 'Each campaign is separate. Cancel a code if you entered the wrong one, then register the correct code for that same campaign.', 'creativewings-core' ) . '</p>';
         }
+        echo '<div class="cw-pending-list">';
         foreach ( $pending_list as $p ) {
             $campaign_id = (int) $p['campaign_id'];
             $pending_id  = (int) $p['id'];
@@ -187,12 +203,22 @@ class CW_Claim_Flow {
                 && ( $staged['status'] ?? '' ) === 'staged'
                 && $has_artwork
                 && ( $staged['moderation_status'] ?? 'approved' ) === 'approved';
+            $row_mod     = $ready ? 'is-ready' : 'is-waiting';
             ?>
-            <div class="cw-pending-card">
-                <p class="cw-pending-card-code"><?php echo esc_html( $p['submission_code'] ); ?></p>
-                <p class="cw-pending-card-title"><?php echo esc_html( get_the_title( $campaign_id ) ); ?></p>
+            <div class="cw-pending-card cw-pending-row <?php echo esc_attr( $row_mod ); ?>">
+                <div class="cw-pending-row-main">
+                    <span class="cw-pending-status"><?php echo $ready
+                        ? esc_html__( 'Ready', 'creativewings-core' )
+                        : esc_html__( 'Waiting', 'creativewings-core' ); ?></span>
+                    <p class="cw-pending-card-code"><?php echo esc_html( $p['submission_code'] ); ?></p>
+                    <p class="cw-pending-card-title"><?php echo esc_html( get_the_title( $campaign_id ) ); ?></p>
+                    <?php if ( $ready ) : ?>
+                        <p class="cw-pending-row-note"><?php esc_html_e( 'Artwork is ready — continue to confirm the student name and checkout.', 'creativewings-core' ); ?></p>
+                    <?php else : ?>
+                        <p class="cw-pending-row-note"><?php esc_html_e( 'Waiting for your school to upload this submission.', 'creativewings-core' ); ?></p>
+                    <?php endif; ?>
+                </div>
                 <?php if ( $ready ) : ?>
-                    <p><?php esc_html_e( 'Artwork is ready — continue to confirm the student name and checkout.', 'creativewings-core' ); ?></p>
                     <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
                         <?php wp_nonce_field( 'cw_claim_continue', 'cw_claim_nonce' ); ?>
                         <input type="hidden" name="action" value="cw_claim_continue">
@@ -203,7 +229,6 @@ class CW_Claim_Flow {
                         </div>
                     </form>
                 <?php else : ?>
-                    <p><?php esc_html_e( 'Waiting for your school to upload this submission.', 'creativewings-core' ); ?></p>
                     <div class="cw-claim-actions">
                         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline">
                             <?php wp_nonce_field( 'cw_claim_continue', 'cw_claim_nonce' ); ?>
@@ -217,6 +242,7 @@ class CW_Claim_Flow {
             </div>
             <?php
         }
+        echo '</div>';
     }
 
     private function render_cancel_button( $pending_id, $campaign_id ) {
@@ -234,8 +260,15 @@ class CW_Claim_Flow {
     private function render_enter_step( $base ) {
         $this->render_claim_shell_open(
             __( 'Link your submission code', 'creativewings-core' ),
-            __( 'Enter the code from your school (e.g. 0020500100001). Link one code per campaign — for several activities, enter each campaign’s code separately. We email you when the school uploads and you can checkout.', 'creativewings-core' )
+            __( 'Use the code from your school — one code per campaign.', 'creativewings-core' )
         );
+        ?>
+        <ol class="cw-claim-steps">
+            <li><?php esc_html_e( 'Enter the code your school gave you.', 'creativewings-core' ); ?></li>
+            <li><?php esc_html_e( 'Wait for the school to upload the artwork.', 'creativewings-core' ); ?></li>
+            <li><?php esc_html_e( 'Confirm the student name and checkout when ready.', 'creativewings-core' ); ?></li>
+        </ol>
+        <?php
 
         // Collect any feedback flags from the URL. We render an inline
         // <noscript> fallback so users without JS still see the message, and

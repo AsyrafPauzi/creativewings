@@ -12,6 +12,29 @@ class CW_Sponsor_Coupons {
         add_action( 'woocommerce_checkout_process', [ $this, 'validate_checkout_coupon_addresses' ], 25 );
     }
 
+    /**
+     * True when the coupon is a Creative Wings school/sponsor code
+     * (has _cw_campaign_id meta from campaign sync).
+     *
+     * @param string $code Coupon code as typed by the shopper.
+     * @return bool
+     */
+    public static function is_cw_school_coupon( $code ) {
+        if ( function_exists( 'wc_format_coupon_code' ) ) {
+            $code = wc_format_coupon_code( (string) $code );
+        } else {
+            $code = strtoupper( trim( (string) $code ) );
+        }
+        if ( $code === '' || ! function_exists( 'wc_get_coupon_id_by_code' ) ) {
+            return false;
+        }
+        $coupon_id = (int) wc_get_coupon_id_by_code( $code );
+        if ( $coupon_id <= 0 ) {
+            return false;
+        }
+        return (int) get_post_meta( $coupon_id, '_cw_campaign_id', true ) > 0;
+    }
+
     public static function sync_campaign_coupons( $campaign_id ) {
         if ( ! class_exists( 'WC_Coupon' ) ) {
             return;

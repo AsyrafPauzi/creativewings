@@ -69,7 +69,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
         private function define_constants() {
             define( 'CW_PATH', plugin_dir_path( __FILE__ ) );
             define( 'CW_URL', plugin_dir_url( __FILE__ ) );
-            define( 'CW_VERSION', '11.1.43' );
+            define( 'CW_VERSION', '11.1.76' );
         }
 
         /**
@@ -293,6 +293,9 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
                 new CW_Points_Rewards_Admin();
             }
             new CW_Guest_Join();
+            if ( class_exists( 'CW_Coupon_Auth_Popup' ) ) {
+                new CW_Coupon_Auth_Popup();
+            }
             $this->shortcodes = new CW_Shortcodes();
             new CW_Homepage_Blocks();
             new CW_Organizer_Profile();
@@ -396,8 +399,11 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
                     wp_enqueue_style( 'cw-style-business', $biz_css['url'], ['cw-style-general'], $biz_css['version'] );
                     wp_enqueue_style( 'cw-style-wizard',   $wiz_css['url'], ['cw-style-business'], $wiz_css['version'] );
                 } elseif ( in_array( 'creator_role', (array) $user->roles ) ) {
+                    // Contestant CSS shared for claim/link-code modal + form styles.
+                    $ct_css = self::asset( 'assets/css/cw-style-contestant.css' );
                     $cr_css = self::asset( 'assets/css/cw-style-creator.css' );
-                    wp_enqueue_style( 'cw-style-creator', $cr_css['url'], ['cw-style-general'], $cr_css['version'] );
+                    wp_enqueue_style( 'cw-style-contestant', $ct_css['url'], ['cw-style-general'], $ct_css['version'] );
+                    wp_enqueue_style( 'cw-style-creator',    $cr_css['url'], ['cw-style-contestant'], $cr_css['version'] );
                 } else {
                     $ct_css = self::asset( 'assets/css/cw-style-contestant.css' );
                     $cr_css = self::asset( 'assets/css/cw-style-creator.css' );

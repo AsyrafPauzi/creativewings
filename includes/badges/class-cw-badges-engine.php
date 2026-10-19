@@ -484,7 +484,7 @@ class CW_Badges_Engine {
         // Cross-request cache — catalog rarely changes; avoids reloading every badge
         // post + meta on each concurrent checkout entry insert.
         if ( class_exists( 'CW_Cache' ) ) {
-            $cached = CW_Cache::get( 'catalog_v1', 'badges' );
+            $cached = CW_Cache::get( 'catalog_v2', 'badges' );
             if ( is_array( $cached ) ) {
                 self::$catalog_cache = $cached;
                 return self::$catalog_cache;
@@ -510,10 +510,21 @@ class CW_Badges_Engine {
         self::$catalog_cache = $out;
 
         if ( class_exists( 'CW_Cache' ) ) {
-            CW_Cache::set( 'catalog_v1', 'badges', $out, 10 * MINUTE_IN_SECONDS );
+            CW_Cache::set( 'catalog_v2', 'badges', $out, 10 * MINUTE_IN_SECONDS );
         }
 
         return $out;
+    }
+
+    /**
+     * Drop in-request + persistent catalog cache (e.g. after icon updates).
+     */
+    public static function invalidate_catalog_cache() {
+        self::$catalog_cache = null;
+        if ( class_exists( 'CW_Cache' ) && method_exists( 'CW_Cache', 'delete' ) ) {
+            CW_Cache::delete( 'catalog_v2', 'badges' );
+            CW_Cache::delete( 'catalog_v1', 'badges' );
+        }
     }
 
     public static function get_catalog_by_id() {
@@ -546,7 +557,7 @@ class CW_Badges_Engine {
         if ( ! is_array( $extra ) ) $extra = [];
 
         $icon_id    = (int) get_post_meta( $id, 'cw_badge_icon', true );
-        $icon_url   = $icon_id ? (string) wp_get_attachment_image_url( $icon_id, 'thumbnail' ) : '';
+        $icon_url   = $icon_id ? (string) ( wp_get_attachment_image_url( $icon_id, 'medium' ) ?: wp_get_attachment_image_url( $icon_id, 'thumbnail' ) ) : '';
 
         return [
             'id'             => $id,

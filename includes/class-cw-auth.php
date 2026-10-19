@@ -242,7 +242,7 @@ class CW_Auth {
                         <label class="cw-label">Date of birth</label>
                         <div class="cw-input-icon-v2">
                             <i class="fas fa-calendar"></i>
-                            <input type="text" id="birthdate" name="birthdate" required readonly placeholder="dd/mm/yyyy" class="cw-input-text-v2">
+                            <input type="text" id="birthdate" name="birthdate" required placeholder="dd/mm/yyyy" class="cw-input-text-v2" autocomplete="bday" inputmode="numeric">
                         </div>
                         <small style="color:#555555;font-size:12px;">Used for age category when joining campaigns.</small>
                     </div>
@@ -748,7 +748,7 @@ class CW_Auth {
                             <label class="cw-label" for="birthdate"><?php esc_html_e( 'Date of birth', 'creativewings-core' ); ?></label>
                             <div class="cw-input-icon-v2">
                                 <i class="fas fa-calendar"></i>
-                                <input type="text" id="birthdate" name="birthdate" required readonly placeholder="dd/mm/yyyy" class="cw-input-text-v2" autocomplete="bday">
+                                <input type="text" id="birthdate" name="birthdate" required placeholder="dd/mm/yyyy" class="cw-input-text-v2" autocomplete="bday" inputmode="numeric">
                             </div>
                             <small style="color:#555555;font-size:12px;"><?php esc_html_e( 'Used for age category when joining campaigns.', 'creativewings-core' ); ?></small>
                         </div>

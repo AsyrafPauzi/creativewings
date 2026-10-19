@@ -12,11 +12,22 @@ if ( ! defined( 'ABSPATH' ) ) {
 class CW_Points_Rewards {
 
     const DB_OPTION      = 'cw_points_rewards_db_version';
-    const DB_VERSION     = '1.0.0';
+    const DB_VERSION     = '1.1.0';
     const OPTION_CATALOG = 'cw_points_rewards_catalog';
 
     public static function register_hooks() {
         add_action( 'init', [ __CLASS__, 'maybe_install' ], 6 );
+    }
+
+    /**
+     * Normalize fulfillment type.
+     *
+     * @param mixed $value Raw value.
+     * @return string physical|digital
+     */
+    public static function normalize_fulfillment( $value ) {
+        $value = sanitize_key( (string) $value );
+        return ( 'digital' === $value ) ? 'digital' : 'physical';
     }
 
     public static function rewards_table() {
@@ -30,11 +41,29 @@ class CW_Points_Rewards {
     }
 
     public static function maybe_install() {
-        if ( get_option( self::DB_OPTION ) === self::DB_VERSION ) {
+        $current = (string) get_option( self::DB_OPTION, '' );
+        if ( $current === self::DB_VERSION ) {
             return;
         }
         self::create_tables();
+        self::migrate_fulfillment_column();
         update_option( self::DB_OPTION, self::DB_VERSION, false );
+    }
+
+    /**
+     * Ensure fulfillment column exists and defaults to physical.
+     */
+    private static function migrate_fulfillment_column() {
+        global $wpdb;
+        $table = self::rewards_table();
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $col = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'fulfillment'" );
+        if ( empty( $col ) ) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $wpdb->query( "ALTER TABLE {$table} ADD COLUMN fulfillment VARCHAR(20) NOT NULL DEFAULT 'physical' AFTER is_active" );
+        }
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $wpdb->query( "UPDATE {$table} SET fulfillment = 'physical' WHERE fulfillment IS NULL OR fulfillment = ''" );
     }
 
     public static function create_tables() {
@@ -54,6 +83,7 @@ class CW_Points_Rewards {
                 points_cost INT(11) NOT NULL DEFAULT 0,
                 stock INT(11) NULL,
                 is_active TINYINT(1) NOT NULL DEFAULT 1,
+                fulfillment VARCHAR(20) NOT NULL DEFAULT 'physical',
                 sort_order INT(11) NOT NULL DEFAULT 0,
                 created_at DATETIME NOT NULL,
                 updated_at DATETIME NOT NULL,
@@ -129,6 +159,7 @@ class CW_Points_Rewards {
             'image_id'    => absint( $data['image_id'] ?? 0 ),
             'points_cost' => max( 1, (int) ( $data['points_cost'] ?? 1 ) ),
             'is_active'   => ! empty( $data['is_active'] ) ? 1 : 0,
+            'fulfillment' => self::normalize_fulfillment( $data['fulfillment'] ?? 'physical' ),
             'sort_order'  => (int) ( $data['sort_order'] ?? 0 ),
             'updated_at'  => $now,
         ];
@@ -140,12 +171,13 @@ class CW_Points_Rewards {
             $wpdb->query(
                 $wpdb->prepare(
                     "UPDATE {$table} SET title = %s, description = %s, image_id = %d, points_cost = %d,
-                     stock = {$stock_sql}, is_active = %d, sort_order = %d, updated_at = %s WHERE id = %d",
+                     stock = {$stock_sql}, is_active = %d, fulfillment = %s, sort_order = %d, updated_at = %s WHERE id = %d",
                     $fields['title'],
                     $fields['description'],
                     $fields['image_id'],
                     $fields['points_cost'],
                     $fields['is_active'],
+                    $fields['fulfillment'],
                     $fields['sort_order'],
                     $fields['updated_at'],
                     $id
@@ -156,13 +188,14 @@ class CW_Points_Rewards {
 
         $wpdb->query(
             $wpdb->prepare(
-                "INSERT INTO {$table} (title, description, image_id, points_cost, stock, is_active, sort_order, created_at, updated_at)
-                 VALUES (%s, %s, %d, %d, {$stock_sql}, %d, %d, %s, %s)",
+                "INSERT INTO {$table} (title, description, image_id, points_cost, stock, is_active, fulfillment, sort_order, created_at, updated_at)
+                 VALUES (%s, %s, %d, %d, {$stock_sql}, %d, %s, %d, %s, %s)",
                 $fields['title'],
                 $fields['description'],
                 $fields['image_id'],
                 $fields['points_cost'],
                 $fields['is_active'],
+                $fields['fulfillment'],
                 $fields['sort_order'],
                 $now,
                 $now
@@ -177,11 +210,110 @@ class CW_Points_Rewards {
     }
 
     /**
+     * @return array<string,string>
+     */
+    public static function get_user_shipping_address( $user_id ) {
+        $user_id = (int) $user_id;
+        $get     = static function ( $key ) use ( $user_id ) {
+            $ship = (string) get_user_meta( $user_id, 'shipping_' . $key, true );
+            if ( $ship !== '' ) {
+                return $ship;
+            }
+            return (string) get_user_meta( $user_id, 'billing_' . $key, true );
+        };
+        return [
+            'first_name' => $get( 'first_name' ),
+            'last_name'  => $get( 'last_name' ),
+            'phone'      => (string) get_user_meta( $user_id, 'billing_phone', true ),
+            'address_1'  => $get( 'address_1' ),
+            'address_2'  => $get( 'address_2' ),
+            'city'       => $get( 'city' ),
+            'state'      => $get( 'state' ),
+            'postcode'   => $get( 'postcode' ),
+            'country'    => $get( 'country' ) ?: 'MY',
+        ];
+    }
+
+    /**
+     * @param array<string,string> $fields Address fields.
+     */
+    public static function save_user_shipping_address( $user_id, array $fields ) {
+        $user_id = (int) $user_id;
+        if ( $user_id <= 0 ) {
+            return false;
+        }
+        $map = [
+            'first_name' => 'shipping_first_name',
+            'last_name'  => 'shipping_last_name',
+            'address_1'  => 'shipping_address_1',
+            'address_2'  => 'shipping_address_2',
+            'city'       => 'shipping_city',
+            'state'      => 'shipping_state',
+            'postcode'   => 'shipping_postcode',
+            'country'    => 'shipping_country',
+        ];
+        foreach ( $map as $key => $meta ) {
+            if ( isset( $fields[ $key ] ) ) {
+                $val = sanitize_text_field( (string) $fields[ $key ] );
+                update_user_meta( $user_id, $meta, $val );
+                // Mirror onto billing so Woo checkout prefills both columns.
+                $billing_meta = 'billing_' . $key;
+                update_user_meta( $user_id, $billing_meta, $val );
+            }
+        }
+        if ( isset( $fields['phone'] ) ) {
+            update_user_meta( $user_id, 'billing_phone', sanitize_text_field( (string) $fields['phone'] ) );
+        }
+        return true;
+    }
+
+    /**
+     * @param array<string,string>|null $address Address array.
+     */
+    public static function address_is_complete( $address ) {
+        if ( ! is_array( $address ) ) {
+            return false;
+        }
+        $required = [ 'first_name', 'phone', 'address_1', 'city', 'postcode', 'country' ];
+        foreach ( $required as $key ) {
+            if ( trim( (string) ( $address[ $key ] ?? '' ) ) === '' ) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static function user_has_shipping_address( $user_id ) {
+        return self::address_is_complete( self::get_user_shipping_address( $user_id ) );
+    }
+
+    /**
+     * @param array<string,string> $address Address.
+     */
+    public static function format_address_note( array $address ) {
+        $name = trim( ( $address['first_name'] ?? '' ) . ' ' . ( $address['last_name'] ?? '' ) );
+        $lines = array_filter(
+            [
+                $name,
+                $address['phone'] ?? '',
+                $address['address_1'] ?? '',
+                $address['address_2'] ?? '',
+                trim( ( $address['city'] ?? '' ) . ' ' . ( $address['postcode'] ?? '' ) ),
+                trim( ( $address['state'] ?? '' ) . ' ' . ( $address['country'] ?? '' ) ),
+            ]
+        );
+        return implode( "\n", $lines );
+    }
+
+    /**
      * Redeem merch for the current user.
      *
+     * @param int                      $user_id
+     * @param int                      $reward_id
+     * @param array<string,string>|null $address Optional address (required for physical if profile incomplete).
      * @return true|WP_Error
      */
-    public static function redeem( $user_id, $reward_id ) {
+    public static function redeem( $user_id, $reward_id, $address = null ) {
         $user_id   = (int) $user_id;
         $reward_id = (int) $reward_id;
         if ( $user_id <= 0 || $reward_id <= 0 ) {
@@ -194,6 +326,19 @@ class CW_Points_Rewards {
         $reward = self::get_reward( $reward_id );
         if ( ! $reward || empty( $reward['is_active'] ) ) {
             return new WP_Error( 'cw_redeem_missing', __( 'This reward is not available.', 'creativewings-core' ) );
+        }
+
+        $fulfillment = self::normalize_fulfillment( $reward['fulfillment'] ?? 'physical' );
+        $ship        = is_array( $address ) ? $address : self::get_user_shipping_address( $user_id );
+
+        if ( 'physical' === $fulfillment ) {
+            if ( is_array( $address ) && self::address_is_complete( $address ) ) {
+                self::save_user_shipping_address( $user_id, $address );
+                $ship = self::get_user_shipping_address( $user_id );
+            }
+            if ( ! self::address_is_complete( $ship ) ) {
+                return new WP_Error( 'cw_redeem_address', __( 'Please provide a shipping address for this item.', 'creativewings-core' ), [ 'need_address' => true ] );
+            }
         }
 
         $cost = (int) $reward['points_cost'];
@@ -246,6 +391,13 @@ class CW_Points_Rewards {
             return new WP_Error( 'cw_redeem_debit', __( 'Could not debit points.', 'creativewings-core' ) );
         }
 
+        $note = '';
+        if ( 'physical' === $fulfillment ) {
+            $note = self::format_address_note( $ship );
+        } else {
+            $note = __( 'Digital fulfillment', 'creativewings-core' );
+        }
+
         $now = current_time( 'mysql' );
         $wpdb->insert(
             self::redemptions_table(),
@@ -254,7 +406,7 @@ class CW_Points_Rewards {
                 'reward_id'    => $reward_id,
                 'points_spent' => $cost,
                 'status'       => 'pending',
-                'note'         => '',
+                'note'         => $note,
                 'created_at'   => $now,
                 'updated_at'   => $now,
             ]

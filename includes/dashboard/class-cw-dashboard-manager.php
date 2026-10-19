@@ -12,9 +12,80 @@ class CW_Dashboard_Manager {
     public function __construct() {
         add_shortcode( 'cw_dashboard', [ $this, 'render_dashboard_shortcode' ] );
 
+        // Full-bleed blank shell on My Account — skip theme + Elementor wrappers.
+        add_filter( 'template_include', [ $this, 'maybe_blank_dashboard_template' ], 99 );
+        add_filter( 'body_class', [ $this, 'filter_dashboard_body_class' ] );
+        add_action( 'wp', [ $this, 'disable_elementor_on_dashboard' ], 5 );
+
         if ( class_exists( 'CW_Dashboard_Creator' ) ) $this->creator_dashboard = new CW_Dashboard_Creator();
         if ( class_exists( 'CW_Dashboard_Business' ) ) $this->business_dashboard = new CW_Dashboard_Business();
         if ( class_exists( 'CW_Dashboard_Contestant' ) ) $this->contestant_dashboard = new CW_Dashboard_Contestant();
+    }
+
+    /**
+     * Whether the current request is the WooCommerce My Account page that hosts [cw_dashboard].
+     */
+    private function is_cw_dashboard_page() {
+        if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) {
+            return false;
+        }
+        $page_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'myaccount' ) : 0;
+        if ( $page_id <= 0 ) {
+            return false;
+        }
+        $post = get_post( $page_id );
+        return $post && has_shortcode( (string) $post->post_content, 'cw_dashboard' );
+    }
+
+    /**
+     * Swap to the plugin blank template so Elementor/theme chrome never wrap the portal.
+     *
+     * @param string $template Theme template path.
+     * @return string
+     */
+    public function maybe_blank_dashboard_template( $template ) {
+        if ( ! $this->is_cw_dashboard_page() ) {
+            return $template;
+        }
+        $blank = CW_PATH . 'templates/cw-dashboard-blank.php';
+        return file_exists( $blank ) ? $blank : $template;
+    }
+
+    /**
+     * @param string[] $classes Body classes.
+     * @return string[]
+     */
+    public function filter_dashboard_body_class( $classes ) {
+        if ( $this->is_cw_dashboard_page() ) {
+            $classes[] = 'cw-dashboard-blank';
+        }
+        return $classes;
+    }
+
+    /**
+     * Stop Elementor from claiming My Account when our blank template is in use.
+     */
+    public function disable_elementor_on_dashboard() {
+        if ( ! $this->is_cw_dashboard_page() || ! class_exists( '\Elementor\Plugin' ) ) {
+            return;
+        }
+
+        // Empty builder data for this request so Elementor does not print wrappers.
+        add_filter( 'elementor/frontend/builder_content_data', function ( $data, $post_id ) {
+            $account_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'myaccount' ) : 0;
+            if ( $account_id && (int) $post_id === $account_id ) {
+                return [];
+            }
+            return $data;
+        }, 10, 2 );
+
+        // Prefer classic content path if Elementor still tries to take over.
+        add_filter( 'elementor/frontend/the_content', function ( $content ) {
+            if ( $this->is_cw_dashboard_page() ) {
+                return do_shortcode( '[cw_dashboard]' );
+            }
+            return $content;
+        }, 5 );
     }
 
     public function render_dashboard_shortcode() {
@@ -52,27 +123,26 @@ class CW_Dashboard_Manager {
                 'biz-info'  => ['icon' => 'fa-building',  'label' => 'Company Profile'],
             ];
         } elseif ( 'creator' === $role ) {
+            // Link submission is Overview modal / deep-link only (not in sidebar).
             $menu_items = [
-                'overview'        => ['icon' => 'fa-th-large', 'label' => 'Dashboard'],
-                'explore'         => ['icon' => 'fa-bolt',     'label' => 'Explore Opportunities'], // NEW TAB
-                'activities'      => ['icon' => 'fa-running',  'label' => 'My Activities'], // CONSOLIDATED ENGAGEMENTS
-                'link-submission' => ['icon' => 'fa-link',     'label' => 'Link submission code'],
-                'portfolio'       => ['icon' => 'fa-briefcase','label' => 'Portfolio'],
-                'badges'          => ['icon' => 'fa-medal',    'label' => 'My Badges'],
-                'profile'         => ['icon' => 'fa-user-cog', 'label' => 'Profile Settings'],
-                // Removed 'competitions' as it's now part of 'activities'
+                'overview'   => ['icon' => 'fa-th-large', 'label' => 'Dashboard'],
+                'explore'    => ['icon' => 'fa-bolt',     'label' => 'Explore Opportunities'],
+                'activities' => ['icon' => 'fa-running',  'label' => 'My Activities'],
+                'portfolio'  => ['icon' => 'fa-briefcase','label' => 'Portfolio'],
+                'badges'     => ['icon' => 'fa-medal',    'label' => 'My Badges'],
+                'profile'    => ['icon' => 'fa-user-cog', 'label' => 'Profile Settings'],
             ];
         } else {
+            // Contestant: Link submission is Overview modal / deep-link only (not in sidebar).
+            // Upgrade lives inside Settings.
             $menu_items = [
-                'overview'         => ['icon' => 'fa-th-large', 'label' => 'Overview'],
-                'explore'          => ['icon' => 'fa-bolt',     'label' => 'Explore Opportunities'],
-                'link-submission'  => ['icon' => 'fa-link',     'label' => 'Link submission code'],
-                'activities'       => ['icon' => 'fa-running',  'label' => 'My Activities'],
-                'points'           => ['icon' => 'fa-coins',    'label' => 'Points'],
-                'leaderboard'      => ['icon' => 'fa-list-ol',  'label' => 'Leaderboard'],
-                'badges'           => ['icon' => 'fa-medal',    'label' => 'My Badges'],
-                'upgrade'          => ['icon' => 'fa-arrow-up', 'label' => 'Upgrade Account'],
-                'settings'         => ['icon' => 'fa-cog',      'label' => 'Settings'],
+                'overview'         => ['icon' => 'fa-th-large', 'label' => __( 'Overview', 'creativewings-core' )],
+                'explore'          => ['icon' => 'fa-bolt',     'label' => __( 'Explore Opportunities', 'creativewings-core' )],
+                'activities'       => ['icon' => 'fa-running',  'label' => __( 'My Activities', 'creativewings-core' )],
+                'points'           => ['icon' => 'fa-coins',    'label' => __( 'My Points', 'creativewings-core' )],
+                'leaderboard'      => ['icon' => 'fa-list-ol',  'label' => __( 'Leaderboard', 'creativewings-core' )],
+                'badges'           => ['icon' => 'fa-medal',    'label' => __( 'My Badges', 'creativewings-core' )],
+                'settings'         => ['icon' => 'fa-cog',      'label' => __( 'Settings', 'creativewings-core' )],
             ];
         }
 
@@ -108,14 +178,18 @@ class CW_Dashboard_Manager {
 
                     <!-- NAVIGATION -->
                     <nav class="cw-nav-list">
-                        <?php foreach($menu_items as $slug => $item): 
-                            $active = ($current_tab === $slug) ? 'active' : '';
-                            
-                            $link = add_query_arg('tab', $slug, $base_url);
-                        ?>
-                            <a href="<?php echo esc_url($link); ?>" class="cw-nav-link <?php echo $active; ?>">
-                                <i class="fas <?php echo $item['icon']; ?>"></i>
-                                <span><?php echo esc_html($item['label']); ?></span>
+                        <?php foreach ( $menu_items as $slug => $item ) :
+                            $active = ( $current_tab === $slug ) ? 'active' : '';
+                            // Link submission has no sidebar item; leave Overview active when that tab is open.
+                            if ( 'overview' === $slug && 'link-submission' === $current_tab && in_array( $role, [ 'contestant', 'creator' ], true ) ) {
+                                $active = 'active';
+                            }
+                            $sub   = ! empty( $item['sub'] ) ? ' cw-nav-link--sub' : '';
+                            $link  = add_query_arg( 'tab', $slug, $base_url );
+                            ?>
+                            <a href="<?php echo esc_url( $link ); ?>" class="cw-nav-link <?php echo esc_attr( $active . $sub ); ?>">
+                                <i class="fas <?php echo esc_attr( $item['icon'] ); ?>"></i>
+                                <span><?php echo esc_html( $item['label'] ); ?></span>
                             </a>
                         <?php endforeach; ?>
                     </nav>

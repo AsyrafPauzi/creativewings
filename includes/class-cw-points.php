@@ -22,6 +22,10 @@ class CW_Points {
     const CRON_HOOK        = 'cw_daily_points_expiry';
     const EXPIRY_MONTHS    = 12;
     const LEADERBOARD_SIZE = 50;
+    /** Rows shown per Leaderboard pricing panel. */
+    const PANEL_SIZE       = 8;
+    /** Transient TTL for period leaderboard lists (seconds). */
+    const LB_CACHE_TTL     = 300;
     const TOP_CONTRIBUTOR  = 10;
     /** Points per RM1 of redeem value (15 pts = RM0.15). */
     const PTS_PER_RM = 100;
@@ -563,6 +567,140 @@ class CW_Points {
                 self::META_BALANCE,
                 $balance,
                 $balance,
+                $user_id
+            )
+        );
+        return $higher + 1;
+    }
+
+    /**
+     * Earliest datetime included for a rolling earned window.
+     *
+     * @param int $days
+     * @return string MySQL datetime in site local time.
+     */
+    public static function earned_since_datetime( $days ) {
+        $days = max( 1, (int) $days );
+        return date( 'Y-m-d H:i:s', current_time( 'timestamp' ) - ( $days * DAY_IN_SECONDS ) );
+    }
+
+    /**
+     * Points earned (ledger type=earn) for a user in the last N days.
+     *
+     * @param int $user_id
+     * @param int $days
+     * @return int
+     */
+    public static function get_user_earned( $user_id, $days ) {
+        global $wpdb;
+        $user_id = (int) $user_id;
+        $days    = max( 1, (int) $days );
+        if ( $user_id <= 0 ) {
+            return 0;
+        }
+        $since = self::earned_since_datetime( $days );
+        $sum   = $wpdb->get_var(
+            $wpdb->prepare(
+                'SELECT COALESCE(SUM(points), 0) FROM ' . self::table() . '
+                 WHERE user_id = %d
+                   AND type = %s
+                   AND points > 0
+                   AND created_at >= %s',
+                $user_id,
+                'earn',
+                $since
+            )
+        );
+        return max( 0, (int) $sum );
+    }
+
+    /**
+     * Leaderboard by points earned in the last N days.
+     *
+     * @param int $days
+     * @param int $limit
+     * @return array<int, array{user_id:int,points:int,display_name:string,rank:int}>
+     */
+    public static function get_leaderboard_earned( $days, $limit = self::PANEL_SIZE ) {
+        global $wpdb;
+        $days  = max( 1, (int) $days );
+        $limit = max( 1, min( 100, (int) $limit ) );
+        $key   = 'cw_lb_earn_' . $days . '_' . $limit;
+        $cached = get_transient( $key );
+        if ( is_array( $cached ) ) {
+            return $cached;
+        }
+
+        $since = self::earned_since_datetime( $days );
+        $table = self::table();
+        $rows  = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT user_id, SUM(points) AS pts
+                 FROM {$table}
+                 WHERE type = %s
+                   AND points > 0
+                   AND created_at >= %s
+                 GROUP BY user_id
+                 HAVING SUM(points) > 0
+                 ORDER BY SUM(points) DESC, user_id ASC
+                 LIMIT %d",
+                'earn',
+                $since,
+                $limit
+            ),
+            ARRAY_A
+        );
+
+        $out  = [];
+        $rank = 1;
+        foreach ( (array) $rows as $row ) {
+            $uid  = (int) $row['user_id'];
+            $user = get_user_by( 'id', $uid );
+            $out[] = [
+                'user_id'      => $uid,
+                'points'       => (int) $row['pts'],
+                'display_name' => $user ? ( $user->display_name ?: $user->user_login ) : ( 'User #' . $uid ),
+                'rank'         => $rank,
+            ];
+            $rank++;
+        }
+        set_transient( $key, $out, self::LB_CACHE_TTL );
+        return $out;
+    }
+
+    /**
+     * Rank by points earned in the last N days (1-based). 0 if none earned.
+     *
+     * @param int $user_id
+     * @param int $days
+     * @return int
+     */
+    public static function get_user_earned_rank( $user_id, $days ) {
+        global $wpdb;
+        $user_id = (int) $user_id;
+        $days    = max( 1, (int) $days );
+        $mine    = self::get_user_earned( $user_id, $days );
+        if ( $mine <= 0 ) {
+            return 0;
+        }
+        $since = self::earned_since_datetime( $days );
+        $table = self::table();
+        $higher = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM (
+                    SELECT user_id
+                    FROM {$table}
+                    WHERE type = %s
+                      AND points > 0
+                      AND created_at >= %s
+                    GROUP BY user_id
+                    HAVING SUM(points) > %d
+                       OR (SUM(points) = %d AND user_id < %d)
+                 ) ranked",
+                'earn',
+                $since,
+                $mine,
+                $mine,
                 $user_id
             )
         );

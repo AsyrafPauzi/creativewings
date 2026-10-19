@@ -185,28 +185,46 @@ class CW_Dashboard_Creator {
             'creator_address'       => __( 'Location', 'creativewings-core' ),
         ];
 
+        $my_account_url = get_permalink( wc_get_page_id( 'myaccount' ) );
+        $portfolio_tab  = add_query_arg( 'tab', 'portfolio', $my_account_url );
+        $profile_tab    = add_query_arg( 'tab', 'profile', $my_account_url );
+        $activities_tab = add_query_arg( 'tab', 'activities', $my_account_url );
+        $explore_tab    = add_query_arg( 'tab', 'explore', $my_account_url );
+        $badges_tab     = add_query_arg( 'tab', 'badges', $my_account_url );
         ?>
-        <?php
-        $my_account_url  = get_permalink( wc_get_page_id('myaccount') );
-        $portfolio_tab   = add_query_arg('tab', 'portfolio', $my_account_url);
-        $profile_tab     = add_query_arg('tab', 'profile',   $my_account_url);
-        $activities_tab  = add_query_arg('tab', 'activities', $my_account_url);
-        ?>
-        <div class="cw-content-wrapper">
-            <div class="cw-overview-header">
-                <div>
-                    <h1>Welcome back, <?php echo esc_html($display_name); ?> 👋</h1>
+        <div class="cw-content-wrapper cw-ov cw-ov--creator">
+            <header class="cw-ov-welcome">
+                <div class="cw-ov-welcome-copy">
+                    <h2 class="cw-ov-welcome-title">
+                        <?php
+                        printf(
+                            /* translators: %s: creator display name */
+                            esc_html__( 'Welcome back, %s', 'creativewings-core' ),
+                            esc_html( $display_name )
+                        );
+                        ?>
+                    </h2>
+                    <p class="cw-ov-welcome-sub">
+                        <?php esc_html_e( 'Grow your public profile, track campaigns, and keep your portfolio current.', 'creativewings-core' ); ?>
+                    </p>
                 </div>
-                <?php if ( $profile_url ) : ?>
-                <a href="<?php echo esc_url( $profile_url ); ?>" target="_blank" class="cw-public-profile-link">
-                    <i class="fas fa-external-link-alt"></i> View Public Profile
-                </a>
-                <?php endif; ?>
-            </div>
+                <div class="cw-ov-welcome-actions">
+                    <?php if ( $profile_url ) : ?>
+                        <a href="<?php echo esc_url( $profile_url ); ?>" target="_blank" rel="noopener noreferrer" class="cw-btn-primary cw-ov-btn-primary">
+                            <?php esc_html_e( 'View public profile', 'creativewings-core' ); ?>
+                        </a>
+                    <?php endif; ?>
+                    <a href="<?php echo esc_url( $explore_tab ); ?>" class="cw-ov-btn-secondary">
+                        <?php esc_html_e( 'Explore', 'creativewings-core' ); ?>
+                    </a>
+                    <button type="button" class="cw-ov-btn-secondary" id="cw-ov-link-code-open" aria-haspopup="dialog" aria-controls="cw-ov-link-modal">
+                        <?php esc_html_e( 'Link a code', 'creativewings-core' ); ?>
+                    </button>
+                </div>
+            </header>
 
             <?php if ( ! empty( $missing_dir_fields ) ) : ?>
                 <div class="cw-dir-nudge" role="status">
-                    <div class="cw-dir-nudge-icon"><i class="fas fa-eye-slash"></i></div>
                     <div class="cw-dir-nudge-body">
                         <h3><?php esc_html_e( 'Complete your profile to appear in the public directory', 'creativewings-core' ); ?></h3>
                         <p>
@@ -216,93 +234,25 @@ class CW_Dashboard_Creator {
                             <?php foreach ( $missing_dir_fields as $field ) :
                                 $label = $missing_dir_labels[ $field ] ?? ucwords( str_replace( [ 'creator_', '_' ], [ '', ' ' ], $field ) );
                                 ?>
-                                <span class="cw-dir-nudge-chip"><i class="fas fa-times-circle"></i> <?php echo esc_html( $label ); ?></span>
+                                <span class="cw-dir-nudge-chip"><?php echo esc_html( $label ); ?></span>
                             <?php endforeach; ?>
                         </div>
                         <a href="<?php echo esc_url( $profile_tab ); ?>" class="cw-btn-primary cw-dir-nudge-cta">
-                            <i class="fas fa-pen-to-square"></i> <?php esc_html_e( 'Complete profile', 'creativewings-core' ); ?>
+                            <?php esc_html_e( 'Complete profile', 'creativewings-core' ); ?>
                         </a>
                     </div>
                 </div>
-                <style>
-                    .cw-dir-nudge {
-                        display: flex;
-                        gap: 14px;
-                        align-items: flex-start;
-                        background: linear-gradient(135deg, #fff7ed 0%, #fffbeb 100%);
-                        border: 1px solid #fde68a;
-                        border-radius: 14px;
-                        padding: 16px 18px;
-                        margin: 0 0 20px;
-                        box-shadow: 0 2px 10px rgba(180, 83, 9, 0.06);
-                    }
-                    .cw-dir-nudge-icon {
-                        width: 42px;
-                        height: 42px;
-                        border-radius: 50%;
-                        background: #fef3c7;
-                        color: #b45309;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        font-size: 18px;
-                        flex-shrink: 0;
-                    }
-                    .cw-dir-nudge-body { flex: 1; min-width: 0; }
-                    .cw-dir-nudge-body h3 {
-                        margin: 0 0 4px;
-                        font-size: 15px;
-                        font-weight: 800;
-                        color: #92400e;
-                        line-height: 1.35;
-                    }
-                    .cw-dir-nudge-body p {
-                        margin: 0 0 10px;
-                        font-size: 13px;
-                        color: #78350f;
-                    }
-                    .cw-dir-nudge-chips {
-                        display: flex;
-                        flex-wrap: wrap;
-                        gap: 6px;
-                        margin: 0 0 12px;
-                    }
-                    .cw-dir-nudge-chip {
-                        display: inline-flex;
-                        align-items: center;
-                        gap: 6px;
-                        background: #fff;
-                        border: 1px solid #fde68a;
-                        color: #92400e;
-                        font-size: 12px;
-                        font-weight: 700;
-                        padding: 4px 10px;
-                        border-radius: 999px;
-                    }
-                    .cw-dir-nudge-chip i { color: #b45309; font-size: 10px; }
-                    .cw-dir-nudge-cta {
-                        display: inline-flex;
-                        align-items: center;
-                        gap: 6px;
-                        text-decoration: none;
-                    }
-                    @media (max-width: 600px) {
-                        .cw-dir-nudge { flex-direction: column; gap: 10px; padding: 14px; }
-                        .cw-dir-nudge-icon { width: 36px; height: 36px; font-size: 16px; }
-                    }
-                </style>
             <?php endif; ?>
 
             <?php
-            // Latest-achievement strip (badges system).
             if ( class_exists( 'CW_Badges_Engine' ) && class_exists( 'CW_Badges_Display' ) ) {
                 $owned_badges = CW_Badges_Engine::get_user_badges( $uid );
                 if ( ! empty( $owned_badges ) ) :
-                    $badges_tab_url = add_query_arg( 'tab', 'badges', $my_account_url ); ?>
+                    ?>
                     <div class="cw-badges cw-badges-latest">
-                        <h4><i class="fas fa-trophy" style="color:#facc15;margin-right:6px;"></i><?php esc_html_e( 'Latest achievements', 'creativewings-core' ); ?></h4>
-                        <?php echo CW_Badges_Display::render_strip( $owned_badges, 4, [ 'size' => 'sm', 'show_label' => false, 'show_tier' => false ] ); ?>
-                        <a href="<?php echo esc_url( $badges_tab_url ); ?>" style="margin-left:auto;font-size:13px;font-weight:600;color:#0ea5e9;text-decoration:none;">
+                        <h4><?php esc_html_e( 'Latest achievements', 'creativewings-core' ); ?></h4>
+                        <?php echo CW_Badges_Display::render_strip( $owned_badges, 4, [ 'size' => 'sm', 'show_label' => false, 'show_tier' => false ] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                        <a href="<?php echo esc_url( $badges_tab ); ?>" class="cw-badges-latest-link">
                             <?php esc_html_e( 'See all badges', 'creativewings-core' ); ?> &rarr;
                         </a>
                     </div>
@@ -310,99 +260,85 @@ class CW_Dashboard_Creator {
             }
             ?>
 
-            <!-- 4-stat grid -->
-            <div class="cw-overview-stats-grid cw-stats-4col">
-                <div class="cw-stat-box-small">
-                    <div class="cw-stat-value-row">
-                        <div class="icon"><i class="fas fa-eye" style="color:var(--cw-primary);"></i></div>
-                        <h3><?php echo number_format($views); ?></h3>
-                    </div>
-                    <span>Profile Views</span>
+            <div class="cw-ov-metrics" role="list">
+                <div class="cw-ov-metric" role="listitem">
+                    <p class="cw-ov-metric-value"><?php echo esc_html( number_format_i18n( $views ) ); ?></p>
+                    <p class="cw-ov-metric-label"><?php esc_html_e( 'Profile views', 'creativewings-core' ); ?></p>
                 </div>
-                <div class="cw-stat-box-small">
-                    <div class="cw-stat-value-row">
-                        <div class="icon"><i class="fas fa-briefcase" style="color:#7c3aed;"></i></div>
-                        <h3><?php echo number_format((int)$port_count); ?></h3>
-                    </div>
-                    <span>Portfolio Items</span>
+                <div class="cw-ov-metric" role="listitem">
+                    <p class="cw-ov-metric-value">
+                        <a href="<?php echo esc_url( $portfolio_tab ); ?>" class="cw-ov-metric-link">
+                            <?php echo esc_html( number_format_i18n( (int) $port_count ) ); ?>
+                        </a>
+                    </p>
+                    <p class="cw-ov-metric-label"><?php esc_html_e( 'Portfolio items', 'creativewings-core' ); ?></p>
                 </div>
-                <div class="cw-stat-box-small">
-                    <div class="cw-stat-value-row">
-                        <div class="icon"><i class="fas fa-fire" style="color:var(--cw-accent);"></i></div>
-                        <h3><?php echo number_format($active_engagements); ?></h3>
-                    </div>
-                    <span>Active Campaigns</span>
+                <div class="cw-ov-metric" role="listitem">
+                    <p class="cw-ov-metric-value"><?php echo esc_html( number_format_i18n( $active_engagements ) ); ?></p>
+                    <p class="cw-ov-metric-label"><?php esc_html_e( 'Active campaigns', 'creativewings-core' ); ?></p>
                 </div>
-                <div class="cw-stat-box-small">
-                    <div class="cw-stat-value-row">
-                        <div class="icon"><i class="fas fa-check-circle" style="color:var(--cw-success);"></i></div>
-                        <h3><?php echo number_format($completed_entries); ?></h3>
-                    </div>
-                    <span>Completed</span>
+                <div class="cw-ov-metric" role="listitem">
+                    <p class="cw-ov-metric-value"><?php echo esc_html( number_format_i18n( $completed_entries ) ); ?></p>
+                    <p class="cw-ov-metric-label"><?php esc_html_e( 'Completed', 'creativewings-core' ); ?></p>
                 </div>
             </div>
 
-            <!-- Chart + Quick Actions -->
             <div class="cw-main-content-grid">
                 <div class="cw-chart-panel">
-                    <h3>Profile Traffic <span style="font-size:12px;font-weight:500;color:var(--cw-muted);">Last 7 Days</span></h3>
-                    <div id="trafficChartContainer" style="height:230px; width:100%;">
+                    <h3>
+                        <?php esc_html_e( 'Profile traffic', 'creativewings-core' ); ?>
+                        <span class="cw-chart-panel-meta"><?php esc_html_e( 'Last 7 days', 'creativewings-core' ); ?></span>
+                    </h3>
+                    <div id="trafficChartContainer">
                         <canvas id="trafficChart"></canvas>
                     </div>
                 </div>
 
                 <div class="cw-quick-actions">
-                    <h3>Quick Actions</h3>
-                    <div class="cw-quick-action-list">
-                        <a href="<?php echo esc_url($portfolio_tab); ?>" onclick="openPortfolioModal(); return false;" class="cw-action-item">
-                            <div class="icon-wrap cw-iw-blue"><i class="fas fa-plus"></i></div>
-                            <div class="text-wrap">
-                                <span>Add New Project</span>
-                                <small>Upload to your portfolio</small>
-                            </div>
+                    <h3><?php esc_html_e( 'Quick actions', 'creativewings-core' ); ?></h3>
+                    <div class="cw-qa-grid" role="list">
+                        <a href="<?php echo esc_url( $portfolio_tab ); ?>" onclick="if (typeof openPortfolioModal === 'function') { openPortfolioModal(); return false; }" class="cw-qa-tile" role="listitem">
+                            <?php esc_html_e( 'Add project', 'creativewings-core' ); ?>
                         </a>
-                        <a href="<?php echo esc_url($profile_tab); ?>" class="cw-action-item">
-                            <div class="icon-wrap cw-iw-purple"><i class="fas fa-pen"></i></div>
-                            <div class="text-wrap">
-                                <span>Edit Profile</span>
-                                <small>Update bio &amp; links</small>
-                            </div>
+                        <a href="<?php echo esc_url( $profile_tab ); ?>" class="cw-qa-tile" role="listitem">
+                            <?php esc_html_e( 'Edit profile', 'creativewings-core' ); ?>
                         </a>
-                        <a href="<?php echo esc_url($activities_tab); ?>" class="cw-action-item">
-                            <div class="icon-wrap cw-iw-teal"><i class="fas fa-tasks"></i></div>
-                            <div class="text-wrap">
-                                <span>My Activities</span>
-                                <small>Track your submissions</small>
-                            </div>
+                        <a href="<?php echo esc_url( $activities_tab ); ?>" class="cw-qa-tile" role="listitem">
+                            <?php esc_html_e( 'Activities', 'creativewings-core' ); ?>
+                        </a>
+                        <button type="button" class="cw-qa-tile" id="cw-ov-link-code-action" role="listitem">
+                            <?php esc_html_e( 'Link a code', 'creativewings-core' ); ?>
+                        </button>
+                        <a href="<?php echo esc_url( $badges_tab ); ?>" class="cw-qa-tile cw-qa-tile--wide" role="listitem">
+                            <?php esc_html_e( 'My badges', 'creativewings-core' ); ?>
                         </a>
                     </div>
                 </div>
             </div>
 
-            <!-- Recent Portfolio Strip -->
-            <?php if ($recent_ports): ?>
-            <div class="cw-recent-section">
+            <?php if ( $recent_ports ) : ?>
+            <section class="cw-recent-section" aria-labelledby="cw-creator-recent-heading">
                 <div class="cw-recent-head">
-                    <h3>Recent Portfolio</h3>
-                    <a href="<?php echo esc_url($portfolio_tab); ?>" class="cw-public-profile-link">View All →</a>
+                    <h3 id="cw-creator-recent-heading"><?php esc_html_e( 'Recent portfolio', 'creativewings-core' ); ?></h3>
+                    <a href="<?php echo esc_url( $portfolio_tab ); ?>" class="cw-public-profile-link"><?php esc_html_e( 'View all', 'creativewings-core' ); ?> &rarr;</a>
                 </div>
                 <div class="cw-recent-portfolio-row">
-                    <?php foreach ($recent_ports as $rp):
-                        $rp_img_data = maybe_unserialize($rp->image);
-                        $rp_img      = (is_array($rp_img_data) && isset($rp_img_data['url'])) ? $rp_img_data['url'] : '';
-                    ?>
+                    <?php foreach ( $recent_ports as $rp ) :
+                        $rp_img_data = maybe_unserialize( $rp->image );
+                        $rp_img      = ( is_array( $rp_img_data ) && isset( $rp_img_data['url'] ) ) ? $rp_img_data['url'] : '';
+                        ?>
                     <div class="cw-recent-pf-card">
-                        <div class="cw-recent-pf-thumb" <?php if($rp_img): ?>style="background-image:url('<?php echo esc_url($rp_img); ?>')"<?php endif; ?>>
-                            <?php if(!$rp_img): ?><i class="fas fa-image"></i><?php endif; ?>
+                        <div class="cw-recent-pf-thumb" <?php if ( $rp_img ) : ?>style="background-image:url('<?php echo esc_url( $rp_img ); ?>')"<?php endif; ?>>
+                            <?php if ( ! $rp_img ) : ?><i class="fas fa-image" aria-hidden="true"></i><?php endif; ?>
                         </div>
                         <div class="cw-recent-pf-info">
-                            <span class="cw-recent-pf-cat"><?php echo esc_html($rp->category ?: '—'); ?></span>
-                            <p><?php echo esc_html($rp->title); ?></p>
+                            <span class="cw-recent-pf-cat"><?php echo esc_html( $rp->category ?: '—' ); ?></span>
+                            <p><?php echo esc_html( $rp->title ); ?></p>
                         </div>
                     </div>
                     <?php endforeach; ?>
                 </div>
-            </div>
+            </section>
             <?php endif; ?>
         </div>
 
@@ -423,7 +359,7 @@ class CW_Dashboard_Creator {
             document.addEventListener('DOMContentLoaded', function(){ ensureChartV4(function(){
                 var ctx = document.getElementById('trafficChart');
                 if(!ctx || typeof Chart === 'undefined') return;
-                var chartData = <?php echo json_encode($chart_data); ?>;
+                var chartData = <?php echo wp_json_encode( $chart_data ); ?>;
                 new Chart(ctx, {
                     type: 'bar',
                     data: {
@@ -450,157 +386,373 @@ class CW_Dashboard_Creator {
         })();
         </script>
         <?php
+        $this->render_overview_link_code_modal();
+    }
+
+    /**
+     * Overview quick-enter modal for school submission codes.
+     */
+    private function render_overview_link_code_modal() {
+        ?>
+        <div id="cw-ov-link-modal" class="cw-ov-link-modal" role="dialog" aria-modal="true" aria-labelledby="cw-ov-link-modal-title" hidden>
+            <div class="cw-ov-link-modal-backdrop" data-cw-ov-link-close tabindex="-1"></div>
+            <div class="cw-ov-link-modal-panel">
+                <button type="button" class="cw-ov-link-modal-close" data-cw-ov-link-close aria-label="<?php esc_attr_e( 'Close', 'creativewings-core' ); ?>">&times;</button>
+                <h2 id="cw-ov-link-modal-title" class="cw-ov-link-modal-title"><?php esc_html_e( 'Link a submission code', 'creativewings-core' ); ?></h2>
+                <p class="cw-ov-link-modal-sub"><?php esc_html_e( 'Enter the code from your school. One code per campaign.', 'creativewings-core' ); ?></p>
+                <?php
+                if ( function_exists( 'cw_core' ) && cw_core()->claim_flow ) {
+                    cw_core()->claim_flow->render_quick_link_form( 'cw-ov-link-code-input' );
+                }
+                ?>
+            </div>
+        </div>
+        <script>
+        (function () {
+            var modal = document.getElementById('cw-ov-link-modal');
+            var openBtns = [
+                document.getElementById('cw-ov-link-code-open'),
+                document.getElementById('cw-ov-link-code-action')
+            ].filter(Boolean);
+            if (!modal || !openBtns.length) return;
+            var input = document.getElementById('cw-ov-link-code-input');
+            var lastFocus = null;
+
+            function openModal() {
+                lastFocus = document.activeElement;
+                modal.hidden = false;
+                modal.classList.add('is-open');
+                document.body.classList.add('cw-ov-link-modal-open');
+                if (input) {
+                    setTimeout(function () { input.focus(); }, 20);
+                }
+            }
+            function closeModal() {
+                modal.classList.remove('is-open');
+                modal.hidden = true;
+                document.body.classList.remove('cw-ov-link-modal-open');
+                if (lastFocus && lastFocus.focus) lastFocus.focus();
+            }
+            openBtns.forEach(function (btn) {
+                btn.addEventListener('click', openModal);
+            });
+            modal.querySelectorAll('[data-cw-ov-link-close]').forEach(function (el) {
+                el.addEventListener('click', closeModal);
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && modal.classList.contains('is-open')) {
+                    closeModal();
+                }
+            });
+        })();
+        </script>
+        <?php
     }
     /* ==========================================================================
        2. EDIT PROFILE (Nova UI Overhaul - Final Version)
        ========================================================================== */
     public function render_profile() {
         $uid = get_current_user_id();
-        $fields = ['creator_display_name', 'creator_tagline', 'creator_bio', 'awards_won', 'creator_skills', 'website_url', 'linkeden_url', 'instagram_url', 'twitter_url', 'Facebook_url', 'behave_url', 'creator_address', 'birthdate']; // Added creator_address, birthdate
-$meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true );
+        $u   = get_userdata( $uid );
+        $fields = [
+            'creator_display_name',
+            'creator_tagline',
+            'creator_bio',
+            'awards_won',
+            'creator_skills',
+            'website_url',
+            'linkeden_url',
+            'instagram_url',
+            'twitter_url',
+            'Facebook_url',
+            'behave_url',
+            'creator_address',
+            'birthdate',
+        ];
+        $meta = [];
+        foreach ( $fields as $f ) {
+            $meta[ $f ] = get_user_meta( $uid, $f, true );
+        }
 
         $img_data = get_user_meta( $uid, 'creator_profile_image', true );
         $img_url  = ( is_array( $img_data ) && isset( $img_data['url'] ) ) ? $img_data['url'] : get_avatar_url( $uid );
         $hdr_data = get_user_meta( $uid, 'creator_header_image', true );
-        $hdr_url  = ( is_array( $hdr_data ) && isset( $hdr_data['url'] ) ) ? $hdr_data['url'] : CW_URL . 'assets/img/default-header.jpg';
+        // Prefer uploaded header; fall back to the public-profile default asset
+        // (legacy assets/img/default-header.jpg is missing on many installs).
+        $hdr_url = ( is_array( $hdr_data ) && ! empty( $hdr_data['url'] ) )
+            ? $hdr_data['url']
+            : 'https://creativewings.asia/wp-content/uploads/2025/09/Asset-2@2x.png';
 
-        // Status messages now surface via CW_Flash_Notices (SweetAlert2 popups).
-        $skills_array = array_filter(array_map('trim', explode(',', $meta['creator_skills'])));
+        $display_name = $meta['creator_display_name'] ?: ( $u ? $u->display_name : '' );
+        $profile_url  = ( $u && class_exists( 'CW_Roles' ) )
+            ? CW_Roles::get_public_portfolio_url( $u )
+            : ( $u ? home_url( '/profile/' . $u->user_login . '/' ) : '' );
+
+        $addr = class_exists( 'CW_Points_Rewards' )
+            ? CW_Points_Rewards::get_user_shipping_address( $uid )
+            : [
+                'first_name' => $u ? $u->first_name : '',
+                'last_name'  => $u ? $u->last_name : '',
+                'phone'      => '',
+                'address_1'  => '',
+                'address_2'  => '',
+                'city'       => '',
+                'state'      => '',
+                'postcode'   => '',
+                'country'    => 'MY',
+            ];
+        if ( empty( $addr['first_name'] ) && $u ) {
+            $addr['first_name'] = $u->first_name;
+        }
+        if ( empty( $addr['last_name'] ) && $u ) {
+            $addr['last_name'] = $u->last_name;
+        }
+
+        $skills_array = array_filter( array_map( 'trim', explode( ',', (string) $meta['creator_skills'] ) ) );
         ?>
-        <div class="cw-content-wrapper">
-            <h2 class="text-2xl font-bold text-gray-900">Profile Settings</h2>
-            <p class="text-gray-500">Manage your public presence and personal information.</p>
-            
-            <div class="cw-profile-settings-card">
-                <form action="<?php echo admin_url('admin-post.php'); ?>" method="POST" enctype="multipart/form-data" class="cw-modern-form">
-                    <input type="hidden" name="action" value="cw_save_creative_profile">
-                    <?php wp_nonce_field('cw_profile_nonce'); ?>
-                    
-                    <!-- 1. Banner/Avatar Composite Section -->
-                    <div class="cw-settings-header">
-                        <img src="<?php echo esc_url($hdr_url); ?>" alt="Header Banner" class="cw-banner-image" loading="lazy" decoding="async" />
-                        
-                        <!-- Upload Button Overlay (Header) -->
-                        <label for="creator_header_image_upload" class="cw-header-upload-btn">
-                            <i class="fas fa-camera"></i> Change Banner
-                        </label>
-                        <input type="file" id="creator_header_image_upload" name="creator_header_image" accept="image/*" style="display:none;">
+        <div class="cw-content-wrapper cw-settings-atelier cw-creator-profile-atelier">
+            <form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="POST" enctype="multipart/form-data" class="cw-settings-atelier-form cw-modern-form" autocomplete="off">
+                <input type="hidden" name="action" value="cw_save_creative_profile">
+                <?php wp_nonce_field( 'cw_profile_nonce' ); ?>
 
-                        <!-- Avatar -->
-                        <div class="cw-avatar-composite">
-                            <img src="<?php echo esc_url($img_url); ?>" alt="Profile Avatar" class="cw-profile-avatar" loading="lazy" decoding="async" />
-                            <div class="cw-profile-status-dot"></div>
-                            
-                            <!-- Avatar Upload Button (Overlays avatar) -->
-                            <label for="creator_profile_image_upload" style="position:absolute; inset:0; border-radius:50%; cursor:pointer;"></label>
-                            <input type="file" id="creator_profile_image_upload" name="creator_profile_image" accept="image/*" style="display:none;" onchange="if(this.files[0]) this.closest('.cw-avatar-composite').querySelector('img').src = window.URL.createObjectURL(this.files[0])">
+                <div class="cw-settings-atelier-layout">
+                    <aside class="cw-settings-rail" aria-label="<?php esc_attr_e( 'Your profile', 'creativewings-core' ); ?>">
+                        <div class="cw-settings-rail__avatar">
+                            <img src="<?php echo esc_url( $img_url ); ?>" alt="" class="cw-settings-rail__avatar-img" loading="lazy" decoding="async" id="cw-rail-avatar-preview" />
                         </div>
-                    </div>
+                        <h2 class="cw-settings-rail__name"><?php echo esc_html( $display_name ?: ( $u ? $u->user_login : '' ) ); ?></h2>
+                        <?php if ( $u ) : ?>
+                            <p class="cw-settings-rail__email"><?php echo esc_html( $u->user_email ); ?></p>
+                        <?php endif; ?>
+                        <p class="cw-settings-rail__note"><?php esc_html_e( 'Presence and social links appear on your public profile. Delivery address stays private for checkout and merch.', 'creativewings-core' ); ?></p>
+                        <?php if ( $profile_url ) : ?>
+                            <a href="<?php echo esc_url( $profile_url ); ?>" target="_blank" rel="noopener noreferrer" class="cw-settings-rail__link">
+                                <?php esc_html_e( 'View public profile', 'creativewings-core' ); ?>
+                            </a>
+                        <?php endif; ?>
+                    </aside>
 
-                    <!-- 2. Form Content Area -->
-                    <div class="cw-settings-content">
-                        <div class="cw-form-grid" style="grid-template-columns: 1fr 1fr; gap: 20px;">
-                            <!-- Display Name / Tagline -->
-                            <div class="cw-field-dark"><label>Display Name</label><input type="text" name="creator_display_name" value="<?php echo esc_attr($meta['creator_display_name']); ?>" class="cw-input-dark-v2" placeholder="Alex Morgan"></div>
-                            <div class="cw-field-dark"><label>Tagline</label><input type="text" name="creator_tagline" value="<?php echo esc_attr($meta['creator_tagline']); ?>" class="cw-input-dark-v2" placeholder="Senior UI/UX Designer & Digital Artist"></div>
+                    <div class="cw-settings-atelier-main">
+                        <header class="cw-settings-atelier-head">
+                            <h1><?php esc_html_e( 'Profile Settings', 'creativewings-core' ); ?></h1>
+                            <p><?php esc_html_e( 'Manage your public presence and private delivery details.', 'creativewings-core' ); ?></p>
+                        </header>
 
-                            <!-- Date of Birth (jQuery UI datepicker auto-binds to #birthdate) -->
-                            <div class="cw-field-dark"><label>Date of Birth</label><input type="text" id="birthdate" name="birthdate" value="<?php echo esc_attr($meta['birthdate']); ?>" class="cw-input-dark-v2" placeholder="dd/mm/yyyy" readonly autocomplete="bday"></div>
+                        <section class="cw-settings-panel">
+                            <header class="cw-settings-panel__head">
+                                <h3><?php esc_html_e( 'Presence', 'creativewings-core' ); ?></h3>
+                                <p><?php esc_html_e( 'Shown on your public creator profile and directory listing.', 'creativewings-core' ); ?></p>
+                            </header>
 
-                            <!-- Bio (Rich Text) -->
-                            <div class="cw-field-dark full cw-rich-text-area"><label>Bio (Rich Text)</label><?php wp_editor( $meta['creator_bio'], 'creator_bio_editor', ['textarea_name' => 'creator_bio', 'media_buttons' => false, 'textarea_rows' => 4, 'teeny' => true, 'quicktags' => false, 'editor_class' => 'cw-slim-editor-dark'] ); ?></div>
-                            
-                            <!-- Skills Input -->
-                            <div class="cw-field-dark full">
-                                <label>Skills (Press Enter to add)</label>
-                                <div id="cw-skills-wrapper" class="cw-tags-input-container">
-                                    <?php foreach($skills_array as $skill): ?>
-                                       <span class="cw-tag-v2" data-skill="<?php echo esc_attr($skill); ?>"><?php echo esc_html($skill); ?> <i class="fas fa-times" onclick="removeSkill(event, '<?php echo esc_attr($skill); ?>')"></i></span>
-                                    <?php endforeach; ?>
-                                    <input type="text" id="cw-skills-input" class="cw-input-ghost" placeholder="Add a skill...">
+                            <div class="cw-settings-header cw-creator-banner-block">
+                                <img src="<?php echo esc_url( $hdr_url ); ?>" alt="" class="cw-banner-image" id="cw-banner-preview" loading="lazy" decoding="async" />
+                                <label for="creator_header_image_upload" class="cw-header-upload-btn">
+                                    <i class="fas fa-camera" aria-hidden="true"></i> <?php esc_html_e( 'Change banner', 'creativewings-core' ); ?>
+                                </label>
+                                <input type="file" id="creator_header_image_upload" name="creator_header_image" accept="image/*" class="cw-visually-hidden" onchange="if(this.files[0]){ var img=document.getElementById('cw-banner-preview'); if(img) img.src=URL.createObjectURL(this.files[0]); }">
+
+                                <div class="cw-avatar-composite">
+                                    <img src="<?php echo esc_url( $img_url ); ?>" alt="" class="cw-profile-avatar" loading="lazy" decoding="async" />
+                                    <div class="cw-profile-status-dot" aria-hidden="true"></div>
+                                    <label for="creator_profile_image_upload" class="cw-avatar-upload-hit" aria-label="<?php esc_attr_e( 'Change profile photo', 'creativewings-core' ); ?>"></label>
+                                    <input type="file" id="creator_profile_image_upload" name="creator_profile_image" accept="image/*" class="cw-visually-hidden" onchange="if(this.files[0]){ var url=URL.createObjectURL(this.files[0]); var a=this.closest('.cw-avatar-composite').querySelector('img'); if(a) a.src=url; var r=document.getElementById('cw-rail-avatar-preview'); if(r) r.src=url; }">
                                 </div>
-                                <input type="hidden" name="creator_skills" id="cw_skills_hidden" value="<?php echo esc_attr(implode(',', $skills_array)); ?>">
                             </div>
-                            
-                            <!-- Awards Won - Retained from original fields -->
-                            <div class="cw-field-dark full"><label>Awards Won</label><input type="text" name="awards_won" value="<?php echo esc_attr($meta['awards_won']); ?>" class="cw-input-dark-v2" placeholder="Best in Show 2023, Digital Artist Finalist 2024"></div>
-                        </div>
-                        
-                        <div class="cw-field-dark full">
-    <label>Location Address</label>
-    <input type="text" name="creator_address" value="<?php echo esc_attr($meta['creator_address']); ?>" class="cw-input-dark-v2" placeholder="e.g. San Francisco, CA">
-</div>
 
-                        <h4 style="margin-top:40px;">Social Links</h4>
-                        
-                        <div class="cw-form-grid" style="grid-template-columns: 1fr 1fr; gap: 20px;">
-                            <!-- Website / Behance -->
-                            <div class="cw-field-dark cw-social-input-wrap"><i class="fas fa-globe"></i><input type="url" name="website_url" value="<?php echo esc_attr($meta['website_url']); ?>" class="cw-input-dark-v2" placeholder="https://alexmorgan.design"></div>
-                            <div class="cw-field-dark cw-social-input-wrap"><i class="fab fa-behance"></i><input type="url" name="behave_url" value="<?php echo esc_attr($meta['behave_url']); ?>" class="cw-input-dark-v2" placeholder="behance.net/alexm"></div>
-                            
-                            <!-- Instagram / Twitter -->
-                            <div class="cw-field-dark cw-social-input-wrap"><i class="fab fa-instagram"></i><input type="url" name="instagram_url" value="<?php echo esc_attr($meta['instagram_url']); ?>" class="cw-input-dark-v2" placeholder="@alexm_design"></div>
-                            <div class="cw-field-dark cw-social-input-wrap"><i class="fab fa-twitter"></i><input type="url" name="twitter_url" value="<?php echo esc_attr($meta['twitter_url']); ?>" class="cw-input-dark-v2" placeholder="Twitter Handle"></div>
-                            
-                            <!-- Facebook / LinkedIn (Retained for completeness) -->
-                            <?php if ($meta['Facebook_url'] || $meta['linkeden_url']): ?>
-                                <div class="cw-field-dark cw-social-input-wrap"><i class="fab fa-facebook"></i><input type="url" name="Facebook_url" value="<?php echo esc_attr($meta['Facebook_url']); ?>" class="cw-input-dark-v2" placeholder="Facebook URL"></div>
-                                <div class="cw-field-dark cw-social-input-wrap"><i class="fab fa-linkedin"></i><input type="url" name="linkeden_url" value="<?php echo esc_attr($meta['linkeden_url']); ?>" class="cw-input-dark-v2" placeholder="LinkedIn URL"></div>
-                            <?php endif; ?>
-                        </div>
-                        
-                        <div class="cw-form-footer" style="border-top:none; padding-top:20px;">
-                           <button type="submit" class="cw-btn-primary">Save Changes</button>
+                            <div class="cw-settings-name-grid">
+                                <div class="cw-field">
+                                    <label for="cw-creator-display-name"><?php esc_html_e( 'Display name', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-creator-display-name" name="creator_display_name" class="cw-input" value="<?php echo esc_attr( $meta['creator_display_name'] ); ?>" placeholder="<?php esc_attr_e( 'Alex Morgan', 'creativewings-core' ); ?>">
+                                </div>
+                                <div class="cw-field">
+                                    <label for="cw-creator-tagline"><?php esc_html_e( 'Tagline', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-creator-tagline" name="creator_tagline" class="cw-input" value="<?php echo esc_attr( $meta['creator_tagline'] ); ?>" placeholder="<?php esc_attr_e( 'UI/UX designer & illustrator', 'creativewings-core' ); ?>">
+                                </div>
+                            </div>
+
+                            <div class="cw-field">
+                                <label for="birthdate"><?php esc_html_e( 'Date of birth', 'creativewings-core' ); ?></label>
+                                <input type="text" id="birthdate" name="birthdate" class="cw-input cw-datepicker" value="<?php echo esc_attr( $meta['birthdate'] ); ?>" placeholder="dd/mm/yyyy" readonly autocomplete="bday">
+                            </div>
+
+                            <div class="cw-field cw-rich-text-area">
+                                <label for="creator_bio_editor"><?php esc_html_e( 'Bio', 'creativewings-core' ); ?></label>
+                                <?php
+                                wp_editor(
+                                    $meta['creator_bio'],
+                                    'creator_bio_editor',
+                                    [
+                                        'textarea_name' => 'creator_bio',
+                                        'media_buttons' => false,
+                                        'textarea_rows' => 5,
+                                        'teeny'         => true,
+                                        'quicktags'     => false,
+                                        'editor_class'  => 'cw-slim-editor-dark',
+                                    ]
+                                );
+                                ?>
+                            </div>
+
+                            <div class="cw-field">
+                                <label for="cw-skills-input"><?php esc_html_e( 'Skills', 'creativewings-core' ); ?></label>
+                                <div id="cw-skills-wrapper" class="cw-tags-input-container">
+                                    <?php foreach ( $skills_array as $skill ) : ?>
+                                        <span class="cw-tag-v2" data-skill="<?php echo esc_attr( $skill ); ?>"><?php echo esc_html( $skill ); ?> <i class="fas fa-times" aria-hidden="true"></i></span>
+                                    <?php endforeach; ?>
+                                    <input type="text" id="cw-skills-input" class="cw-input-ghost" placeholder="<?php esc_attr_e( 'Press Enter to add', 'creativewings-core' ); ?>">
+                                </div>
+                                <input type="hidden" name="creator_skills" id="cw_skills_hidden" value="<?php echo esc_attr( implode( ',', $skills_array ) ); ?>">
+                                <small><?php esc_html_e( 'Focus areas shown as chips on your public profile.', 'creativewings-core' ); ?></small>
+                            </div>
+
+                            <div class="cw-field">
+                                <label for="cw-awards-won"><?php esc_html_e( 'Awards', 'creativewings-core' ); ?></label>
+                                <input type="text" id="cw-awards-won" name="awards_won" class="cw-input" value="<?php echo esc_attr( $meta['awards_won'] ); ?>" placeholder="<?php esc_attr_e( 'Best in Show 2025', 'creativewings-core' ); ?>">
+                            </div>
+
+                            <div class="cw-field">
+                                <label for="cw-creator-location"><?php esc_html_e( 'Location', 'creativewings-core' ); ?></label>
+                                <input type="text" id="cw-creator-location" name="creator_address" class="cw-input" value="<?php echo esc_attr( $meta['creator_address'] ); ?>" placeholder="<?php esc_attr_e( 'Kuala Lumpur, MY', 'creativewings-core' ); ?>">
+                                <small><?php esc_html_e( 'Short public location (city or region) for your profile and directory.', 'creativewings-core' ); ?></small>
+                            </div>
+                        </section>
+
+                        <section class="cw-settings-panel">
+                            <header class="cw-settings-panel__head">
+                                <h3><?php esc_html_e( 'Social', 'creativewings-core' ); ?></h3>
+                                <p><?php esc_html_e( 'Links shown on your public profile.', 'creativewings-core' ); ?></p>
+                            </header>
+                            <div class="cw-settings-name-grid">
+                                <div class="cw-field cw-social-input-wrap">
+                                    <label for="cw-website-url"><?php esc_html_e( 'Website', 'creativewings-core' ); ?></label>
+                                    <i class="fas fa-globe" aria-hidden="true"></i>
+                                    <input type="url" id="cw-website-url" name="website_url" class="cw-input" value="<?php echo esc_attr( $meta['website_url'] ); ?>" placeholder="https://">
+                                </div>
+                                <div class="cw-field cw-social-input-wrap">
+                                    <label for="cw-behance-url"><?php esc_html_e( 'Behance', 'creativewings-core' ); ?></label>
+                                    <i class="fab fa-behance" aria-hidden="true"></i>
+                                    <input type="url" id="cw-behance-url" name="behave_url" class="cw-input" value="<?php echo esc_attr( $meta['behave_url'] ); ?>" placeholder="https://behance.net/">
+                                </div>
+                                <div class="cw-field cw-social-input-wrap">
+                                    <label for="cw-instagram-url"><?php esc_html_e( 'Instagram', 'creativewings-core' ); ?></label>
+                                    <i class="fab fa-instagram" aria-hidden="true"></i>
+                                    <input type="url" id="cw-instagram-url" name="instagram_url" class="cw-input" value="<?php echo esc_attr( $meta['instagram_url'] ); ?>" placeholder="https://instagram.com/">
+                                </div>
+                                <div class="cw-field cw-social-input-wrap">
+                                    <label for="cw-twitter-url"><?php esc_html_e( 'X / Twitter', 'creativewings-core' ); ?></label>
+                                    <i class="fab fa-twitter" aria-hidden="true"></i>
+                                    <input type="url" id="cw-twitter-url" name="twitter_url" class="cw-input" value="<?php echo esc_attr( $meta['twitter_url'] ); ?>" placeholder="https://x.com/">
+                                </div>
+                                <div class="cw-field cw-social-input-wrap">
+                                    <label for="cw-facebook-url"><?php esc_html_e( 'Facebook', 'creativewings-core' ); ?></label>
+                                    <i class="fab fa-facebook" aria-hidden="true"></i>
+                                    <input type="url" id="cw-facebook-url" name="Facebook_url" class="cw-input" value="<?php echo esc_attr( $meta['Facebook_url'] ); ?>" placeholder="https://facebook.com/">
+                                </div>
+                                <div class="cw-field cw-social-input-wrap">
+                                    <label for="cw-linkedin-url"><?php esc_html_e( 'LinkedIn', 'creativewings-core' ); ?></label>
+                                    <i class="fab fa-linkedin" aria-hidden="true"></i>
+                                    <input type="url" id="cw-linkedin-url" name="linkeden_url" class="cw-input" value="<?php echo esc_attr( $meta['linkeden_url'] ); ?>" placeholder="https://linkedin.com/in/">
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="cw-settings-panel">
+                            <header class="cw-settings-panel__head">
+                                <h3><?php esc_html_e( 'Delivery address', 'creativewings-core' ); ?></h3>
+                                <p><?php esc_html_e( 'Private — prefills checkout and merchandise delivery. Not shown on your public profile.', 'creativewings-core' ); ?></p>
+                            </header>
+                            <div class="cw-settings-name-grid">
+                                <div class="cw-field">
+                                    <label for="cw-addr-first"><?php esc_html_e( 'Recipient first name', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-addr-first" name="addr_first_name" class="cw-input" value="<?php echo esc_attr( $addr['first_name'] ); ?>" autocomplete="shipping given-name">
+                                </div>
+                                <div class="cw-field">
+                                    <label for="cw-addr-last"><?php esc_html_e( 'Recipient last name', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-addr-last" name="addr_last_name" class="cw-input" value="<?php echo esc_attr( $addr['last_name'] ); ?>" autocomplete="shipping family-name">
+                                </div>
+                            </div>
+                            <div class="cw-field">
+                                <label for="cw-addr-phone"><?php esc_html_e( 'Phone', 'creativewings-core' ); ?></label>
+                                <input type="tel" id="cw-addr-phone" name="addr_phone" class="cw-input" value="<?php echo esc_attr( $addr['phone'] ); ?>" autocomplete="tel">
+                            </div>
+                            <div class="cw-field">
+                                <label for="cw-addr-1"><?php esc_html_e( 'Address', 'creativewings-core' ); ?></label>
+                                <input type="text" id="cw-addr-1" name="addr_address_1" class="cw-input" value="<?php echo esc_attr( $addr['address_1'] ); ?>" autocomplete="shipping address-line1">
+                            </div>
+                            <div class="cw-field">
+                                <label for="cw-addr-2"><?php esc_html_e( 'Address line 2', 'creativewings-core' ); ?></label>
+                                <input type="text" id="cw-addr-2" name="addr_address_2" class="cw-input" value="<?php echo esc_attr( $addr['address_2'] ); ?>" autocomplete="shipping address-line2">
+                            </div>
+                            <div class="cw-settings-addr-grid">
+                                <div class="cw-field">
+                                    <label for="cw-addr-city"><?php esc_html_e( 'City', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-addr-city" name="addr_city" class="cw-input" value="<?php echo esc_attr( $addr['city'] ); ?>" autocomplete="shipping address-level2">
+                                </div>
+                                <div class="cw-field">
+                                    <label for="cw-addr-state"><?php esc_html_e( 'State', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-addr-state" name="addr_state" class="cw-input" value="<?php echo esc_attr( $addr['state'] ); ?>" autocomplete="shipping address-level1">
+                                </div>
+                                <div class="cw-field">
+                                    <label for="cw-addr-postcode"><?php esc_html_e( 'Postcode', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-addr-postcode" name="addr_postcode" class="cw-input" value="<?php echo esc_attr( $addr['postcode'] ); ?>" autocomplete="shipping postal-code">
+                                </div>
+                                <div class="cw-field">
+                                    <label for="cw-addr-country"><?php esc_html_e( 'Country', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-addr-country" name="addr_country" class="cw-input" value="<?php echo esc_attr( $addr['country'] ?: 'MY' ); ?>" autocomplete="shipping country" maxlength="2">
+                                    <small><?php esc_html_e( 'ISO country code, e.g. MY.', 'creativewings-core' ); ?></small>
+                                </div>
+                            </div>
+                        </section>
+
+                        <div class="cw-settings-atelier-footer">
+                            <button type="submit" class="cw-btn-primary cw-settings-save-btn"><?php esc_html_e( 'Save changes', 'creativewings-core' ); ?></button>
                         </div>
                     </div>
-                </form>
-            </div>
+                </div>
+            </form>
         </div>
 
-        <!-- Skills JS (Must remain for tagging logic) -->
         <script>
-        document.addEventListener('DOMContentLoaded', function() { 
-            const wrap = document.getElementById('cw-skills-wrapper');
-            const inp = document.getElementById('cw-skills-input');
-            const hidden = document.getElementById('cw_skills_hidden'); 
-            if(wrap && inp && hidden) {
-                let tags = hidden.value ? hidden.value.split(',').map(s=>s.trim()).filter(s=>s) : []; 
-                
-                function render() {
-                    wrap.querySelectorAll('.cw-tag-v2').forEach(e => e.remove()); 
-                    tags.forEach((tag) => {
-                        const el = document.createElement('span'); 
-                        el.className = 'cw-tag-v2';
-                        el.setAttribute('data-skill', tag);
-                        el.innerHTML = `${tag} <i class="fas fa-times"></i>`; 
-                        wrap.insertBefore(el, inp);
-                    }); 
-                    hidden.value = tags.join(',');
-                    // Rebind click listener to the newly created elements
-                    wrap.querySelectorAll('.cw-tag-v2 i').forEach(icon => {
-                        icon.addEventListener('click', (e) => {
-                            e.stopPropagation(); // Stop click from propagating up to the container
-                            const skill = e.target.closest('.cw-tag-v2').getAttribute('data-skill');
-                            window.removeSkill(skill);
-                        });
-                    });
-                } 
-                
-                window.removeSkill = function(skill) { 
-                    tags = tags.filter(s => s !== skill); 
-                    render(); 
-                }; 
-                
-                inp.addEventListener('keydown', function(e) {
-                    if (e.key === 'Enter' || e.key === ',') {
-                        e.preventDefault();
-                        const v = inp.value.trim().replace(/,$/, '');
-                        if (v && !tags.includes(v)) { tags.push(v); render(); inp.value = ''; }
-                    }
-                    if (e.key === 'Backspace' && inp.value === '' && tags.length > 0) { tags.pop(); render(); }
+        document.addEventListener('DOMContentLoaded', function() {
+            var wrap = document.getElementById('cw-skills-wrapper');
+            var inp = document.getElementById('cw-skills-input');
+            var hidden = document.getElementById('cw_skills_hidden');
+            if (!wrap || !inp || !hidden) return;
+            var tags = hidden.value ? hidden.value.split(',').map(function(s){ return s.trim(); }).filter(Boolean) : [];
+
+            function render() {
+                wrap.querySelectorAll('.cw-tag-v2').forEach(function(e){ e.remove(); });
+                tags.forEach(function(tag) {
+                    var el = document.createElement('span');
+                    el.className = 'cw-tag-v2';
+                    el.setAttribute('data-skill', tag);
+                    el.innerHTML = tag + ' <i class="fas fa-times" aria-hidden="true"></i>';
+                    wrap.insertBefore(el, inp);
                 });
-                render();
+                hidden.value = tags.join(',');
+                wrap.querySelectorAll('.cw-tag-v2 i').forEach(function(icon) {
+                    icon.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        var skill = e.target.closest('.cw-tag-v2').getAttribute('data-skill');
+                        window.removeSkill(skill);
+                    });
+                });
             }
+
+            window.removeSkill = function(skill) {
+                tags = tags.filter(function(s){ return s !== skill; });
+                render();
+            };
+
+            inp.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    var v = inp.value.trim().replace(/,$/, '');
+                    if (v && tags.indexOf(v) === -1) { tags.push(v); render(); inp.value = ''; }
+                }
+                if (e.key === 'Backspace' && inp.value === '' && tags.length > 0) { tags.pop(); render(); }
+            });
+            render();
         });
         </script>
         <?php
@@ -659,7 +811,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
             <div class="cw-portfolio-header">
                 <div class="cw-portfolio-header-top">
                     <h2><?php _e('My Portfolio', 'creativewings-core'); ?></h2>
-                    <button class="cw-btn-primary cw-portfolio-add-btn" onclick="openPortfolioModal()"><i class="fas fa-plus"></i> <span><?php _e('Add Project', 'creativewings-core'); ?></span></button>
+                    <button type="button" class="cw-btn-primary cw-portfolio-add-btn" id="cw-pf-open-add"><i class="fas fa-plus" aria-hidden="true"></i> <span><?php esc_html_e( 'Add Project', 'creativewings-core' ); ?></span></button>
                 </div>
                 <p class="cw-portfolio-header-desc"><?php _e('Manage the projects displayed on your public profile.', 'creativewings-core'); ?></p>
             </div>
@@ -675,34 +827,35 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
 
                         $visibility = ( isset( $p->visibility ) && $p->visibility === 'private' ) ? 'private' : 'public';
 
-                        $del_url = wp_nonce_url( admin_url( 'admin-post.php?action=cw_delete_portfolio&pid=' . $p->_ID . '&redirect_to=' . urlencode($portfolio_url) ), 'cw_del_' . $p->_ID );
-                        $edit_json = htmlspecialchars( json_encode([
-                            '_ID'         => $p->_ID, 
-                            'title'       => $p->title, 
-                            'category'    => $p->category, 
-                            'description' => $p->description, 
-                            'img_url'     => $img_url, 
-                            'gallery'     => $g_urls,
+                        $del_url = wp_nonce_url( admin_url( 'admin-post.php?action=cw_delete_portfolio&pid=' . (int) $p->_ID . '&redirect_to=' . rawurlencode( $portfolio_url ) ), 'cw_del_' . (int) $p->_ID );
+                        $edit_payload = [
+                            '_ID'         => (int) $p->_ID,
+                            'title'       => (string) $p->title,
+                            'category'    => (string) $p->category,
+                            'description' => wp_kses_post( (string) $p->description ),
+                            'img_url'     => esc_url_raw( (string) $img_url ),
+                            'gallery'     => array_values( array_map( 'esc_url_raw', $g_urls ) ),
                             'visibility'  => $visibility,
-                        ]), ENT_QUOTES, 'UTF-8' );
+                        ];
+                        $edit_json = wp_json_encode( $edit_payload, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT );
                     ?>
-                    <div class="cw-project-card-v2 cw-pf-vis-<?php echo esc_attr( $visibility ); ?>" onclick="viewPortfolio(<?php echo $edit_json; ?>)">
+                    <div class="cw-project-card-v2 cw-pf-vis-<?php echo esc_attr( $visibility ); ?>" role="button" tabindex="0" data-cw-pf-view="<?php echo esc_attr( $edit_json ); ?>">
                         <div class="cw-project-image-wrap">
-                            <img src="<?php echo esc_url( $img_url ); ?>" alt="<?php echo esc_attr($p->title); ?>" loading="lazy" decoding="async" />
+                            <img src="<?php echo esc_url( $img_url ); ?>" alt="<?php echo esc_attr( $p->title ); ?>" loading="lazy" decoding="async" width="640" height="480" />
                             <?php if ( $visibility === 'private' ): ?>
                                 <span class="cw-pf-private-badge" title="<?php esc_attr_e( 'Only you can see this project', 'creativewings-core' ); ?>">
-                                    <i class="fas fa-lock"></i> <?php esc_html_e( 'Private', 'creativewings-core' ); ?>
+                                    <i class="fas fa-lock" aria-hidden="true"></i> <?php esc_html_e( 'Private', 'creativewings-core' ); ?>
                                 </span>
                             <?php endif; ?>
                             <div class="cw-project-card-overlay">
-                                <button class="cw-overlay-btn" onclick="event.stopPropagation(); editProject(<?php echo $edit_json; ?>)"><i class="fas fa-edit"></i></button>
-                                <a href="<?php echo $del_url; ?>" class="cw-overlay-btn" onclick="event.stopPropagation(); return confirm('Delete?')"><i class="fas fa-trash-alt"></i></a>
+                                <button type="button" class="cw-overlay-btn cw-icon-btn" data-cw-pf-edit="<?php echo esc_attr( $edit_json ); ?>" aria-label="<?php esc_attr_e( 'Edit project', 'creativewings-core' ); ?>"><i class="fas fa-edit" aria-hidden="true"></i></button>
+                                <a href="<?php echo esc_url( $del_url ); ?>" class="cw-overlay-btn cw-icon-btn" data-cw-pf-delete aria-label="<?php esc_attr_e( 'Delete project', 'creativewings-core' ); ?>" onclick="event.stopPropagation(); return confirm(<?php echo wp_json_encode( __( 'Delete this project?', 'creativewings-core' ) ); ?>);"><i class="fas fa-trash-alt" aria-hidden="true"></i></a>
                             </div>
                         </div>
                         <div class="cw-project-card-info">
-                            <div class="category"><?php echo esc_html($p->category); ?></div>
+                            <div class="category"><?php echo esc_html( $p->category ); ?></div>
                             <h3 class="title"><?php echo esc_html( $p->title ); ?></h3>
-                            <div class="text-xs text-gray-500">Added on: <?php echo get_date_from_gmt($p->cct_created, 'Y-m-d'); ?></div>
+                            <div class="cw-pf-card-meta"><?php echo esc_html( sprintf( __( 'Added %s', 'creativewings-core' ), get_date_from_gmt( $p->cct_created, 'Y-m-d' ) ) ); ?></div>
                         </div>
                     </div>
                     <?php endforeach; ?>
@@ -716,36 +869,49 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
         </div>
         
         <!-- ADD/EDIT MODAL -->
-        <div id="cw-pf-modal" class="cw-modal" style="display:none;">
+        <div id="cw-pf-modal" class="cw-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="cw-pf-modal-title">
             <div class="cw-modal-box large">
-                <div class="cw-modal-header"><h3><?php _e('Add New Project', 'creativewings-core'); ?></h3><span class="cw-close-modal" onclick="closeModal()">&times;</span></div>
-                <form action="<?php echo admin_url('admin-post.php'); ?>" method="POST" enctype="multipart/form-data" class="cw-modal-form-wrapper">
+                <div class="cw-modal-header">
+                    <h3 id="cw-pf-modal-title"><?php esc_html_e( 'Add New Project', 'creativewings-core' ); ?></h3>
+                    <button type="button" class="cw-close-modal cw-icon-btn" data-cw-pf-close aria-label="<?php esc_attr_e( 'Close', 'creativewings-core' ); ?>">&times;</button>
+                </div>
+                <form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="POST" enctype="multipart/form-data" class="cw-modal-form-wrapper">
                     <input type="hidden" name="action" value="cw_save_portfolio">
-                    <?php wp_nonce_field('cw_portfolio_nonce'); ?>
+                    <?php wp_nonce_field( 'cw_portfolio_nonce' ); ?>
                     <input type="hidden" name="pf_id" id="pf_id" value="">
-                    
+
                     <div class="cw-modal-body">
                         <div class="cw-modal-upload-box" id="cw-pf-cover-box">
-                             <img class="cw-pf-cover-preview" id="cw-pf-cover-preview" alt="" />
-                             <div class="cw-pf-cover-placeholder">
-                                 <i class="fas fa-cloud-upload-alt"></i>
-                                 <p class="text-sm font-medium">Drag and drop or click to upload cover image</p>
-                             </div>
-                             <button type="button" class="cw-pf-cover-remove" id="cw-pf-cover-remove" aria-label="Remove cover image">&times;</button>
-                             <input type="file" name="pf_image" id="pf_image" accept="image/*" class="cw-file-input-ghost">
+                            <img class="cw-pf-cover-preview" id="cw-pf-cover-preview" alt="" />
+                            <div class="cw-pf-cover-placeholder">
+                                <i class="fas fa-cloud-upload-alt" aria-hidden="true"></i>
+                                <p class="text-sm font-medium"><?php esc_html_e( 'Drop a cover image or click to upload', 'creativewings-core' ); ?></p>
+                            </div>
+                            <button type="button" class="cw-pf-cover-remove" id="cw-pf-cover-remove" aria-label="<?php esc_attr_e( 'Remove cover image', 'creativewings-core' ); ?>">&times;</button>
+                            <input type="file" name="pf_image" id="pf_image" accept="image/*" class="cw-file-input-ghost">
                         </div>
-                        <input type="text" name="pf_title" id="pf_title" required class="cw-modal-input" placeholder="Project Title">
 
-                        <select name="pf_category" id="pf_category" required class="cw-modal-input">
-                            <option value="">— Select Category —</option>
-                            <?php foreach ( $cw_pf_categories as $cw_pf_cat ): ?>
-                                <option value="<?php echo esc_attr( $cw_pf_cat ); ?>"><?php echo esc_html( $cw_pf_cat ); ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <div class="cw-pf-field">
+                            <label class="cw-pf-field-label" for="pf_title"><?php esc_html_e( 'Title', 'creativewings-core' ); ?></label>
+                            <input type="text" name="pf_title" id="pf_title" required maxlength="140" autocomplete="off" class="cw-modal-input" placeholder="<?php esc_attr_e( 'Project title', 'creativewings-core' ); ?>">
+                        </div>
+
+                        <div class="cw-pf-field">
+                            <label class="cw-pf-field-label" for="pf_category"><?php esc_html_e( 'Category', 'creativewings-core' ); ?></label>
+                            <select name="pf_category" id="pf_category" required class="cw-modal-input">
+                                <option value=""><?php esc_html_e( 'Select category', 'creativewings-core' ); ?></option>
+                                <?php foreach ( $cw_pf_categories as $cw_pf_cat ) : ?>
+                                    <option value="<?php echo esc_attr( $cw_pf_cat ); ?>"><?php echo esc_html( $cw_pf_cat ); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
                         <div class="cw-pf-cat-other-wrap" id="pf_category_other_wrap" style="display:none;">
-                            <input type="text" name="pf_category_other" id="pf_category_other" class="cw-modal-input" placeholder="<?php esc_attr_e('Enter your category', 'creativewings-core'); ?>">
+                            <label class="cw-pf-field-label" for="pf_category_other"><?php esc_html_e( 'Custom category', 'creativewings-core' ); ?></label>
+                            <input type="text" name="pf_category_other" id="pf_category_other" class="cw-modal-input" placeholder="<?php esc_attr_e( 'Enter your category', 'creativewings-core' ); ?>">
                         </div>
 
+                        <div class="cw-pf-field cw-pf-field--desc">
+                            <label class="cw-pf-field-label" for="pf_desc_editor"><?php esc_html_e( 'Description', 'creativewings-core' ); ?></label>
                         <div class="cw-wysiwyg-wrap">
                             <div class="cw-wysiwyg-toolbar" role="toolbar" aria-label="<?php esc_attr_e('Formatting', 'creativewings-core'); ?>">
                                 <button type="button" class="cw-wys-btn" data-cmd="bold" title="<?php esc_attr_e('Bold', 'creativewings-core'); ?>"><b>B</b></button>
@@ -758,15 +924,17 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                                 <button type="button" class="cw-wys-btn" data-cmd="createLink" title="<?php esc_attr_e('Insert link', 'creativewings-core'); ?>"><i class="fas fa-link"></i></button>
                                 <button type="button" class="cw-wys-btn" data-cmd="unlink" title="<?php esc_attr_e('Remove link', 'creativewings-core'); ?>"><i class="fas fa-unlink"></i></button>
                             </div>
-                            <div id="pf_desc_editor" class="cw-wysiwyg-area" contenteditable="true" data-placeholder="<?php esc_attr_e('Brief description of this project…', 'creativewings-core'); ?>"></div>
+                            <div id="pf_desc_editor" class="cw-wysiwyg-area" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="<?php esc_attr_e('Brief description of this project…', 'creativewings-core'); ?>"></div>
                             <textarea name="pf_desc" id="pf_desc_hidden" class="cw-wys-hidden-input" hidden></textarea>
+                        </div>
                         </div>
 
                         <div class="cw-modal-gallery-field">
+                            <span class="cw-pf-field-label"><?php esc_html_e( 'Gallery', 'creativewings-core' ); ?></span>
                             <div class="cw-modal-gallery-box">
                                 <i class="fas fa-images"></i>
                                 <span>Add gallery images <small>(optional, multiple)</small></span>
-                                <input type="file" name="pf_gallery[]" id="pf_gallery_input" multiple accept="image/*" class="cw-file-input-ghost">
+                                <input type="file" name="pf_gallery[]" id="pf_gallery_input" multiple accept="image/*" data-max-files="8" class="cw-file-input-ghost">
                             </div>
                             <div class="cw-pf-gallery-preview-grid" id="cw-pf-gallery-preview-grid"></div>
                         </div>
@@ -803,7 +971,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
         <!-- VIEW MODAL (Behance-style) -->
         <div id="cw-view-modal" class="cw-modal" style="display:none;">
             <div class="cw-pf-view-inner">
-                <button class="cw-pf-view-close" onclick="closeModal()" aria-label="Close">&times;</button>
+                <button type="button" class="cw-pf-view-close cw-icon-btn" data-cw-pf-close aria-label="<?php esc_attr_e( 'Close', 'creativewings-core' ); ?>">&times;</button>
                 <div class="cw-pf-view-hero">
                     <img id="cw-pf-view-hero-img" src="" alt="">
                 </div>
@@ -822,24 +990,66 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
         </div>
 
         <script>
+        (function(){
             const CW_PF_CATEGORIES = <?php echo wp_json_encode( $cw_pf_categories ); ?>;
+            const I18N = {
+                create: <?php echo wp_json_encode( __( 'Create Project', 'creativewings-core' ) ); ?>,
+                save: <?php echo wp_json_encode( __( 'Save Changes', 'creativewings-core' ) ); ?>,
+                addTitle: <?php echo wp_json_encode( __( 'Add New Project', 'creativewings-core' ) ); ?>,
+                editTitle: <?php echo wp_json_encode( __( 'Edit Project', 'creativewings-core' ) ); ?>,
+                enterUrl: <?php echo wp_json_encode( __( 'Enter URL', 'creativewings-core' ) ); ?>,
+                removeImg: <?php echo wp_json_encode( __( 'Remove image', 'creativewings-core' ) ); ?>
+            };
+            let coverObjectUrl = null;
+            const galleryObjectUrls = [];
+
+            function cwPfRevokeCoverUrl(){
+                if (coverObjectUrl) { try { URL.revokeObjectURL(coverObjectUrl); } catch(e){} coverObjectUrl = null; }
+            }
+            function cwPfRevokeGalleryUrls(){
+                while (galleryObjectUrls.length) {
+                    const u = galleryObjectUrls.pop();
+                    try { URL.revokeObjectURL(u); } catch(e){}
+                }
+            }
+            function cwPfSafeHttpUrl(url){
+                if (!url || typeof url !== 'string') return '';
+                try {
+                    const u = new URL(url, window.location.origin);
+                    if (u.protocol === 'http:' || u.protocol === 'https:') return u.href;
+                } catch(e){}
+                return '';
+            }
+            function cwPfParsePayload(raw){
+                if (!raw) return null;
+                try { return JSON.parse(raw); } catch(e){ return null; }
+            }
+            function cwPfShowModal(el){
+                if (!el) return;
+                el.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+                const focusable = el.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+                if (focusable) { try { focusable.focus({ preventScroll: true }); } catch(e){ focusable.focus(); } }
+            }
 
             function cwPfResetCoverPreview(){
                 const preview = document.getElementById('cw-pf-cover-preview');
                 const box     = document.getElementById('cw-pf-cover-box');
                 const fileEl  = document.getElementById('pf_image');
-                if (preview) { preview.src = ''; preview.removeAttribute('src'); }
-                if (box)     { box.classList.remove('has-preview'); }
-                if (fileEl)  { fileEl.value = ''; }
+                cwPfRevokeCoverUrl();
+                if (preview) { preview.removeAttribute('src'); preview.src = ''; }
+                if (box) box.classList.remove('has-preview');
+                if (fileEl) fileEl.value = '';
             }
             function cwPfSetCoverPreview(url){
                 const preview = document.getElementById('cw-pf-cover-preview');
                 const box     = document.getElementById('cw-pf-cover-box');
                 if (!preview || !box) return;
                 if (url) { preview.src = url; box.classList.add('has-preview'); }
-                else     { cwPfResetCoverPreview(); }
+                else { cwPfResetCoverPreview(); }
             }
             function cwPfClearGalleryPreviews(){
+                cwPfRevokeGalleryUrls();
                 const grid = document.getElementById('cw-pf-gallery-preview-grid');
                 if (grid) grid.innerHTML = '';
                 const fileEl = document.getElementById('pf_gallery_input');
@@ -849,17 +1059,31 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                 const grid   = document.getElementById('cw-pf-gallery-preview-grid');
                 const fileEl = document.getElementById('pf_gallery_input');
                 if (!grid || !fileEl) return;
+                cwPfRevokeGalleryUrls();
                 grid.innerHTML = '';
-                if (!fileEl.files || fileEl.files.length === 0) return;
-                Array.from(fileEl.files).forEach((file, idx) => {
+                if (!fileEl.files || !fileEl.files.length) return;
+                const max = parseInt(fileEl.getAttribute('data-max-files') || '8', 10) || 8;
+                let files = Array.from(fileEl.files).slice(0, max);
+                if (fileEl.files.length > max) {
+                    const dt = new DataTransfer();
+                    files.forEach(f => dt.items.add(f));
+                    fileEl.files = dt.files;
+                    files = Array.from(fileEl.files);
+                }
+                files.forEach((file, idx) => {
+                    if (!file.type || file.type.indexOf('image/') !== 0) return;
                     const item = document.createElement('div');
                     item.className = 'cw-pf-gallery-preview-item';
                     const img = document.createElement('img');
                     img.alt = file.name || '';
+                    img.loading = 'lazy';
+                    const obj = URL.createObjectURL(file);
+                    galleryObjectUrls.push(obj);
+                    img.src = obj;
                     const removeBtn = document.createElement('button');
                     removeBtn.type = 'button';
-                    removeBtn.className = 'cw-pf-gallery-preview-remove';
-                    removeBtn.setAttribute('aria-label', 'Remove image');
+                    removeBtn.className = 'cw-pf-gallery-preview-remove cw-icon-btn';
+                    removeBtn.setAttribute('aria-label', I18N.removeImg);
                     removeBtn.innerHTML = '&times;';
                     removeBtn.addEventListener('click', function(){
                         const dt = new DataTransfer();
@@ -867,9 +1091,6 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                         fileEl.files = dt.files;
                         cwPfRenderGalleryPreviews();
                     });
-                    const reader = new FileReader();
-                    reader.onload = e => { img.src = e.target.result; };
-                    reader.readAsDataURL(file);
                     item.appendChild(img);
                     item.appendChild(removeBtn);
                     grid.appendChild(item);
@@ -877,32 +1098,29 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
             }
 
             function cwPfApplyCategory(cat){
-                const sel      = document.getElementById('pf_category');
+                const sel = document.getElementById('pf_category');
                 const otherInp = document.getElementById('pf_category_other');
-                const otherWrap= document.getElementById('pf_category_other_wrap');
+                const otherWrap = document.getElementById('pf_category_other_wrap');
                 if (!sel) return;
                 cat = cat || '';
                 if (cat && CW_PF_CATEGORIES.indexOf(cat) !== -1 && cat !== 'Others') {
                     sel.value = cat;
-                    if (otherInp) otherInp.value = '';
+                    if (otherInp) { otherInp.value = ''; otherInp.required = false; }
                     if (otherWrap) otherWrap.style.display = 'none';
-                    if (otherInp) otherInp.required = false;
                 } else if (cat) {
                     sel.value = 'Others';
-                    if (otherInp)  otherInp.value = cat;
+                    if (otherInp) { otherInp.value = cat; otherInp.required = true; }
                     if (otherWrap) otherWrap.style.display = '';
-                    if (otherInp)  otherInp.required = true;
                 } else {
                     sel.value = '';
-                    if (otherInp)  otherInp.value = '';
+                    if (otherInp) { otherInp.value = ''; otherInp.required = false; }
                     if (otherWrap) otherWrap.style.display = 'none';
-                    if (otherInp)  otherInp.required = false;
                 }
             }
             function cwPfOnCategoryChange(){
-                const sel      = document.getElementById('pf_category');
+                const sel = document.getElementById('pf_category');
                 const otherInp = document.getElementById('pf_category_other');
-                const otherWrap= document.getElementById('pf_category_other_wrap');
+                const otherWrap = document.getElementById('pf_category_other_wrap');
                 if (!sel || !otherWrap) return;
                 if (sel.value === 'Others') {
                     otherWrap.style.display = '';
@@ -912,104 +1130,148 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                     if (otherInp) { otherInp.required = false; otherInp.value = ''; }
                 }
             }
-
             function cwPfSetDescription(html){
                 const area = document.getElementById('pf_desc_editor');
                 if (area) area.innerHTML = html || '';
             }
             function cwPfSyncDescription(){
-                const area   = document.getElementById('pf_desc_editor');
+                const area = document.getElementById('pf_desc_editor');
                 const hidden = document.getElementById('pf_desc_hidden');
-                if (area && hidden) {
-                    let html = area.innerHTML.trim();
-                    // Treat an empty editor (only <br> or whitespace) as truly empty.
-                    if (html === '<br>' || html === '<div><br></div>' || html === '<p><br></p>') html = '';
-                    hidden.value = html;
-                }
+                if (!area || !hidden) return;
+                let html = area.innerHTML.trim();
+                if (html === '<br>' || html === '<div><br></div>' || html === '<p><br></p>') html = '';
+                hidden.value = html;
             }
-
             function cwPfSetVisibility(value){
                 const v = (value === 'private') ? 'private' : 'public';
-                const radios = document.querySelectorAll('input[name="pf_visibility"]');
-                radios.forEach(r => { r.checked = (r.value === v); });
+                document.querySelectorAll('input[name="pf_visibility"]').forEach(function(r){ r.checked = (r.value === v); });
             }
-            function openPortfolioModal(){
-                document.getElementById('cw-pf-modal').style.display='flex';
-                document.body.style.overflow = 'hidden';
-                document.getElementById('pf_id').value='';
-                document.getElementById('pf_title').value='';
+
+            window.openPortfolioModal = function(){
+                const modal = document.getElementById('cw-pf-modal');
+                document.getElementById('pf_id').value = '';
+                document.getElementById('pf_title').value = '';
                 cwPfApplyCategory('');
                 cwPfSetDescription('');
                 cwPfResetCoverPreview();
                 cwPfClearGalleryPreviews();
                 cwPfSetVisibility('public');
                 const submit = document.getElementById('cw-pf-submit-btn');
-                if (submit) submit.textContent = <?php echo wp_json_encode( __( 'Create Project', 'creativewings-core' ) ); ?>;
-                const header = document.querySelector('#cw-pf-modal .cw-modal-header h3');
-                if (header) header.textContent = <?php echo wp_json_encode( __( 'Add New Project', 'creativewings-core' ) ); ?>;
-            }
-            function closeModal(){
-                document.getElementById('cw-pf-modal').style.display='none';
-                document.getElementById('cw-view-modal').style.display='none';
+                if (submit) submit.textContent = I18N.create;
+                const header = document.getElementById('cw-pf-modal-title');
+                if (header) header.textContent = I18N.addTitle;
+                cwPfShowModal(modal);
+            };
+            window.closeModal = function(){
+                const pf = document.getElementById('cw-pf-modal');
+                const view = document.getElementById('cw-view-modal');
+                if (pf) pf.style.display = 'none';
+                if (view) view.style.display = 'none';
                 document.body.style.overflow = '';
-            }
-            function editProject(d){
-                document.getElementById('cw-pf-modal').style.display='flex';
-                document.body.style.overflow = 'hidden';
+                cwPfRevokeCoverUrl();
+                cwPfRevokeGalleryUrls();
+            };
+            window.editProject = function(d){
+                if (!d) return;
+                const modal = document.getElementById('cw-pf-modal');
                 document.getElementById('pf_id').value = d._ID || '';
                 document.getElementById('pf_title').value = d.title || '';
                 cwPfApplyCategory(d.category || '');
                 cwPfSetDescription(d.description || '');
-                cwPfSetCoverPreview(d.img_url || '');
+                cwPfRevokeCoverUrl();
+                cwPfSetCoverPreview(cwPfSafeHttpUrl(d.img_url) || '');
                 cwPfClearGalleryPreviews();
                 cwPfSetVisibility(d.visibility || 'public');
                 const submit = document.getElementById('cw-pf-submit-btn');
-                if (submit) submit.textContent = <?php echo wp_json_encode( __( 'Save Changes', 'creativewings-core' ) ); ?>;
-                const header = document.querySelector('#cw-pf-modal .cw-modal-header h3');
-                if (header) header.textContent = <?php echo wp_json_encode( __( 'Edit Project', 'creativewings-core' ) ); ?>;
-            }
-            function viewPortfolio(d){
+                if (submit) submit.textContent = I18N.save;
+                const header = document.getElementById('cw-pf-modal-title');
+                if (header) header.textContent = I18N.editTitle;
+                cwPfShowModal(modal);
+            };
+            window.viewPortfolio = function(d){
+                if (!d) return;
                 document.getElementById('cw-pf-view-title').textContent = d.title || '';
-                document.getElementById('cw-pf-view-cat').textContent   = d.category || '';
-                document.getElementById('cw-pf-view-desc').innerHTML    = d.description || '';
+                document.getElementById('cw-pf-view-cat').textContent = d.category || '';
+                document.getElementById('cw-pf-view-desc').innerHTML = d.description || '';
 
                 const heroImg = document.getElementById('cw-pf-view-hero-img');
-                const heroWrap = heroImg.parentElement;
-                if(d.img_url){ heroImg.src = d.img_url; heroImg.alt = d.title; heroWrap.style.display=''; }
-                else { heroWrap.style.display='none'; }
+                const heroWrap = heroImg && heroImg.parentElement;
+                const safeImg = cwPfSafeHttpUrl(d.img_url);
+                if (safeImg && heroImg && heroWrap) {
+                    heroImg.src = safeImg;
+                    heroImg.alt = d.title || '';
+                    heroWrap.style.display = '';
+                } else if (heroWrap) {
+                    heroWrap.style.display = 'none';
+                }
 
                 const galSection = document.getElementById('cw-pf-gallery-section');
-                const galGrid    = document.getElementById('cw-pf-gallery-grid');
-                galGrid.innerHTML = '';
-                if(d.gallery && d.gallery.length > 0){
-                    d.gallery.forEach(url => {
+                const galGrid = document.getElementById('cw-pf-gallery-grid');
+                if (galGrid) galGrid.innerHTML = '';
+                if (d.gallery && d.gallery.length && galGrid && galSection) {
+                    d.gallery.forEach(function(url){
+                        const safe = cwPfSafeHttpUrl(url);
+                        if (!safe) return;
                         const img = document.createElement('img');
-                        img.src = url; img.loading='lazy'; img.alt = d.title;
-                        img.onclick = () => window.open(url, '_blank');
+                        img.src = safe;
+                        img.loading = 'lazy';
+                        img.decoding = 'async';
+                        img.alt = d.title || '';
+                        img.addEventListener('click', function(){ window.open(safe, '_blank', 'noopener,noreferrer'); });
                         galGrid.appendChild(img);
                     });
                     galSection.style.display = '';
-                } else {
+                } else if (galSection) {
                     galSection.style.display = 'none';
                 }
+                cwPfShowModal(document.getElementById('cw-view-modal'));
+            };
 
-                document.getElementById('cw-view-modal').style.display = 'flex';
-                document.body.style.overflow = 'hidden';
-            }
+            document.addEventListener('DOMContentLoaded', function(){
+                const addBtn = document.getElementById('cw-pf-open-add');
+                if (addBtn) addBtn.addEventListener('click', function(){ openPortfolioModal(); });
 
-            jQuery(document).ready(function($){
-                $(window).on('click', function(e){
-                    if($(e.target).is('#cw-view-modal, #cw-pf-modal')){ closeModal(); }
+                document.querySelectorAll('[data-cw-pf-close]').forEach(function(btn){
+                    btn.addEventListener('click', closeModal);
+                });
+                const viewClose = document.querySelector('#cw-view-modal .cw-pf-view-close');
+                if (viewClose) viewClose.addEventListener('click', closeModal);
+
+                document.addEventListener('click', function(e){
+                    const editBtn = e.target.closest('[data-cw-pf-edit]');
+                    if (editBtn) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        editProject(cwPfParsePayload(editBtn.getAttribute('data-cw-pf-edit')));
+                        return;
+                    }
+                    const card = e.target.closest('[data-cw-pf-view]');
+                    if (card && !e.target.closest('.cw-project-card-overlay')) {
+                        viewPortfolio(cwPfParsePayload(card.getAttribute('data-cw-pf-view')));
+                    }
+                });
+                document.addEventListener('keydown', function(e){
+                    if (e.key === 'Enter' && e.target.closest('[data-cw-pf-view]') && e.target === e.target.closest('[data-cw-pf-view]')) {
+                        e.preventDefault();
+                        viewPortfolio(cwPfParsePayload(e.target.getAttribute('data-cw-pf-view')));
+                    }
+                    if (e.key !== 'Escape') return;
+                    const pf = document.getElementById('cw-pf-modal');
+                    const view = document.getElementById('cw-view-modal');
+                    if ((pf && pf.style.display === 'flex') || (view && view.style.display === 'flex')) closeModal();
                 });
 
-                // Cover image: live preview when a new file is selected.
+                window.addEventListener('click', function(e){
+                    if (e.target && (e.target.id === 'cw-view-modal' || e.target.id === 'cw-pf-modal')) closeModal();
+                });
+
                 const coverInput = document.getElementById('pf_image');
                 if (coverInput) {
                     coverInput.addEventListener('change', function(){
-                        if (this.files && this.files[0]) {
-                            const reader = new FileReader();
-                            reader.onload = e => cwPfSetCoverPreview(e.target.result);
-                            reader.readAsDataURL(this.files[0]);
+                        if (this.files && this.files[0] && this.files[0].type.indexOf('image/') === 0) {
+                            cwPfRevokeCoverUrl();
+                            coverObjectUrl = URL.createObjectURL(this.files[0]);
+                            cwPfSetCoverPreview(coverObjectUrl);
                         } else {
                             cwPfResetCoverPreview();
                         }
@@ -1023,29 +1285,21 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                         cwPfResetCoverPreview();
                     });
                 }
-
-                // Gallery: render previews + per-thumb remove.
                 const galInput = document.getElementById('pf_gallery_input');
-                if (galInput) {
-                    galInput.addEventListener('change', cwPfRenderGalleryPreviews);
-                }
-
-                // Category "Others" toggle.
+                if (galInput) galInput.addEventListener('change', cwPfRenderGalleryPreviews);
                 const catSel = document.getElementById('pf_category');
-                if (catSel) {
-                    catSel.addEventListener('change', cwPfOnCategoryChange);
-                }
+                if (catSel) catSel.addEventListener('change', cwPfOnCategoryChange);
 
-                // WYSIWYG toolbar.
                 document.querySelectorAll('#cw-pf-modal .cw-wys-btn').forEach(function(btn){
                     btn.addEventListener('mousedown', function(ev){ ev.preventDefault(); });
                     btn.addEventListener('click', function(){
-                        const cmd  = this.getAttribute('data-cmd');
+                        const cmd = this.getAttribute('data-cmd');
                         const area = document.getElementById('pf_desc_editor');
                         if (area) area.focus();
                         if (cmd === 'createLink') {
-                            const url = window.prompt(<?php echo wp_json_encode( __( 'Enter URL', 'creativewings-core' ) ); ?>, 'https://');
-                            if (url) document.execCommand('createLink', false, url);
+                            const raw = window.prompt(I18N.enterUrl, 'https://');
+                            const safe = cwPfSafeHttpUrl(raw);
+                            if (safe) document.execCommand('createLink', false, safe);
                         } else {
                             document.execCommand(cmd, false, null);
                         }
@@ -1055,18 +1309,14 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                 const descArea = document.getElementById('pf_desc_editor');
                 if (descArea) {
                     descArea.addEventListener('input', cwPfSyncDescription);
-                    descArea.addEventListener('blur',  cwPfSyncDescription);
+                    descArea.addEventListener('blur', cwPfSyncDescription);
                 }
-
-                // Sync description into hidden textarea right before submit.
                 const pfForm = document.querySelector('#cw-pf-modal form.cw-modal-form-wrapper');
                 if (pfForm) {
-                    pfForm.addEventListener('submit', function(){
-                        cwPfSyncDescription();
-                    });
+                    pfForm.addEventListener('submit', function(){ cwPfSyncDescription(); });
                 }
             });
-            document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ closeModal(); } });
+        })();
         </script>
         <?php
     }
@@ -1083,19 +1333,37 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
         $per_page    = 9;
 
         $filters = [
-            'all'          => 'All',
-            'competitions' => 'Competitions',
-            'activities'   => 'Activities',
+            'all'          => __( 'All', 'creativewings-core' ),
+            'competitions' => __( 'Competitions', 'creativewings-core' ),
+            'activities'   => __( 'Activities', 'creativewings-core' ),
         ];
 
+        // Resolve parent category + children by term ID so child cats
+        // (drawing, art-activities, run, …) are included reliably.
         $tax_query = [];
-        if ( $current_filter !== 'all' ) {
-            $tax_query[] = [
-                'taxonomy'         => 'product_cat',
-                'field'            => 'slug',
-                'terms'            => $current_filter,
-                'include_children' => true,
-            ];
+        if ( 'competitions' === $current_filter || 'activities' === $current_filter ) {
+            $parent = get_term_by( 'slug', $current_filter, 'product_cat' );
+            if ( $parent && ! is_wp_error( $parent ) ) {
+                $term_ids = array_merge(
+                    [ (int) $parent->term_id ],
+                    array_map( 'intval', get_term_children( (int) $parent->term_id, 'product_cat' ) )
+                );
+                $tax_query[] = [
+                    'taxonomy'         => 'product_cat',
+                    'field'            => 'term_id',
+                    'terms'            => $term_ids,
+                    'include_children' => false,
+                    'operator'         => 'IN',
+                ];
+            } else {
+                // Fallback: slug match with children (legacy installs).
+                $tax_query[] = [
+                    'taxonomy'         => 'product_cat',
+                    'field'            => 'slug',
+                    'terms'            => $current_filter,
+                    'include_children' => true,
+                ];
+            }
         }
 
         $query = new WP_Query([
@@ -1108,7 +1376,7 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
             'order'          => 'DESC',
         ]);
         $opportunities = $query->posts;
-        $total_pages   = $query->max_num_pages;
+        $total_pages   = (int) $query->max_num_pages;
 
         // Prime caches once so the per-card foreach below doesn't N+1 on meta/terms.
         if ( ! empty( $opportunities ) ) {
@@ -1189,15 +1457,22 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
                     $wc_product  = wc_get_product( $product_id );
                     if ( ! $wc_product ) continue;
 
-                    $terms    = get_the_terms( $product_id, 'product_cat' );
-                    $type_tag = 'Campaign';
+                    // Walk parent category tree (Drawing → Competitions, Run → Activities, …).
+                    $main_cat = class_exists( 'CW_Shop' )
+                        ? CW_Shop::main_category( $product_id )
+                        : [ 'key' => '', 'label' => '' ];
+                    $type_key = (string) ( $main_cat['key'] ?? '' );
+                    $type_tag = (string) ( $main_cat['label'] ?? '' );
+                    if ( '' === $type_tag ) {
+                        $type_tag = __( 'Campaign', 'creativewings-core' );
+                    }
                     $type_css = '';
-                    if ( $terms && ! is_wp_error( $terms ) ) {
-                        foreach ( $terms as $term ) {
-                            if ( in_array( $term->slug, ['competitions', 'competition'] ) ) { $type_tag = 'Competition'; $type_css = 'competition'; break; }
-                            if ( in_array( $term->slug, ['activities', 'activity'] ) )     { $type_tag = 'Activity';    $type_css = 'activity';    break; }
-                            if ( in_array( $term->slug, ['talk-seminar', 'seminar'] ) )    { $type_tag = 'Seminar';     $type_css = 'seminar';     break; }
-                        }
+                    if ( 'competition' === $type_key || false !== strpos( $type_key, 'competition' ) ) {
+                        $type_css = 'competition';
+                    } elseif ( 'activity' === $type_key || false !== strpos( $type_key, 'activit' ) ) {
+                        $type_css = 'activity';
+                    } elseif ( 'seminar' === $type_key || false !== strpos( $type_key, 'talk' ) || false !== strpos( $type_key, 'seminar' ) ) {
+                        $type_css = 'seminar';
                     }
 
                     $organizer_id   = (int) get_post_meta( $product_id, 'organizer_id', true );
@@ -1670,99 +1945,238 @@ $meta = []; foreach( $fields as $f ) $meta[$f] = get_user_meta( $uid, $f, true )
        6. HANDLERS
        ========================================================================== */
     public function handle_save_profile() {
-        if(!is_user_logged_in()||!wp_verify_nonce($_POST['_wpnonce'],'cw_profile_nonce'))wp_die('Security Error');$uid=get_current_user_id();
-        $fields=['creator_display_name', 'creator_tagline', 'creator_bio', 'awards_won', 'creator_skills', 'website_url', 'linkeden_url', 'instagram_url', 'twitter_url', 'Facebook_url', 'behave_url', 'creator_address', 'birthdate'];
-        foreach($fields as $f){if(isset($_POST[$f])){ $val=($f==='creator_bio')?wp_kses_post($_POST['creator_bio']):trim(sanitize_text_field(wp_unslash($_POST[$f]))); update_user_meta($uid,$f,$val); }}
-        $this->handle_image_upload($uid, 'creator_profile_image'); 
-        $this->handle_image_upload($uid, 'creator_header_image');
+        if ( ! is_user_logged_in() || ! wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'cw_profile_nonce' ) ) {
+            wp_die( 'Security Error' );
+        }
+        $uid = get_current_user_id();
+        $fields = [
+            'creator_display_name',
+            'creator_tagline',
+            'creator_bio',
+            'awards_won',
+            'creator_skills',
+            'website_url',
+            'linkeden_url',
+            'instagram_url',
+            'twitter_url',
+            'Facebook_url',
+            'behave_url',
+            'creator_address',
+            'birthdate',
+        ];
+        foreach ( $fields as $f ) {
+            if ( ! isset( $_POST[ $f ] ) ) {
+                continue;
+            }
+            $val = ( 'creator_bio' === $f )
+                ? wp_kses_post( wp_unslash( $_POST['creator_bio'] ) )
+                : trim( sanitize_text_field( wp_unslash( $_POST[ $f ] ) ) );
+            update_user_meta( $uid, $f, $val );
+        }
+        $this->handle_image_upload( $uid, 'creator_profile_image' );
+        $this->handle_image_upload( $uid, 'creator_header_image' );
+
+        if ( class_exists( 'CW_Points_Rewards' ) ) {
+            CW_Points_Rewards::save_user_shipping_address(
+                $uid,
+                [
+                    'first_name' => sanitize_text_field( wp_unslash( $_POST['addr_first_name'] ?? '' ) ),
+                    'last_name'  => sanitize_text_field( wp_unslash( $_POST['addr_last_name'] ?? '' ) ),
+                    'phone'      => sanitize_text_field( wp_unslash( $_POST['addr_phone'] ?? '' ) ),
+                    'address_1'  => sanitize_text_field( wp_unslash( $_POST['addr_address_1'] ?? '' ) ),
+                    'address_2'  => sanitize_text_field( wp_unslash( $_POST['addr_address_2'] ?? '' ) ),
+                    'city'       => sanitize_text_field( wp_unslash( $_POST['addr_city'] ?? '' ) ),
+                    'state'      => sanitize_text_field( wp_unslash( $_POST['addr_state'] ?? '' ) ),
+                    'postcode'   => sanitize_text_field( wp_unslash( $_POST['addr_postcode'] ?? '' ) ),
+                    'country'    => strtoupper( sanitize_text_field( wp_unslash( $_POST['addr_country'] ?? 'MY' ) ) ),
+                ]
+            );
+        }
+
         $my_account_url = get_permalink( wc_get_page_id( 'myaccount' ) );
-        $target_url = add_query_arg(['tab' => 'profile', 'updated' => '1'], $my_account_url);
-        
-        wp_safe_redirect($target_url);
+        $target_url     = add_query_arg( [ 'tab' => 'profile', 'updated' => '1' ], $my_account_url );
+        wp_safe_redirect( $target_url );
         exit;
     }
     
-    public function handle_save_portfolio() {
-        if(!is_user_logged_in()||!wp_verify_nonce($_POST['_wpnonce'],'cw_portfolio_nonce'))wp_die('Error');
-        global $wpdb;
-        $uid=get_current_user_id();
-        $table=$this->get_table_name();
+    /**
+     * Upload a single image field, tag/optimize, return attachment payload or null.
+     *
+     * @param string $file_key $_FILES key.
+     * @param string $opt_ctx  CW_Image_Optimizer context.
+     * @return array|null
+     */
+    private function cw_pf_upload_image( $file_key, $opt_ctx = 'portfolio' ) {
+        if ( empty( $_FILES[ $file_key ]['name'] ) ) {
+            return null;
+        }
+        $check = wp_check_filetype_and_ext(
+            $_FILES[ $file_key ]['tmp_name'],
+            $_FILES[ $file_key ]['name']
+        );
+        if ( empty( $check['type'] ) || strpos( (string) $check['type'], 'image/' ) !== 0 ) {
+            return null;
+        }
+        $aid = media_handle_upload( $file_key, 0 );
+        if ( is_wp_error( $aid ) ) {
+            return null;
+        }
+        if ( class_exists( 'CW' ) ) {
+            CW::tag_plugin_media( (int) $aid );
+        }
+        if ( class_exists( 'CW_Image_Optimizer' ) ) {
+            CW_Image_Optimizer::optimize_attachment( (int) $aid, $opt_ctx );
+        }
+        $url = wp_get_attachment_url( (int) $aid );
+        return $url ? [ 'id' => (int) $aid, 'url' => $url ] : null;
+    }
 
-        // Category: when "Others" is selected, store the user-supplied text instead.
-        $pf_category_raw = sanitize_text_field( $_POST['pf_category'] ?? '' );
+    public function handle_save_portfolio() {
+        if ( ! is_user_logged_in() ) {
+            wp_die( esc_html__( 'Unauthorized', 'creativewings-core' ), 403 );
+        }
+        if ( empty( $_POST['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ), 'cw_portfolio_nonce' ) ) {
+            wp_die( esc_html__( 'Security check failed', 'creativewings-core' ), 403 );
+        }
+
+        $uid = get_current_user_id();
+        $user = get_userdata( $uid );
+        $allowed = $user && (
+            user_can( $user, 'manage_options' )
+            || ( class_exists( 'CW_Roles' ) && CW_Roles::is_creator_user( $user ) )
+            || in_array( 'creator_role', (array) $user->roles, true )
+        );
+        if ( ! $allowed ) {
+            wp_die( esc_html__( 'Unauthorized', 'creativewings-core' ), 403 );
+        }
+
+        global $wpdb;
+        $table = $this->get_table_name();
+
+        $title = sanitize_text_field( wp_unslash( $_POST['pf_title'] ?? '' ) );
+        $title = function_exists( 'mb_substr' ) ? mb_substr( $title, 0, 140 ) : substr( $title, 0, 140 );
+        if ( $title === '' ) {
+            wp_die( esc_html__( 'Title is required', 'creativewings-core' ), 400 );
+        }
+
+        $pf_category_raw = sanitize_text_field( wp_unslash( $_POST['pf_category'] ?? '' ) );
         if ( $pf_category_raw === 'Others' ) {
-            $pf_category_other = sanitize_text_field( $_POST['pf_category_other'] ?? '' );
-            if ( $pf_category_other !== '' ) {
-                $pf_category_raw = $pf_category_other;
+            $other = sanitize_text_field( wp_unslash( $_POST['pf_category_other'] ?? '' ) );
+            if ( $other !== '' ) {
+                $pf_category_raw = function_exists( 'mb_substr' ) ? mb_substr( $other, 0, 80 ) : substr( $other, 0, 80 );
             }
         }
+        $pf_category_raw = function_exists( 'mb_substr' ) ? mb_substr( $pf_category_raw, 0, 80 ) : substr( $pf_category_raw, 0, 80 );
 
         $pf_visibility_raw = isset( $_POST['pf_visibility'] ) ? sanitize_text_field( wp_unslash( $_POST['pf_visibility'] ) ) : 'public';
         $pf_visibility     = ( $pf_visibility_raw === 'private' ) ? 'private' : 'public';
 
-        $data=['title'=>sanitize_text_field($_POST['pf_title']),'category'=>$pf_category_raw,'description'=>wp_kses_post($_POST['pf_desc']),'visibility'=>$pf_visibility,'cct_modified'=>current_time('mysql'),'cct_author_id'=>$uid,'created_by'=>$uid,'cct_status'=>'publish'];
-        
-        require_once(ABSPATH.'wp-admin/includes/image.php');
-        require_once(ABSPATH.'wp-admin/includes/file.php');
-        require_once(ABSPATH.'wp-admin/includes/media.php');
-        
-        if(!empty($_FILES['pf_image']['name'])){
-            $aid=media_handle_upload('pf_image',0);
-            if(!is_wp_error($aid)){
-                if ( class_exists( 'CW' ) ) {
-                    CW::tag_plugin_media( (int) $aid );
+        $desc = isset( $_POST['pf_desc'] ) ? wp_kses_post( wp_unslash( $_POST['pf_desc'] ) ) : '';
+
+        $data = [
+            'title'         => $title,
+            'category'      => $pf_category_raw,
+            'description'   => $desc,
+            'visibility'    => $pf_visibility,
+            'cct_modified'  => current_time( 'mysql' ),
+            'cct_author_id' => $uid,
+            'created_by'    => $uid,
+            'cct_status'    => 'publish',
+        ];
+
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+
+        $cover = $this->cw_pf_upload_image( 'pf_image', 'portfolio' );
+        if ( $cover ) {
+            $data['image'] = serialize( $cover );
+        }
+
+        $max_gallery = 8;
+        if ( ! empty( $_FILES['pf_gallery']['name'][0] ) ) {
+            $gals  = [];
+            $files = $_FILES['pf_gallery'];
+            $count = 0;
+            foreach ( $files['name'] as $k => $v ) {
+                if ( empty( $files['name'][ $k ] ) ) {
+                    continue;
                 }
-                if ( class_exists( 'CW_Image_Optimizer' ) ) {
-                    CW_Image_Optimizer::optimize_attachment( $aid, 'portfolio' );
+                if ( $count >= $max_gallery ) {
+                    break;
                 }
-                $data['image']=serialize(['id'=>$aid,'url'=>wp_get_attachment_url($aid)]);
+                $_FILES['s_file'] = [
+                    'name'     => $files['name'][ $k ],
+                    'type'     => $files['type'][ $k ],
+                    'tmp_name' => $files['tmp_name'][ $k ],
+                    'error'    => $files['error'][ $k ],
+                    'size'     => $files['size'][ $k ],
+                ];
+                $item = $this->cw_pf_upload_image( 's_file', 'gallery' );
+                if ( $item ) {
+                    $gals[] = $item;
+                    $count++;
+                }
+            }
+            if ( $gals ) {
+                $data['gallery'] = serialize( $gals );
             }
         }
-        if(!empty($_FILES['pf_gallery']['name'][0])){
-            $gals=[]; $files=$_FILES['pf_gallery'];
-            foreach($files['name'] as $k=>$v){
-                if($files['name'][$k]){
-                    $_FILES['s_file']=['name'=>$files['name'][$k],'type'=>$files['type'][$k],'tmp_name'=>$files['tmp_name'][$k],'error'=>$files['error'][$k],'size'=>$files['size'][$k]];
-                    $gid=media_handle_upload('s_file',0);
-                    if(!is_wp_error($gid)){
-                        if ( class_exists( 'CW' ) ) {
-                            CW::tag_plugin_media( (int) $gid );
-                        }
-                        if ( class_exists( 'CW_Image_Optimizer' ) ) {
-                            CW_Image_Optimizer::optimize_attachment( $gid, 'gallery' );
-                        }
-                        $gals[]=['id'=>$gid,'url'=>wp_get_attachment_url($gid)];
-                    }
-                }
+
+        $pf_id = isset( $_POST['pf_id'] ) ? absint( $_POST['pf_id'] ) : 0;
+        if ( $pf_id > 0 ) {
+            $owner = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT created_by FROM {$table} WHERE _ID = %d LIMIT 1",
+                $pf_id
+            ) );
+            if ( $owner !== $uid && ! user_can( $user, 'manage_options' ) ) {
+                wp_die( esc_html__( 'Unauthorized', 'creativewings-core' ), 403 );
             }
-            if($gals)$data['gallery']=serialize($gals);
+            $wpdb->update( $table, $data, [ '_ID' => $pf_id ] );
+        } else {
+            $data['cct_created'] = current_time( 'mysql' );
+            $wpdb->insert( $table, $data );
         }
-        
-        if(!empty($_POST['pf_id'])){
-            $wpdb->update($table,$data,['_ID'=>intval($_POST['pf_id'])]);
-        }else{
-            $data['cct_created']=current_time('mysql');
-            $wpdb->insert($table,$data);
-        }
-        
+
         $my_account_url = get_permalink( wc_get_page_id( 'myaccount' ) );
-        wp_safe_redirect( add_query_arg('tab', 'portfolio', $my_account_url) );
+        wp_safe_redirect( add_query_arg( 'tab', 'portfolio', $my_account_url ) );
         exit;
     }
-    
-    public function handle_delete_portfolio(){
-        if(!is_user_logged_in()||!isset($_GET['_wpnonce'])||!wp_verify_nonce($_GET['_wpnonce'],'cw_del_'.intval($_GET['pid'])))wp_die('Security Error');
+
+    public function handle_delete_portfolio() {
+        if ( ! is_user_logged_in() ) {
+            wp_die( esc_html__( 'Unauthorized', 'creativewings-core' ), 403 );
+        }
+        $pid = isset( $_GET['pid'] ) ? absint( $_GET['pid'] ) : 0;
+        if ( ! $pid || empty( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'cw_del_' . $pid ) ) {
+            wp_die( esc_html__( 'Security Error', 'creativewings-core' ), 403 );
+        }
+
+        $uid  = get_current_user_id();
+        $user = get_userdata( $uid );
         global $wpdb;
-        $table=$this->get_table_name();
-        $pid = intval($_GET['pid']);
-        $redirect_to = sanitize_url($_GET['redirect_to'] ?? '');
-        $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE _ID=%d", $pid));
-        
-        if ($redirect_to) {
-            wp_safe_redirect($redirect_to);
+        $table = $this->get_table_name();
+
+        $owner = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT created_by FROM {$table} WHERE _ID = %d LIMIT 1",
+            $pid
+        ) );
+        if ( ! $owner || ( $owner !== $uid && ! user_can( $user, 'manage_options' ) ) ) {
+            wp_die( esc_html__( 'Unauthorized', 'creativewings-core' ), 403 );
+        }
+
+        if ( user_can( $user, 'manage_options' ) ) {
+            $wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE _ID = %d", $pid ) );
+        } else {
+            $wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE _ID = %d AND created_by = %d", $pid, $uid ) );
+        }
+
+        $redirect_to = isset( $_GET['redirect_to'] ) ? esc_url_raw( wp_unslash( $_GET['redirect_to'] ) ) : '';
+        if ( $redirect_to ) {
+            wp_safe_redirect( $redirect_to );
         } else {
             $my_account_url = get_permalink( wc_get_page_id( 'myaccount' ) );
-            wp_safe_redirect( add_query_arg('tab', 'portfolio', $my_account_url) );
+            wp_safe_redirect( add_query_arg( 'tab', 'portfolio', $my_account_url ) );
         }
         exit;
     }

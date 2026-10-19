@@ -94,6 +94,18 @@ class CW_Points_Rewards_Admin {
                             <input type="number" name="sort_order" value="<?php echo esc_attr( (string) ( $edit['sort_order'] ?? 0 ) ); ?>">
                         </p>
                         <p>
+                            <label><strong><?php esc_html_e( 'Fulfillment', 'creativewings-core' ); ?></strong></label><br>
+                            <?php $ful = CW_Points_Rewards::normalize_fulfillment( $edit['fulfillment'] ?? 'physical' ); ?>
+                            <label style="margin-right:12px;">
+                                <input type="radio" name="fulfillment" value="physical" <?php checked( $ful, 'physical' ); ?>>
+                                <?php esc_html_e( 'Physical (needs shipping address)', 'creativewings-core' ); ?>
+                            </label>
+                            <label>
+                                <input type="radio" name="fulfillment" value="digital" <?php checked( $ful, 'digital' ); ?>>
+                                <?php esc_html_e( 'Digital (no shipping)', 'creativewings-core' ); ?>
+                            </label>
+                        </p>
+                        <p>
                             <label>
                                 <input type="checkbox" name="is_active" value="1" <?php checked( empty( $edit ) || ! empty( $edit['is_active'] ) ); ?>>
                                 <?php esc_html_e( 'Active (visible in My Account)', 'creativewings-core' ); ?>
@@ -128,6 +140,7 @@ class CW_Points_Rewards_Admin {
                             <tr>
                                 <th><?php esc_html_e( 'Title', 'creativewings-core' ); ?></th>
                                 <th><?php esc_html_e( 'Cost', 'creativewings-core' ); ?></th>
+                                <th><?php esc_html_e( 'Type', 'creativewings-core' ); ?></th>
                                 <th><?php esc_html_e( 'Stock', 'creativewings-core' ); ?></th>
                                 <th><?php esc_html_e( 'Active', 'creativewings-core' ); ?></th>
                                 <th></th>
@@ -135,12 +148,13 @@ class CW_Points_Rewards_Admin {
                         </thead>
                         <tbody>
                             <?php if ( empty( $rewards ) ) : ?>
-                                <tr><td colspan="5"><?php esc_html_e( 'No rewards yet.', 'creativewings-core' ); ?></td></tr>
+                                <tr><td colspan="6"><?php esc_html_e( 'No rewards yet.', 'creativewings-core' ); ?></td></tr>
                             <?php else : ?>
                                 <?php foreach ( $rewards as $r ) : ?>
                                     <tr>
                                         <td><?php echo esc_html( $r['title'] ); ?></td>
                                         <td><?php echo number_format( (int) $r['points_cost'] ); ?></td>
+                                        <td><?php echo 'digital' === CW_Points_Rewards::normalize_fulfillment( $r['fulfillment'] ?? '' ) ? esc_html__( 'Digital', 'creativewings-core' ) : esc_html__( 'Physical', 'creativewings-core' ); ?></td>
                                         <td><?php echo $r['stock'] === null ? '∞' : (int) $r['stock']; ?></td>
                                         <td><?php echo ! empty( $r['is_active'] ) ? '✓' : '—'; ?></td>
                                         <td>
@@ -232,6 +246,7 @@ class CW_Points_Rewards_Admin {
             'stock'       => ( $stock_raw === '' ? null : $stock_raw ),
             'sort_order'  => $_POST['sort_order'] ?? 0,
             'is_active'   => ! empty( $_POST['is_active'] ),
+            'fulfillment' => $_POST['fulfillment'] ?? 'physical',
             'image_id'    => $_POST['image_id'] ?? 0,
         ];
         $result = CW_Points_Rewards::save_reward( $data, $id );

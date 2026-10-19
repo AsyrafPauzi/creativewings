@@ -14,6 +14,7 @@ class CW_Dashboard_Contestant {
         // 2. Form Handlers
         add_action( 'admin_post_cw_save_contestant_settings', [ $this, 'handle_save_settings' ] ); // Corrected handler name
         add_action( 'admin_post_cw_redeem_points_reward', [ $this, 'handle_redeem_reward' ] );
+        add_action( 'wp_ajax_cw_points_merch_redeem', [ $this, 'ajax_merch_redeem' ] );
     }
 
     /* ==========================================================================
@@ -93,30 +94,58 @@ class CW_Dashboard_Contestant {
         foreach ( $recent_entries as $e ) {
             $pid     = get_post_meta( $e->ID, 'product_id', true );
             $product = wc_get_product( $pid );
-            if ( ! $product ) continue;
+            if ( ! $product ) {
+                continue;
+            }
 
-            $is_activity = has_term( 'activities', 'product_cat', $pid );
+            $is_activity = $this->entry_is_activity( $e, (int) $pid );
             $score       = get_post_meta( $e->ID, 'judge_score', true );
+            $comment     = get_post_meta( $e->ID, 'judge_comment', true );
+            $details     = get_post_meta( $e->ID, 'participant_details', true );
             $is_judged   = class_exists( 'CW_Shop' ) ? CW_Shop::campaign_is_judged( $pid ) : true;
 
             if ( ! $is_judged ) {
-                $status_label = 'Completed';
+                $status_label = __( 'Completed', 'creativewings-core' );
                 $status_class = 'cw-status-completed';
             } elseif ( $score !== '' && $score > 0 ) {
-                $status_label = 'Completed';
+                $status_label = __( 'Completed', 'creativewings-core' );
                 $status_class = 'cw-status-completed';
             } else {
-                $status_label = 'Pending';
+                $status_label = __( 'Pending', 'creativewings-core' );
                 $status_class = 'cw-status-pending';
             }
+
+            $date = get_the_date( 'Y-m-d', $e->ID );
+            $cert_enabled  = get_post_meta( $pid, 'cw_enable_certificate', true ) === 'yes';
+            $cert_available = $cert_enabled && class_exists( 'CW_Certificate' ) && CW_Certificate::entry_cert_available( $e->ID );
+            $cert_eta_raw   = get_post_meta( $pid, 'submission_deadline', true );
+            $cert_eta_label = $cert_eta_raw ? date_i18n( get_option( 'date_format', 'd M Y' ), strtotime( $cert_eta_raw ) ) : '';
+            $cert_url       = ( $cert_enabled && class_exists( 'CW_Certificate' ) ) ? CW_Certificate::download_url( $e->ID ) : '';
+
+            $modal_data = [
+                'id'             => $e->ID,
+                'title'          => $product->get_name(),
+                'date'           => $date,
+                'status'         => $status_label,
+                'show_score'     => (bool) $is_judged,
+                'score'          => $score !== '' ? $score : 'N/A',
+                'comment'        => $comment ?: __( 'No feedback yet.', 'creativewings-core' ),
+                'details'        => $this->filter_entry_details_for_modal( $details ),
+                'cert_enabled'   => $cert_enabled,
+                'cert_available' => $cert_available,
+                'cert_eta'       => $cert_eta_label,
+                'cert_url'       => $cert_url,
+            ];
 
             $renderable_recent[] = [
                 'entry'        => $e,
                 'pid'          => $pid,
                 'product'      => $product,
-                'type_tag'     => $is_activity ? 'Activity' : 'Competition',
+                'type_tag'     => $is_activity ? __( 'Activity', 'creativewings-core' ) : __( 'Competition', 'creativewings-core' ),
                 'status_label' => $status_label,
                 'status_class' => $status_class,
+                'date'         => $date,
+                'modal_json'   => wp_json_encode( $modal_data ),
             ];
         }
 
@@ -141,6 +170,9 @@ class CW_Dashboard_Contestant {
                     <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-btn-primary cw-ov-btn-primary">
                         <?php esc_html_e( 'Explore Opportunities', 'creativewings-core' ); ?>
                     </a>
+                    <button type="button" class="cw-ov-btn-secondary" id="cw-ov-link-code-open" aria-haspopup="dialog" aria-controls="cw-ov-link-modal">
+                        <?php esc_html_e( 'Link a code', 'creativewings-core' ); ?>
+                    </button>
                     <a href="<?php echo esc_url( $activities_url ); ?>" class="cw-ov-btn-secondary">
                         <?php esc_html_e( 'View activities', 'creativewings-core' ); ?>
                     </a>
@@ -181,10 +213,10 @@ class CW_Dashboard_Contestant {
                     <?php endif; ?>
                 </div>
                 <div class="cw-ov-upgrade" role="listitem">
-                    <p class="cw-ov-upgrade-title"><?php esc_html_e( 'Looking to host?', 'creativewings-core' ); ?></p>
-                    <p class="cw-ov-upgrade-copy"><?php esc_html_e( 'Upgrade to Creator to unlock full features.', 'creativewings-core' ); ?></p>
+                    <p class="cw-ov-upgrade-title"><?php esc_html_e( 'Want to showcase your portfolio?', 'creativewings-core' ); ?></p>
+                    <p class="cw-ov-upgrade-copy"><?php esc_html_e( 'Upgrade to Creator to build your public profile and share your work.', 'creativewings-core' ); ?></p>
                     <a href="<?php echo esc_url( $upgrade_url ); ?>" class="cw-btn-primary cw-ov-upgrade-btn">
-                        <?php esc_html_e( 'Upgrade now', 'creativewings-core' ); ?>
+                        <?php esc_html_e( 'Become a Creator', 'creativewings-core' ); ?>
                     </a>
                 </div>
             </div>
@@ -195,24 +227,46 @@ class CW_Dashboard_Contestant {
                 </h3>
 
                 <?php if ( ! empty( $renderable_recent ) ) : ?>
-                    <ul class="cw-ov-recent-list">
-                        <?php foreach ( $renderable_recent as $row ) : ?>
-                            <li class="cw-ov-recent-item">
-                                <div class="cw-ov-recent-main">
-                                    <span class="cw-ov-recent-name"><?php echo esc_html( $row['product']->get_name() ); ?></span>
-                                    <span class="cw-ov-recent-type"><?php echo esc_html( $row['type_tag'] ); ?></span>
-                                </div>
-                                <div class="cw-ov-recent-meta">
-                                    <time datetime="<?php echo esc_attr( get_the_date( 'c', $row['entry']->ID ) ); ?>">
-                                        <?php echo esc_html( get_the_date( 'Y-m-d', $row['entry']->ID ) ); ?>
-                                    </time>
-                                    <span class="cw-status-badge <?php echo esc_attr( $row['status_class'] ); ?>">
-                                        <?php echo esc_html( $row['status_label'] ); ?>
-                                    </span>
-                                </div>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
+                    <div class="cw-ov-recent-table-wrap">
+                        <table class="cw-ov-recent-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col"><?php esc_html_e( 'Submission', 'creativewings-core' ); ?></th>
+                                    <th scope="col"><?php esc_html_e( 'Type', 'creativewings-core' ); ?></th>
+                                    <th scope="col"><?php esc_html_e( 'Date', 'creativewings-core' ); ?></th>
+                                    <th scope="col"><?php esc_html_e( 'Status', 'creativewings-core' ); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ( $renderable_recent as $row ) : ?>
+                                    <tr
+                                        class="cw-ov-recent-row"
+                                        tabindex="0"
+                                        role="button"
+                                        aria-label="<?php echo esc_attr( sprintf( __( 'View submission: %s', 'creativewings-core' ), $row['product']->get_name() ) ); ?>"
+                                        data-cw-modal="<?php echo esc_attr( $row['modal_json'] ); ?>"
+                                    >
+                                        <td class="cw-ov-recent-col-name" data-label="<?php esc_attr_e( 'Submission', 'creativewings-core' ); ?>">
+                                            <?php echo esc_html( $row['product']->get_name() ); ?>
+                                        </td>
+                                        <td class="cw-ov-recent-col-type" data-label="<?php esc_attr_e( 'Type', 'creativewings-core' ); ?>">
+                                            <span class="cw-ov-type-pill"><?php echo esc_html( $row['type_tag'] ); ?></span>
+                                        </td>
+                                        <td class="cw-ov-recent-col-date" data-label="<?php esc_attr_e( 'Date', 'creativewings-core' ); ?>">
+                                            <time datetime="<?php echo esc_attr( get_the_date( 'c', $row['entry']->ID ) ); ?>">
+                                                <?php echo esc_html( $row['date'] ); ?>
+                                            </time>
+                                        </td>
+                                        <td class="cw-ov-recent-col-status" data-label="<?php esc_attr_e( 'Status', 'creativewings-core' ); ?>">
+                                            <span class="cw-status-badge <?php echo esc_attr( $row['status_class'] ); ?>">
+                                                <?php echo esc_html( $row['status_label'] ); ?>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 <?php else : ?>
                     <div class="cw-ov-empty">
                         <p class="cw-ov-empty-title"><?php esc_html_e( 'No activities yet', 'creativewings-core' ); ?></p>
@@ -225,6 +279,93 @@ class CW_Dashboard_Contestant {
             </section>
         </div>
         <?php
+        $this->render_overview_link_code_modal();
+        $this->render_activity_detail_modal();
+    }
+
+    /**
+     * Overview quick-enter modal for school submission codes.
+     */
+    private function render_overview_link_code_modal() {
+        ?>
+        <div id="cw-ov-link-modal" class="cw-ov-link-modal" role="dialog" aria-modal="true" aria-labelledby="cw-ov-link-modal-title" hidden>
+            <div class="cw-ov-link-modal-backdrop" data-cw-ov-link-close tabindex="-1"></div>
+            <div class="cw-ov-link-modal-panel">
+                <button type="button" class="cw-ov-link-modal-close" data-cw-ov-link-close aria-label="<?php esc_attr_e( 'Close', 'creativewings-core' ); ?>">&times;</button>
+                <h2 id="cw-ov-link-modal-title" class="cw-ov-link-modal-title"><?php esc_html_e( 'Link a submission code', 'creativewings-core' ); ?></h2>
+                <p class="cw-ov-link-modal-sub"><?php esc_html_e( 'Enter the code from your school. One code per campaign.', 'creativewings-core' ); ?></p>
+                <?php
+                if ( function_exists( 'cw_core' ) && cw_core()->claim_flow ) {
+                    cw_core()->claim_flow->render_quick_link_form( 'cw-ov-link-code-input' );
+                }
+                ?>
+            </div>
+        </div>
+        <script>
+        (function () {
+            var modal = document.getElementById('cw-ov-link-modal');
+            var openBtn = document.getElementById('cw-ov-link-code-open');
+            if (!modal || !openBtn) return;
+            var input = document.getElementById('cw-ov-link-code-input');
+            var lastFocus = null;
+
+            function openModal() {
+                lastFocus = document.activeElement;
+                modal.hidden = false;
+                modal.classList.add('is-open');
+                document.body.classList.add('cw-ov-link-modal-open');
+                if (input) {
+                    setTimeout(function () { input.focus(); }, 20);
+                }
+            }
+            function closeModal() {
+                modal.classList.remove('is-open');
+                modal.hidden = true;
+                document.body.classList.remove('cw-ov-link-modal-open');
+                if (lastFocus && lastFocus.focus) lastFocus.focus();
+            }
+            openBtn.addEventListener('click', openModal);
+            modal.querySelectorAll('[data-cw-ov-link-close]').forEach(function (el) {
+                el.addEventListener('click', closeModal);
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && modal.classList.contains('is-open')) {
+                    closeModal();
+                }
+            });
+        })();
+        </script>
+        <?php
+    }
+
+    /**
+     * Whether an entry belongs to an activity campaign (vs competition).
+     *
+     * @param WP_Post|int $entry Entry post or ID.
+     * @param int         $product_id Campaign product ID.
+     */
+    private function entry_is_activity( $entry, $product_id ) {
+        $post = is_object( $entry ) ? $entry : get_post( $entry );
+        if ( $post && 'cw_activity_entry' === $post->post_type ) {
+            return true;
+        }
+        $product_id = (int) $product_id;
+        if ( $product_id <= 0 ) {
+            return false;
+        }
+        if ( has_term( 'activities', 'product_cat', $product_id ) ) {
+            return true;
+        }
+        $slugs = wp_get_post_terms( $product_id, 'product_cat', [ 'fields' => 'slugs' ] );
+        if ( is_wp_error( $slugs ) || empty( $slugs ) ) {
+            return false;
+        }
+        foreach ( $slugs as $slug ) {
+            if ( false !== strpos( (string) $slug, 'activit' ) ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public function render_link_submission() {
@@ -245,31 +386,32 @@ class CW_Dashboard_Contestant {
         $explore_url = add_query_arg( 'tab', 'explore', $base_url );
         $paged       = isset( $_GET['cw_page'] ) ? max( 1, intval( $_GET['cw_page'] ) ) : 1;
         $per_page    = 9;
+        $scope       = sanitize_key( $_GET['scope'] ?? 'active' );
+        if ( ! in_array( $scope, [ 'active', 'past' ], true ) ) {
+            $scope = 'active';
+        }
 
-        $base_args = [
-            'post_type'      => ['cw_competition_entry', 'cw_activity_entry'],
+        // Load all of this user's entries, then split Active / Past before paging.
+        $all_q = new WP_Query([
+            'post_type'      => [ 'cw_competition_entry', 'cw_activity_entry' ],
             'meta_key'       => 'customer_id',
             'meta_value'     => $uid,
             'orderby'        => 'date',
             'order'          => 'DESC',
-            'posts_per_page' => $per_page,
-            'paged'          => $paged,
-            'no_found_rows'  => false,
-        ];
+            'posts_per_page' => -1,
+            'no_found_rows'  => true,
+        ]);
+        $all_entries = $all_q->posts;
 
-        $entries_q   = new WP_Query( $base_args );
-        $entries     = $entries_q->posts;
-        $total_items = (int) $entries_q->found_posts;
-        $total_pages = max( 1, (int) $entries_q->max_num_pages );
-
-        // Prime postmeta cache for displayed entries + referenced product IDs (avoids N+1).
-        if ( ! empty( $entries ) ) {
-            $entry_ids = array_map( static fn( $e ) => (int) $e->ID, $entries );
+        if ( ! empty( $all_entries ) ) {
+            $entry_ids = array_map( static fn( $e ) => (int) $e->ID, $all_entries );
             update_meta_cache( 'post', $entry_ids );
             $referenced_pids = [];
             foreach ( $entry_ids as $eid ) {
                 $rpid = (int) get_post_meta( $eid, 'product_id', true );
-                if ( $rpid ) $referenced_pids[ $rpid ] = true;
+                if ( $rpid ) {
+                    $referenced_pids[ $rpid ] = true;
+                }
             }
             $referenced_pids = array_keys( $referenced_pids );
             if ( ! empty( $referenced_pids ) ) {
@@ -277,19 +419,62 @@ class CW_Dashboard_Contestant {
                 update_object_term_cache( $referenced_pids, 'product' );
             }
         }
+
+        $active_entries = [];
+        $past_entries   = [];
+        foreach ( $all_entries as $e ) {
+            $pid = (int) get_post_meta( $e->ID, 'product_id', true );
+            if ( ! $pid || ! wc_get_product( $pid ) ) {
+                continue;
+            }
+            $score     = get_post_meta( $e->ID, 'judge_score', true );
+            $is_judged = class_exists( 'CW_Shop' ) ? CW_Shop::campaign_is_judged( $pid ) : true;
+            if ( $this->entry_is_past( $pid, $is_judged, $score ) ) {
+                $past_entries[] = $e;
+            } else {
+                $active_entries[] = $e;
+            }
+        }
+
+        $scoped       = ( 'past' === $scope ) ? $past_entries : $active_entries;
+        $total_items  = count( $scoped );
+        $total_pages  = max( 1, (int) ceil( $total_items / $per_page ) );
+        $paged        = min( $paged, $total_pages );
+        $entries      = array_slice( $scoped, ( $paged - 1 ) * $per_page, $per_page );
+        $scope_base   = add_query_arg( 'scope', $scope, $act_url );
+        $has_any      = ! empty( $all_entries );
         ?>
         <div class="cw-content-wrapper">
             <div class="cw-portfolio-header cw-activities-header">
-                <h2>My Activities</h2>
-                <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-btn-primary cw-browse-new-btn"><i class="fas fa-bolt"></i> Browse Campaigns</a>
+                <h2><?php esc_html_e( 'My Activities', 'creativewings-core' ); ?></h2>
+                <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-btn-primary cw-browse-new-btn"><i class="fas fa-bolt"></i> <?php esc_html_e( 'Browse Campaigns', 'creativewings-core' ); ?></a>
             </div>
 
-            <?php if ( $entries ): ?>
+            <?php if ( $has_any ) : ?>
+            <div class="cw-scope-pills" role="tablist" aria-label="<?php esc_attr_e( 'Activity time filter', 'creativewings-core' ); ?>">
+                <a href="<?php echo esc_url( add_query_arg( [ 'scope' => 'active', 'cw_page' => 1 ], $act_url ) ); ?>"
+                   class="cw-scope-pill <?php echo 'active' === $scope ? 'is-active' : ''; ?>"
+                   role="tab" aria-selected="<?php echo 'active' === $scope ? 'true' : 'false'; ?>">
+                    <?php esc_html_e( 'Active', 'creativewings-core' ); ?>
+                    <span class="cw-scope-count"><?php echo (int) count( $active_entries ); ?></span>
+                </a>
+                <a href="<?php echo esc_url( add_query_arg( [ 'scope' => 'past', 'cw_page' => 1 ], $act_url ) ); ?>"
+                   class="cw-scope-pill <?php echo 'past' === $scope ? 'is-active' : ''; ?>"
+                   role="tab" aria-selected="<?php echo 'past' === $scope ? 'true' : 'false'; ?>">
+                    <?php esc_html_e( 'Past', 'creativewings-core' ); ?>
+                    <span class="cw-scope-count"><?php echo (int) count( $past_entries ); ?></span>
+                </a>
+            </div>
+            <?php endif; ?>
+
+            <?php if ( $entries ) : ?>
             <div class="cw-activities-grid">
-                <?php foreach ( $entries as $e ):
+                <?php foreach ( $entries as $e ) :
                     $pid = get_post_meta( $e->ID, 'product_id', true );
                     $product = wc_get_product( $pid );
-                    if ( ! $product ) continue;
+                    if ( ! $product ) {
+                        continue;
+                    }
 
                     $title         = $product->get_name();
                     $img           = get_the_post_thumbnail_url( $pid, 'medium' ) ?: CW_URL . 'assets/img/placeholder.jpg';
@@ -298,8 +483,8 @@ class CW_Dashboard_Contestant {
                     $comment       = get_post_meta( $e->ID, 'judge_comment', true );
                     $entry_details = get_post_meta( $e->ID, 'participant_details', true );
                     $cert_enabled  = get_post_meta( $pid, 'cw_enable_certificate', true ) === 'yes';
-                    $is_activity   = has_term( 'activities', 'product_cat', $pid );
-                    $type_tag      = $is_activity ? 'Activity' : 'Competition';
+                    $is_activity   = $this->entry_is_activity( $e, (int) $pid );
+                    $type_tag      = $is_activity ? __( 'Activity', 'creativewings-core' ) : __( 'Competition', 'creativewings-core' );
                     $is_judged     = class_exists( 'CW_Shop' ) ? CW_Shop::campaign_is_judged( $pid ) : true;
 
                     if ( ! $is_judged ) {
@@ -315,19 +500,20 @@ class CW_Dashboard_Contestant {
                     $cert_eta_label = $cert_eta_raw ? date_i18n( get_option( 'date_format', 'd M Y' ), strtotime( $cert_eta_raw ) ) : '';
                     $cert_url       = ( $cert_enabled && class_exists( 'CW_Certificate' ) ) ? CW_Certificate::download_url( $e->ID ) : '';
 
-                    $modal_data = htmlspecialchars( json_encode([
+                    $modal_json = wp_json_encode( [
                         'id'             => $e->ID,
                         'title'          => $title,
                         'date'           => $date,
                         'status'         => $status_label,
+                        'show_score'     => (bool) $is_judged,
                         'score'          => $score ?: 'N/A',
                         'comment'        => $comment ?: 'No feedback yet.',
-                        'details'        => $entry_details ?: [],
+                        'details'        => $this->filter_entry_details_for_modal( $entry_details ),
                         'cert_enabled'   => $cert_enabled,
                         'cert_available' => $cert_available,
                         'cert_eta'       => $cert_eta_label,
                         'cert_url'       => $cert_url,
-                    ]), ENT_QUOTES, 'UTF-8' );
+                    ] );
                 ?>
                 <div class="cw-activity-card">
                     <div class="cw-activity-image-wrap">
@@ -341,16 +527,38 @@ class CW_Dashboard_Contestant {
                         </div>
                         <div class="cw-activity-footer">
                             <span class="cw-status-badge <?php echo esc_attr( $status_cls ); ?>"><?php echo esc_html( $status_label ); ?></span>
-                            <button class="cw-btn-details" onclick="openContestantModal('<?php echo $modal_data; ?>')">View Details</button>
+                            <button type="button" class="cw-btn-details cw-ov-btn-secondary" data-cw-modal="<?php echo esc_attr( $modal_json ); ?>"><?php esc_html_e( 'View Details', 'creativewings-core' ); ?></button>
                         </div>
                     </div>
                 </div>
                 <?php endforeach; ?>
             </div>
 
-            <?php $this->render_pagination( $paged, $total_pages, $act_url ); ?>
+            <?php $this->render_pagination( $paged, $total_pages, $scope_base ); ?>
 
-            <?php else: ?>
+            <?php elseif ( $has_any ) : ?>
+                <div class="cw-recent-empty">
+                    <h4 class="cw-recent-empty-title">
+                        <?php
+                        echo 'past' === $scope
+                            ? esc_html__( 'No past activities yet', 'creativewings-core' )
+                            : esc_html__( 'No active activities', 'creativewings-core' );
+                        ?>
+                    </h4>
+                    <p class="cw-recent-empty-desc">
+                        <?php
+                        echo 'past' === $scope
+                            ? esc_html__( 'Finished competitions and activities will show up here.', 'creativewings-core' )
+                            : esc_html__( 'Join something new, or check Past for settled entries.', 'creativewings-core' );
+                        ?>
+                    </p>
+                    <?php if ( 'active' === $scope ) : ?>
+                    <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-recent-empty-btn">
+                        <i class="fas fa-bolt"></i> <?php esc_html_e( 'Explore Opportunities', 'creativewings-core' ); ?>
+                    </a>
+                    <?php endif; ?>
+                </div>
+            <?php else : ?>
                 <div class="cw-recent-empty">
                     <div class="cw-recent-empty-icon"><i class="fas fa-rocket"></i></div>
                     <h4 class="cw-recent-empty-title"><?php esc_html_e( "You haven't joined any activities yet", 'creativewings-core' ); ?></h4>
@@ -363,10 +571,70 @@ class CW_Dashboard_Contestant {
         </div>
         <?php
         $this->render_activity_detail_modal();
+    }
+
+    /**
+     * Whether an entry belongs in the Past scope.
+     * Past = campaign deadline passed, or judged campaign already scored.
+     *
+     * @param int        $product_id Campaign product ID.
+     * @param bool       $is_judged  Whether campaign uses scoring.
+     * @param string|int $score      Judge score meta.
+     */
+    private function entry_is_past( $product_id, $is_judged, $score ) {
+        $deadline = (string) get_post_meta( (int) $product_id, 'submission_deadline', true );
+        if ( $deadline !== '' && strtotime( $deadline ) < current_time( 'timestamp' ) ) {
+            return true;
+        }
+        if ( $is_judged && $score !== '' && is_numeric( $score ) && (float) $score > 0 ) {
+            return true;
+        }
+        return false;
     }  
+    /**
+     * Drop Artwork / file rows that have no uploaded file URL.
+     *
+     * @param mixed $details participant_details meta.
+     * @return array
+     */
+    private function filter_entry_details_for_modal( $details ) {
+        if ( ! is_array( $details ) ) {
+            return [];
+        }
+        $out = [];
+        foreach ( $details as $item ) {
+            if ( ! is_array( $item ) || ! isset( $item['label'] ) ) {
+                continue;
+            }
+            $label = trim( (string) $item['label'] );
+            $value = isset( $item['value'] ) ? trim( (string) $item['value'] ) : '';
+            $is_file_row = (bool) preg_match( '/artwork|upload|file|media|image/i', $label );
+            if ( $is_file_row && ! $this->entry_detail_has_file( $value ) ) {
+                continue;
+            }
+            $out[] = $item;
+        }
+        return $out;
+    }
+
+    /**
+     * @param string $value Detail cell value.
+     */
+    private function entry_detail_has_file( $value ) {
+        $value = trim( (string) $value );
+        if ( '' === $value || '-' === $value || 0 === strcasecmp( $value, 'n/a' ) ) {
+            return false;
+        }
+        if ( filter_var( $value, FILTER_VALIDATE_URL ) ) {
+            return true;
+        }
+        return (bool) preg_match( '/\.(jpe?g|png|gif|webp|pdf|docx?)(\?|$)/i', $value );
+    }
+
     // Helper to format the entry details into a clean HTML table
     private function format_entry_details_html_contestant($details) {
         $html = '<table class="cw-detail-table">';
+        $details = $this->filter_entry_details_for_modal( $details );
         if (is_array($details)) {
             foreach($details as $item) {
                 if (isset($item['label']) && isset($item['value'])) {
@@ -386,99 +654,59 @@ class CW_Dashboard_Contestant {
     // Method to Render the Modal HTML and JS Logic
     private function render_activity_detail_modal() {
         ?>
-        <!-- MODAL CSS/STRUCTURE -->
-        <style>
-            #cw-activity-detail-modal { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; padding: 16px; }
-            .cw-detail-box { background: #fff; width: 100%; max-width: 620px; max-height: calc(100vh - 32px); overflow-y: auto; border-radius: 12px; position: relative; padding: 20px 22px; }
-            .cw-detail-header { padding-right: 32px; }
-            .cw-detail-header h3 { margin-top: 0; margin-bottom: 4px; font-size: 18px; font-weight: 700; line-height: 1.3; }
-            .cw-detail-header p { font-size: 12px; color: #555555; margin: 0 0 16px; }
-            .cw-detail-close { position: absolute; top: 12px; right: 14px; font-size: 18px; cursor: pointer; color: #94a3b8; line-height: 1; }
+        <div id="cw-activity-detail-modal" class="cw-modal cw-adm" hidden>
+            <div class="cw-adm-backdrop" data-cw-adm-close tabindex="-1"></div>
+            <div class="cw-detail-box cw-adm-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+                <button type="button" class="cw-adm-close" data-cw-adm-close aria-label="<?php esc_attr_e( 'Close', 'creativewings-core' ); ?>">&times;</button>
 
-            /* Status/Score Cards — compact */
-            .cw-status-score-grid { display: flex; gap: 10px; margin-bottom: 16px; }
-            .cw-status-card { flex: 1; padding: 10px 12px; border-radius: 8px; min-width: 0; }
-            .cw-status-card.status { background: #E3EEF7; border: 1px solid #a7b7ff; }
-            .cw-status-card.score  { background: #fffbe6; border: 1px solid #fce88e; }
-            .cw-status-card strong { display: block; font-size: 10px; color: #555555; margin-bottom: 2px; letter-spacing: 0.4px; text-transform: uppercase; font-weight: 700; }
-            .cw-status-card .value { font-size: 15px; font-weight: 700; line-height: 1.2; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-            .cw-status-card .value i { font-size: 14px; }
+                <header class="cw-adm-header">
+                    <p class="cw-adm-date" id="modal-date"></p>
+                    <h3 class="cw-adm-title" id="modal-title"></h3>
+                </header>
 
-            /* Details Table */
-            #modal-details-table { margin-bottom: 16px; }
-            .cw-detail-table { width: 100%; border-collapse: collapse; }
-            .cw-detail-table tr { border-bottom: 1px solid #f1f5f9; }
-            .cw-detail-table td { padding: 7px 8px; font-size: 13px; vertical-align: top; }
-            .cw-detail-table td:first-child { font-weight: 600; width: 38%; color: #475569; }
-
-            /* Submission Details heading */
-            .cw-submission-heading { font-weight: 700; font-size: 14px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
-
-            /* Host Feedback */
-            .cw-host-feedback { background: #f8fafc; padding: 12px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
-            .cw-host-feedback h4 { font-weight: 700; margin: 0 0 6px; font-size: 13px; }
-
-            @media (max-width: 480px) {
-                .cw-detail-box { padding: 16px; }
-                .cw-status-score-grid { flex-direction: column; gap: 8px; }
-                .cw-status-card { padding: 10px 12px; }
-                .cw-status-card .value { font-size: 14px; }
-                .cw-detail-header h3 { font-size: 16px; }
-                .cw-detail-table td { padding: 7px 6px; font-size: 12px; }
-            }
-        </style>
-        
-        <div id="cw-activity-detail-modal" class="cw-modal">
-            <div class="cw-detail-box">
-                <span class="cw-detail-close" onclick="closeContestantModal()"><i class="fas fa-times"></i></span>
-                <div class="cw-detail-header">
-                    <h3 id="modal-title">Spring Photography Challenge</h3>
-                    <p id="modal-date">2023-10-15</p>
-                </div>
-
-                <div class="cw-status-score-grid">
-                    <div class="cw-status-card status">
-                        <strong>STATUS</strong>
-                        <div class="value"><span id="modal-status-text">Completed</span> <i class="fas fa-check-circle" style="color:var(--cw-success);"></i></div>
+                <div class="cw-adm-metrics">
+                    <div class="cw-adm-metric" id="modal-status-metric">
+                        <span class="cw-adm-metric-label"><?php esc_html_e( 'Status', 'creativewings-core' ); ?></span>
+                        <span class="cw-adm-metric-value" id="modal-status-text"></span>
                     </div>
-                    <div class="cw-status-card score">
-                        <strong>SCORE</strong>
-                        <div class="value"><span id="modal-score">92</span> / 100 <i class="fas fa-trophy" style="color:var(--cw-warning);"></i></div>
+                    <div class="cw-adm-metric" id="modal-score-metric">
+                        <span class="cw-adm-metric-label"><?php esc_html_e( 'Score', 'creativewings-core' ); ?></span>
+                        <span class="cw-adm-metric-value"><span id="modal-score"></span> / 100</span>
                     </div>
                 </div>
-                
-                <div id="modal-certificate-bar">
-                    <!-- Certificate bar injected here -->
-                </div>
 
-                <h4 class="cw-submission-heading"><i class="fas fa-file-invoice"></i>Submission Details</h4>
-                <div id="modal-details-table">
-                    <!-- Dynamic table content injected here -->
-                </div>
-                
-                <div id="modal-host-feedback">
-                    <!-- Host feedback injected here -->
-                </div>
+                <div id="modal-certificate-bar" class="cw-adm-cert"></div>
 
-                <div style="display:flex; justify-content:flex-end; margin-top:8px;">
-                    <button class="cw-btn-primary" style="padding:8px 18px; font-size:13px;" onclick="closeContestantModal()">Close</button>
-                </div>
+                <section class="cw-adm-section" aria-labelledby="cw-adm-details-heading">
+                    <h4 id="cw-adm-details-heading" class="cw-adm-section-title"><?php esc_html_e( 'Submission details', 'creativewings-core' ); ?></h4>
+                    <div id="modal-details-table"></div>
+                </section>
 
+                <div id="modal-host-feedback"></div>
+
+                <div class="cw-adm-footer">
+                    <button type="button" class="cw-btn-primary" data-cw-adm-close><?php esc_html_e( 'Close', 'creativewings-core' ); ?></button>
+                </div>
             </div>
         </div>
-        
-        <!-- JAVASCRIPT LOGIC -->
+
         <script>
         function formatDetailsTable(details) {
             let tableHtml = '<table class="cw-detail-table">';
             if (Array.isArray(details)) {
                 details.forEach(item => {
-                    let value = item.value;
-                    // Check for File/URL and replace with link
-                    if (value && value.match(/\.(jpg|jpeg|png|pdf|doc|docx)$/i)) {
-                        value = `<a href="${value}" target="_blank" style="color:var(--cw-primary); text-decoration:underline;">View File</a>`;
+                    const label = (item.label || '').toString();
+                    let value = item.value == null ? '' : String(item.value).trim();
+                    const isFileRow = /artwork|upload|file|media|image/i.test(label);
+                    const hasFile = value !== '' && value !== '-' && value.toLowerCase() !== 'n/a'
+                        && (/^https?:\/\//i.test(value) || /\.(jpe?g|png|gif|webp|pdf|docx?)(\?|$)/i.test(value));
+                    if (isFileRow && !hasFile) {
+                        return;
                     }
-                    tableHtml += `<tr><td>${item.label}</td><td>${value}</td></tr>`;
+                    if (value && /\.(jpe?g|png|gif|webp|pdf|docx?)(\?|$)/i.test(value)) {
+                        value = '<a href="' + value + '" target="_blank" rel="noopener">View file</a>';
+                    }
+                    tableHtml += '<tr><td>' + label + '</td><td>' + value + '</td></tr>';
                 });
             }
             tableHtml += '</table>';
@@ -487,84 +715,105 @@ class CW_Dashboard_Contestant {
 
         function openContestantModal(modalDataJson) {
             const data = JSON.parse(modalDataJson);
-            
-            // Populate Header
+            const $modal = jQuery('#cw-activity-detail-modal');
+
             jQuery('#modal-title').text(data.title);
             jQuery('#modal-date').text(data.date);
-            
-            // Populate Status/Score
-            const score = data.score === 'N/A' || data.score === '' ? 'N/A' : data.score;
+
+            const showScore = data.show_score === true || data.show_score === 1 || data.show_score === '1';
+            const score = (data.score === 'N/A' || data.score === '') ? 'N/A' : data.score;
             jQuery('#modal-status-text').text(data.status);
             jQuery('#modal-score').text(score);
-            
-            // Score card background (Completed/Pending)
-            const scoreCard = jQuery('.cw-status-card.score');
-            if(data.status === 'Completed') {
-                scoreCard.css({backgroundColor: '#fffbe6', borderColor: '#fce88e'}); // Light yellow for score
-            } else {
-                scoreCard.css({backgroundColor: '#f1f5f9', borderColor: '#e2e8f0'}); // Grey for pending
-            }
-            
-            // Certificate Bar Logic
-            const certBar = jQuery('#modal-certificate-bar');
 
+            const metrics = jQuery('.cw-adm-metrics');
+            const statusMetric = jQuery('#modal-status-metric');
+            const scoreMetric = jQuery('#modal-score-metric');
+            statusMetric.removeClass('is-complete is-pending');
+            scoreMetric.removeClass('is-complete is-pending');
+            if (showScore) {
+                scoreMetric.show();
+                metrics.removeClass('cw-adm-metrics--status-only');
+            } else {
+                scoreMetric.hide();
+                metrics.addClass('cw-adm-metrics--status-only');
+            }
+            if (data.status === 'Completed') {
+                statusMetric.addClass('is-complete');
+                scoreMetric.addClass('is-complete');
+            } else {
+                statusMetric.addClass('is-pending');
+                scoreMetric.addClass('is-pending');
+            }
+
+            const certBar = jQuery('#modal-certificate-bar');
             if (data.cert_enabled && data.cert_available && data.cert_url) {
-                certBar.html(`
-                    <div style="background:#e6f3ff; border:1px solid #b3d9ff; padding:12px 14px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
-                        <div style="min-width:0; flex:1 1 200px;">
-                            <strong style="font-size:13px;">Certificate Available</strong>
-                            <p style="font-size:12px; margin:2px 0 0; color:#475569;">Download your certificate of completion.</p>
-                        </div>
-                        <a href="${data.cert_url}" class="cw-btn-primary" style="padding:7px 14px; font-size:12px;" target="_blank" rel="noopener"><i class="fas fa-download"></i> Download</a>
-                    </div>
-                `);
+                certBar.html(
+                    '<div class="cw-adm-cert-card">' +
+                        '<div><strong>Certificate available</strong>' +
+                        '<p>Download your certificate of completion.</p></div>' +
+                        '<a href="' + data.cert_url + '" class="cw-btn-primary cw-adm-cert-btn" target="_blank" rel="noopener">Download</a>' +
+                    '</div>'
+                );
             } else if (data.cert_enabled && data.cert_eta) {
-                certBar.html(`
-                    <div style="background:#fff7ed; border:1px solid #fed7aa; padding:12px 14px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
-                        <div style="min-width:0; flex:1 1 200px;">
-                            <strong style="font-size:13px;">Certificate Coming Soon</strong>
-                            <p style="font-size:12px; margin:2px 0 0; color:#475569;">Available after the event ends on <strong>${data.cert_eta}</strong>.</p>
-                        </div>
-                        <button class="cw-btn-disabled" style="padding:7px 14px; font-size:12px;" disabled><i class="fas fa-clock"></i> Not yet available</button>
-                    </div>
-                `);
+                certBar.html(
+                    '<div class="cw-adm-cert-card is-soon">' +
+                        '<div><strong>Certificate coming soon</strong>' +
+                        '<p>Available after the event ends on <strong>' + data.cert_eta + '</strong>.</p></div>' +
+                        '<button type="button" class="cw-btn-disabled cw-adm-cert-btn" disabled>Not yet available</button>' +
+                    '</div>'
+                );
             } else {
                 certBar.empty();
             }
 
-
-            // Populate Submission Details Table
             jQuery('#modal-details-table').html(formatDetailsTable(data.details));
 
-            // Populate Host Feedback
             const feedbackContainer = jQuery('#modal-host-feedback');
             if (data.comment && data.comment !== 'No feedback yet.') {
-                feedbackContainer.html(`
-                    <div class="cw-host-feedback">
-                        <h4 style="font-weight:700;">FEEDBACK FROM HOST</h4>
-                        <p style="font-style:italic; margin:0;">"${data.comment}"</p>
-                    </div>
-                `);
+                feedbackContainer.html(
+                    '<div class="cw-adm-feedback">' +
+                        '<h4>Feedback from host</h4>' +
+                        '<p>' + jQuery('<div>').text(data.comment).html() + '</p>' +
+                    '</div>'
+                );
             } else {
                 feedbackContainer.empty();
             }
 
-            // Show Modal
-            jQuery('#cw-activity-detail-modal').css('display', 'flex').fadeIn(200);
+            $modal.prop('hidden', false).css('display', 'flex').hide().fadeIn(180);
+            document.body.classList.add('cw-adm-open');
         }
 
         function closeContestantModal() {
-            jQuery('#cw-activity-detail-modal').fadeOut(200);
+            const $modal = jQuery('#cw-activity-detail-modal');
+            $modal.fadeOut(160, function () {
+                $modal.prop('hidden', true).css('display', 'none');
+                document.body.classList.remove('cw-adm-open');
+            });
         }
-        
-        // --- NOTE: This is for the button to open the modal without relying on the onclick attribute ---
-        jQuery(document).ready(function($) {
-            // Re-bind the View Details button to open the modal
-            $(document).on('click', '.cw-btn-details', function() {
-                 const modalDataJson = $(this).attr('onclick').match(/openContestantModal\('(.*)'\)/);
-                 if (modalDataJson && modalDataJson[1]) {
-                     openContestantModal(modalDataJson[1]);
-                 }
+
+        jQuery(document).ready(function ($) {
+            function openFromEl(el) {
+                const raw = el && el.getAttribute('data-cw-modal');
+                if (!raw) return;
+                try { openContestantModal(raw); } catch (err) {}
+            }
+            $(document).on('click', '[data-cw-adm-close]', function () {
+                closeContestantModal();
+            });
+            $(document).on('keydown', function (e) {
+                if (e.key === 'Escape' && !$('#cw-activity-detail-modal').prop('hidden')) {
+                    closeContestantModal();
+                }
+            });
+            $(document).on('click', '[data-cw-modal]', function () {
+                openFromEl(this);
+            });
+            $(document).on('keydown', '[data-cw-modal]', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openFromEl(this);
+                }
             });
         });
         </script>
@@ -668,112 +917,211 @@ class CW_Dashboard_Contestant {
         $u   = wp_get_current_user();
         $uid = $u->ID;
         $dob = get_user_meta( $uid, 'birthdate', true );
+        $addr = class_exists( 'CW_Points_Rewards' )
+            ? CW_Points_Rewards::get_user_shipping_address( $uid )
+            : [
+                'first_name' => $u->first_name,
+                'last_name'  => $u->last_name,
+                'phone'      => '',
+                'address_1'  => '',
+                'address_2'  => '',
+                'city'       => '',
+                'state'      => '',
+                'postcode'   => '',
+                'country'    => 'MY',
+            ];
+        if ( empty( $addr['first_name'] ) ) {
+            $addr['first_name'] = $u->first_name;
+        }
+        if ( empty( $addr['last_name'] ) ) {
+            $addr['last_name'] = $u->last_name;
+        }
+
+        $mono_src = trim( (string) ( $u->display_name ?: $u->first_name ?: $u->user_login ) );
+        $mono     = function_exists( 'mb_substr' )
+            ? mb_strtoupper( mb_substr( $mono_src, 0, 1 ) )
+            : strtoupper( substr( $mono_src, 0, 1 ) );
 
         $error_messages = [
             'mismatch'    => __( 'The new passwords you entered do not match. Please try again.', 'creativewings-core' ),
             'invalid_dob' => __( 'That date of birth doesn\'t look right. Please use the format dd/mm/yyyy.', 'creativewings-core' ),
         ];
         $err_key = isset( $_GET['err'] ) ? sanitize_key( wp_unslash( $_GET['err'] ) ) : '';
+
+        $upgrade_url = add_query_arg( 'tab', 'upgrade', get_permalink( wc_get_page_id( 'myaccount' ) ) );
+        $is_creator  = in_array( 'creator_role', (array) $u->roles, true );
+        $biz_status  = (string) get_user_meta( $uid, 'cw_business_application_status', true );
         ?>
-        <div class="cw-content-wrapper">
-            <div class="cw-settings-card">
+        <div class="cw-content-wrapper cw-settings-atelier">
+            <?php
+            $popup_payload = null;
+            if ( $err_key && isset( $error_messages[ $err_key ] ) ) {
+                $popup_payload = [
+                    'icon'  => 'error',
+                    'title' => __( 'Please review your details', 'creativewings-core' ),
+                    'text'  => (string) $error_messages[ $err_key ],
+                ];
+            }
+            if ( $popup_payload ) :
+            ?>
+                <script>
+                (function(){
+                    function fire(){
+                        if (typeof Swal === 'undefined') { return; }
+                        Swal.fire({
+                            icon: <?php echo wp_json_encode( $popup_payload['icon'] ); ?>,
+                            title: <?php echo wp_json_encode( $popup_payload['title'] ); ?>,
+                            text: <?php echo wp_json_encode( $popup_payload['text'] ); ?>,
+                            confirmButtonText: 'OK',
+                            confirmButtonColor: '#dc2626',
+                            showCloseButton: true
+                        });
+                        try {
+                            var url = new URL(window.location.href);
+                            if (url.searchParams.has('err')) {
+                                url.searchParams.delete('err');
+                                window.history.replaceState({}, document.title, url.pathname + (url.search || '') + url.hash);
+                            }
+                        } catch(e){}
+                    }
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', fire);
+                    } else { fire(); }
+                })();
+                </script>
+            <?php endif; ?>
 
-                <div class="cw-settings-header">
-                    <h2><?php esc_html_e( 'Account Settings', 'creativewings-core' ); ?></h2>
-                    <p class="cw-settings-subtitle"><?php esc_html_e( 'Update your personal details and account security. These details appear on certificates and leaderboards.', 'creativewings-core' ); ?></p>
-                </div>
+            <form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="POST" class="cw-settings-atelier-form" autocomplete="off">
+                <input type="hidden" name="action" value="cw_save_contestant_settings">
+                <?php wp_nonce_field( 'cw_settings_nonce' ); ?>
 
-                <?php
-                // Status messages now surface as SweetAlert2 popups (managed below /
-                // by CW_Flash_Notices for the ?updated key).
-                $popup_payload = null;
-                if ( $err_key && isset( $error_messages[ $err_key ] ) ) {
-                    $popup_payload = [
-                        'icon'  => 'error',
-                        'title' => __( 'Please review your details', 'creativewings-core' ),
-                        'text'  => (string) $error_messages[ $err_key ],
-                    ];
-                }
-                if ( $popup_payload ) :
-                ?>
-                    <script>
-                    (function(){
-                        function fire(){
-                            if (typeof Swal === 'undefined') { return; }
-                            Swal.fire({
-                                icon: <?php echo wp_json_encode( $popup_payload['icon'] ); ?>,
-                                title: <?php echo wp_json_encode( $popup_payload['title'] ); ?>,
-                                text: <?php echo wp_json_encode( $popup_payload['text'] ); ?>,
-                                confirmButtonText: 'OK',
-                                confirmButtonColor: '#dc2626',
-                                showCloseButton: true
-                            });
-                            try {
-                                var url = new URL(window.location.href);
-                                if (url.searchParams.has('err')) {
-                                    url.searchParams.delete('err');
-                                    window.history.replaceState({}, document.title, url.pathname + (url.search || '') + url.hash);
-                                }
-                            } catch(e){}
-                        }
-                        if (document.readyState === 'loading') {
-                            document.addEventListener('DOMContentLoaded', fire);
-                        } else { fire(); }
-                    })();
-                    </script>
-                <?php endif; ?>
+                <div class="cw-settings-atelier-layout">
+                    <aside class="cw-settings-rail" aria-label="<?php esc_attr_e( 'Your profile', 'creativewings-core' ); ?>">
+                        <div class="cw-settings-rail__mono" aria-hidden="true"><?php echo esc_html( $mono ); ?></div>
+                        <h2 class="cw-settings-rail__name"><?php echo esc_html( $u->display_name ?: $u->user_login ); ?></h2>
+                        <p class="cw-settings-rail__email"><?php echo esc_html( $u->user_email ); ?></p>
+                        <p class="cw-settings-rail__note"><?php esc_html_e( 'Name and address power certificates, leaderboards, merch delivery, and checkout.', 'creativewings-core' ); ?></p>
+                    </aside>
 
-                <form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="POST" class="cw-settings-form" autocomplete="off">
-                    <input type="hidden" name="action" value="cw_save_contestant_settings">
-                    <?php wp_nonce_field( 'cw_settings_nonce' ); ?>
+                    <div class="cw-settings-atelier-main">
+                        <header class="cw-settings-atelier-head">
+                            <h1><?php esc_html_e( 'Account Settings', 'creativewings-core' ); ?></h1>
+                            <p><?php esc_html_e( 'Keep your identity and delivery details current.', 'creativewings-core' ); ?></p>
+                        </header>
 
-                    <section class="cw-form-section">
-                        <h3><?php esc_html_e( 'Personal Information', 'creativewings-core' ); ?></h3>
-
-                        <div class="cw-settings-name-grid">
-                            <div class="cw-field">
-                                <label for="cw-settings-first-name"><?php esc_html_e( 'First Name', 'creativewings-core' ); ?></label>
-                                <input type="text" id="cw-settings-first-name" name="first_name" class="cw-input" value="<?php echo esc_attr( $u->first_name ); ?>" required>
+                        <section class="cw-settings-panel">
+                            <header class="cw-settings-panel__head">
+                                <h3><?php esc_html_e( 'Personal', 'creativewings-core' ); ?></h3>
+                                <p><?php esc_html_e( 'How you appear across Creative Wings.', 'creativewings-core' ); ?></p>
+                            </header>
+                            <div class="cw-settings-name-grid">
+                                <div class="cw-field">
+                                    <label for="cw-settings-first-name"><?php esc_html_e( 'First Name', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-settings-first-name" name="first_name" class="cw-input" value="<?php echo esc_attr( $u->first_name ); ?>" required>
+                                </div>
+                                <div class="cw-field">
+                                    <label for="cw-settings-last-name"><?php esc_html_e( 'Last Name', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-settings-last-name" name="last_name" class="cw-input" value="<?php echo esc_attr( $u->last_name ); ?>" required>
+                                </div>
                             </div>
                             <div class="cw-field">
-                                <label for="cw-settings-last-name"><?php esc_html_e( 'Last Name', 'creativewings-core' ); ?></label>
-                                <input type="text" id="cw-settings-last-name" name="last_name" class="cw-input" value="<?php echo esc_attr( $u->last_name ); ?>" required>
+                                <label for="cw-settings-display-name"><?php esc_html_e( 'Display Name', 'creativewings-core' ); ?></label>
+                                <input type="text" id="cw-settings-display-name" name="display_name" class="cw-input" value="<?php echo esc_attr( $u->display_name ); ?>">
+                                <small><?php esc_html_e( 'Shown on public certificates and leaderboards.', 'creativewings-core' ); ?></small>
                             </div>
+                            <div class="cw-field">
+                                <label for="birthdate"><?php esc_html_e( 'Date of Birth', 'creativewings-core' ); ?></label>
+                                <input type="text" id="birthdate" name="birthdate" class="cw-input cw-datepicker" value="<?php echo esc_attr( $dob ); ?>" placeholder="dd/mm/yyyy" readonly autocomplete="bday">
+                                <small><?php esc_html_e( 'Format: dd/mm/yyyy. Tap the field to pick a date.', 'creativewings-core' ); ?></small>
+                            </div>
+                        </section>
+
+                        <section class="cw-settings-panel">
+                            <header class="cw-settings-panel__head">
+                                <h3><?php esc_html_e( 'Address', 'creativewings-core' ); ?></h3>
+                                <p><?php esc_html_e( 'Prefills checkout and physical merchandise delivery.', 'creativewings-core' ); ?></p>
+                            </header>
+                            <div class="cw-settings-name-grid">
+                                <div class="cw-field">
+                                    <label for="cw-addr-first"><?php esc_html_e( 'Recipient first name', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-addr-first" name="addr_first_name" class="cw-input" value="<?php echo esc_attr( $addr['first_name'] ); ?>" autocomplete="shipping given-name">
+                                </div>
+                                <div class="cw-field">
+                                    <label for="cw-addr-last"><?php esc_html_e( 'Recipient last name', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-addr-last" name="addr_last_name" class="cw-input" value="<?php echo esc_attr( $addr['last_name'] ); ?>" autocomplete="shipping family-name">
+                                </div>
+                            </div>
+                            <div class="cw-field">
+                                <label for="cw-addr-phone"><?php esc_html_e( 'Phone', 'creativewings-core' ); ?></label>
+                                <input type="tel" id="cw-addr-phone" name="addr_phone" class="cw-input" value="<?php echo esc_attr( $addr['phone'] ); ?>" autocomplete="tel">
+                            </div>
+                            <div class="cw-field">
+                                <label for="cw-addr-1"><?php esc_html_e( 'Address', 'creativewings-core' ); ?></label>
+                                <input type="text" id="cw-addr-1" name="addr_address_1" class="cw-input" value="<?php echo esc_attr( $addr['address_1'] ); ?>" autocomplete="shipping address-line1">
+                            </div>
+                            <div class="cw-field">
+                                <label for="cw-addr-2"><?php esc_html_e( 'Address line 2', 'creativewings-core' ); ?></label>
+                                <input type="text" id="cw-addr-2" name="addr_address_2" class="cw-input" value="<?php echo esc_attr( $addr['address_2'] ); ?>" autocomplete="shipping address-line2">
+                            </div>
+                            <div class="cw-settings-addr-grid">
+                                <div class="cw-field">
+                                    <label for="cw-addr-city"><?php esc_html_e( 'City', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-addr-city" name="addr_city" class="cw-input" value="<?php echo esc_attr( $addr['city'] ); ?>" autocomplete="shipping address-level2">
+                                </div>
+                                <div class="cw-field">
+                                    <label for="cw-addr-state"><?php esc_html_e( 'State', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-addr-state" name="addr_state" class="cw-input" value="<?php echo esc_attr( $addr['state'] ); ?>" autocomplete="shipping address-level1">
+                                </div>
+                                <div class="cw-field">
+                                    <label for="cw-addr-postcode"><?php esc_html_e( 'Postcode', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-addr-postcode" name="addr_postcode" class="cw-input" value="<?php echo esc_attr( $addr['postcode'] ); ?>" autocomplete="shipping postal-code">
+                                </div>
+                                <div class="cw-field">
+                                    <label for="cw-addr-country"><?php esc_html_e( 'Country', 'creativewings-core' ); ?></label>
+                                    <input type="text" id="cw-addr-country" name="addr_country" class="cw-input" value="<?php echo esc_attr( $addr['country'] ?: 'MY' ); ?>" autocomplete="shipping country" maxlength="2">
+                                    <small><?php esc_html_e( 'ISO country code, e.g. MY.', 'creativewings-core' ); ?></small>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="cw-settings-panel">
+                            <header class="cw-settings-panel__head">
+                                <h3><?php esc_html_e( 'Security', 'creativewings-core' ); ?></h3>
+                                <p><?php esc_html_e( 'Leave blank to keep your current password.', 'creativewings-core' ); ?></p>
+                            </header>
+                            <div class="cw-field">
+                                <label for="cw-settings-pass1"><?php esc_html_e( 'New Password', 'creativewings-core' ); ?></label>
+                                <input type="password" id="cw-settings-pass1" name="pass1" class="cw-input" autocomplete="new-password" placeholder="<?php esc_attr_e( 'Leave blank to keep current password', 'creativewings-core' ); ?>">
+                                <small><?php esc_html_e( 'Use at least 8 characters with a mix of letters, numbers, and symbols.', 'creativewings-core' ); ?></small>
+                            </div>
+                            <div class="cw-field">
+                                <label for="cw-settings-pass2"><?php esc_html_e( 'Confirm New Password', 'creativewings-core' ); ?></label>
+                                <input type="password" id="cw-settings-pass2" name="pass2" class="cw-input" autocomplete="new-password" placeholder="<?php esc_attr_e( 'Re-enter the new password', 'creativewings-core' ); ?>">
+                            </div>
+                        </section>
+
+                        <div class="cw-settings-atelier-footer">
+                            <button type="submit" class="cw-btn-primary cw-settings-save-btn"><?php esc_html_e( 'Save Changes', 'creativewings-core' ); ?></button>
                         </div>
-
-                        <div class="cw-field">
-                            <label for="cw-settings-display-name"><?php esc_html_e( 'Display Name', 'creativewings-core' ); ?></label>
-                            <input type="text" id="cw-settings-display-name" name="display_name" class="cw-input" value="<?php echo esc_attr( $u->display_name ); ?>">
-                            <small><?php esc_html_e( 'This is how you will appear on public certificates and leaderboards.', 'creativewings-core' ); ?></small>
-                        </div>
-
-                        <div class="cw-field">
-                            <label for="birthdate"><?php esc_html_e( 'Date of Birth', 'creativewings-core' ); ?></label>
-                            <input type="text" id="birthdate" name="birthdate" class="cw-input cw-datepicker" value="<?php echo esc_attr( $dob ); ?>" placeholder="dd/mm/yyyy" readonly autocomplete="bday">
-                            <small><?php esc_html_e( 'Format: dd/mm/yyyy. Tap the field to pick a date.', 'creativewings-core' ); ?></small>
-                        </div>
-                    </section>
-
-                    <section class="cw-form-section">
-                        <h3><?php esc_html_e( 'Security', 'creativewings-core' ); ?></h3>
-
-                        <div class="cw-field">
-                            <label for="cw-settings-pass1"><?php esc_html_e( 'New Password', 'creativewings-core' ); ?></label>
-                            <input type="password" id="cw-settings-pass1" name="pass1" class="cw-input" autocomplete="new-password" placeholder="<?php esc_attr_e( 'Leave blank to keep current password', 'creativewings-core' ); ?>">
-                            <small><?php esc_html_e( 'Use at least 8 characters with a mix of letters, numbers, and symbols.', 'creativewings-core' ); ?></small>
-                        </div>
-
-                        <div class="cw-field">
-                            <label for="cw-settings-pass2"><?php esc_html_e( 'Confirm New Password', 'creativewings-core' ); ?></label>
-                            <input type="password" id="cw-settings-pass2" name="pass2" class="cw-input" autocomplete="new-password" placeholder="<?php esc_attr_e( 'Re-enter the new password', 'creativewings-core' ); ?>">
-                        </div>
-                    </section>
-
-                    <div class="cw-form-footer">
-                        <button type="submit" class="cw-btn-primary cw-settings-save-btn"><i class="fas fa-save"></i> <?php esc_html_e( 'Save Changes', 'creativewings-core' ); ?></button>
                     </div>
-                </form>
-            </div>
+                </div>
+            </form>
+
+            <section class="cw-settings-upgrade-strip" aria-labelledby="cw-settings-upgrade-heading">
+                <div class="cw-settings-upgrade-strip__copy">
+                    <h3 id="cw-settings-upgrade-heading"><?php esc_html_e( 'Upgrade Account', 'creativewings-core' ); ?></h3>
+                    <?php if ( $is_creator ) : ?>
+                        <p><?php esc_html_e( 'You already have Creator privileges. You can still apply as a Business Partner to host campaigns.', 'creativewings-core' ); ?></p>
+                    <?php elseif ( 'pending' === $biz_status ) : ?>
+                        <p><?php esc_html_e( 'Your Business Partner application is pending review.', 'creativewings-core' ); ?></p>
+                    <?php else : ?>
+                        <p><?php esc_html_e( 'Become a Creator for your portfolio, or a Business Partner to host campaigns.', 'creativewings-core' ); ?></p>
+                    <?php endif; ?>
+                </div>
+                <a href="<?php echo esc_url( $upgrade_url ); ?>" class="cw-btn-primary cw-settings-upgrade-strip__cta">
+                    <?php esc_html_e( 'View upgrade options', 'creativewings-core' ); ?>
+                </a>
+            </section>
         </div>
 
         <script>
@@ -860,6 +1208,23 @@ class CW_Dashboard_Contestant {
             update_user_meta( $uid, 'birthdate', $dob_raw );
         }
 
+        if ( class_exists( 'CW_Points_Rewards' ) ) {
+            CW_Points_Rewards::save_user_shipping_address(
+                $uid,
+                [
+                    'first_name' => sanitize_text_field( wp_unslash( $_POST['addr_first_name'] ?? '' ) ),
+                    'last_name'  => sanitize_text_field( wp_unslash( $_POST['addr_last_name'] ?? '' ) ),
+                    'phone'      => sanitize_text_field( wp_unslash( $_POST['addr_phone'] ?? '' ) ),
+                    'address_1'  => sanitize_text_field( wp_unslash( $_POST['addr_address_1'] ?? '' ) ),
+                    'address_2'  => sanitize_text_field( wp_unslash( $_POST['addr_address_2'] ?? '' ) ),
+                    'city'       => sanitize_text_field( wp_unslash( $_POST['addr_city'] ?? '' ) ),
+                    'state'      => sanitize_text_field( wp_unslash( $_POST['addr_state'] ?? '' ) ),
+                    'postcode'   => sanitize_text_field( wp_unslash( $_POST['addr_postcode'] ?? '' ) ),
+                    'country'    => strtoupper( sanitize_text_field( wp_unslash( $_POST['addr_country'] ?? 'MY' ) ) ),
+                ]
+            );
+        }
+
         if ( ! empty( $_POST['pass1'] ) ) {
             if ( $_POST['pass1'] === ( $_POST['pass2'] ?? '' ) ) {
                 wp_update_user([ 'ID' => $uid, 'user_pass' => $_POST['pass1'] ]);
@@ -918,185 +1283,481 @@ class CW_Dashboard_Contestant {
             ),
             ARRAY_A
         );
-        $shop_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : home_url( '/' );
+        $shop_url    = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : home_url( '/' );
+        $explore_url = add_query_arg( 'tab', 'explore', $base_url );
         ?>
-        <div class="cw-content-wrapper">
-            <div class="cw-dash-header">
-                <h2><?php esc_html_e( 'Your Points', 'creativewings-core' ); ?></h2>
-                <p><?php esc_html_e( 'Earn 1 point per RM1 cash paid when you join a campaign (free or 100% coupon joins earn 0). 100 points = RM1.00 at checkout. Points expire 12 months after your last join unless you join again.', 'creativewings-core' ); ?></p>
-            </div>
+        <div class="cw-content-wrapper cw-pts">
+            <header class="cw-pts-hero">
+                <h1 class="cw-pts-title"><?php esc_html_e( 'Your Points', 'creativewings-core' ); ?></h1>
+                <p class="cw-pts-sub"><?php esc_html_e( 'Earn when you pay to join. Spend at checkout or redeem merchandise.', 'creativewings-core' ); ?></p>
+            </header>
 
             <?php if ( $flash !== '' ) : ?>
-                <div class="cw-points-flash" style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;border-radius:10px;padding:12px 14px;margin-bottom:18px;">
-                    <?php echo esc_html( $flash ); ?>
-                </div>
+                <div class="cw-pts-flash" role="status"><?php echo esc_html( $flash ); ?></div>
             <?php endif; ?>
 
-            <div class="cw-stats-container" style="margin-bottom:28px;">
-                <div class="cw-stat-box-v2">
-                    <div class="cw-stat-value-row">
-                        <div class="stat-icon blue"><i class="fas fa-coins"></i></div>
-                        <h3><?php echo number_format( $balance ); ?></h3>
-                    </div>
-                    <span><?php esc_html_e( 'Current balance', 'creativewings-core' ); ?></span>
-                    <small style="display:block;margin-top:6px;color:#64748b;">≈ RM<?php echo esc_html( number_format( $rm_value, 2 ) ); ?> checkout credit</small>
+            <ol class="cw-pts-steps">
+                <li><?php esc_html_e( 'Earn 1 point per RM1 cash paid (free / 100% coupon joins earn 0).', 'creativewings-core' ); ?></li>
+                <li><?php esc_html_e( '100 points = RM1.00 checkout credit on your next campaign join.', 'creativewings-core' ); ?></li>
+                <li><?php esc_html_e( 'Points expire 12 months after your last join unless you join again.', 'creativewings-core' ); ?></li>
+            </ol>
+
+            <div class="cw-pts-metrics" role="list">
+                <div class="cw-pts-metric" role="listitem">
+                    <p class="cw-pts-metric-value"><?php echo esc_html( number_format_i18n( $balance ) ); ?></p>
+                    <p class="cw-pts-metric-label"><?php esc_html_e( 'Current balance', 'creativewings-core' ); ?></p>
+                    <p class="cw-pts-metric-hint">≈ RM<?php echo esc_html( number_format_i18n( $rm_value, 2 ) ); ?></p>
                 </div>
-                <div class="cw-stat-box-v2">
-                    <div class="cw-stat-value-row">
-                        <div class="stat-icon yellow"><i class="fas fa-bolt"></i></div>
-                        <h3><?php echo number_format( $lifetime ); ?></h3>
-                    </div>
-                    <span><?php esc_html_e( 'Lifetime earned', 'creativewings-core' ); ?></span>
+                <div class="cw-pts-metric" role="listitem">
+                    <p class="cw-pts-metric-value"><?php echo esc_html( number_format_i18n( $lifetime ) ); ?></p>
+                    <p class="cw-pts-metric-label"><?php esc_html_e( 'Lifetime earned', 'creativewings-core' ); ?></p>
                 </div>
-                <div class="cw-stat-box-v2">
-                    <div class="cw-stat-value-row">
-                        <div class="stat-icon blue"><i class="fas fa-list-ol"></i></div>
-                        <h3><?php echo $rank > 0 ? '#' . (int) $rank : '—'; ?></h3>
-                    </div>
-                    <span>
-                        <a href="<?php echo esc_url( $board_url ); ?>" style="color:inherit;font-weight:600;text-decoration:none;">
-                            <?php esc_html_e( 'Leaderboard rank', 'creativewings-core' ); ?>
-                        </a>
-                    </span>
+                <div class="cw-pts-metric" role="listitem">
+                    <p class="cw-pts-metric-value"><?php echo $rank > 0 ? '#' . (int) $rank : '—'; ?></p>
+                    <p class="cw-pts-metric-label">
+                        <a href="<?php echo esc_url( $board_url ); ?>" class="cw-pts-metric-link"><?php esc_html_e( 'Leaderboard rank', 'creativewings-core' ); ?></a>
+                    </p>
                 </div>
             </div>
 
             <?php if ( $expires && $balance > 0 ) : ?>
-                <p style="margin:0 0 20px;color:#475569;font-size:14px;">
+                <p class="cw-pts-expiry">
                     <?php
                     printf(
                         /* translators: %s: date */
                         esc_html__( 'Points expire on %s unless you join another campaign.', 'creativewings-core' ),
-                        '<strong>' . esc_html( date_i18n( get_option( 'date_format' ), strtotime( $expires ) ) ) . '</strong>'
+                        esc_html( date_i18n( get_option( 'date_format' ), strtotime( $expires ) ) )
                     );
                     ?>
                 </p>
             <?php endif; ?>
 
-            <div class="cw-points-checkout-note" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;margin-bottom:24px;">
-                <h3 style="margin:0 0 6px;font-size:1.05rem;"><?php esc_html_e( 'Use points at checkout', 'creativewings-core' ); ?></h3>
-                <p style="margin:0;color:#64748b;font-size:14px;">
-                    <?php esc_html_e( 'When joining your next campaign, apply points at checkout for entry-fee credit (100 pts = RM1.00).', 'creativewings-core' ); ?>
-                    <a href="<?php echo esc_url( $shop_url ); ?>" style="font-weight:600;"><?php esc_html_e( 'Browse campaigns', 'creativewings-core' ); ?></a>
-                </p>
-            </div>
+            <section class="cw-pts-panel" aria-labelledby="cw-pts-checkout-heading">
+                <div class="cw-pts-panel-copy">
+                    <h2 id="cw-pts-checkout-heading" class="cw-pts-panel-title"><?php esc_html_e( 'Use points at checkout', 'creativewings-core' ); ?></h2>
+                    <p class="cw-pts-panel-text"><?php esc_html_e( 'Apply points when joining your next campaign for entry-fee credit.', 'creativewings-core' ); ?></p>
+                </div>
+                <a href="<?php echo esc_url( $explore_url ?: $shop_url ); ?>" class="cw-btn-primary cw-pts-btn"><?php esc_html_e( 'Explore Opportunities', 'creativewings-core' ); ?></a>
+            </section>
 
-            <div class="cw-points-merch" style="margin-bottom:28px;">
-                <h3 style="margin:0 0 12px;font-size:1.05rem;"><?php esc_html_e( 'Redeem merchandise', 'creativewings-core' ); ?></h3>
+            <section class="cw-pts-section" aria-labelledby="cw-pts-merch-heading">
+                <h2 id="cw-pts-merch-heading" class="cw-pts-section-title"><?php esc_html_e( 'Redeem merchandise', 'creativewings-core' ); ?></h2>
                 <?php if ( empty( $rewards ) ) : ?>
-                    <p style="margin:0;color:#64748b;font-size:14px;"><?php esc_html_e( 'No merchandise available right now. Check back soon.', 'creativewings-core' ); ?></p>
-                <?php else : ?>
+                    <p class="cw-pts-empty"><?php esc_html_e( 'No merchandise available right now. Check back soon.', 'creativewings-core' ); ?></p>
+                <?php else :
+                    $has_address = class_exists( 'CW_Points_Rewards' ) && CW_Points_Rewards::user_has_shipping_address( $uid );
+                    $addr_pref   = class_exists( 'CW_Points_Rewards' ) ? CW_Points_Rewards::get_user_shipping_address( $uid ) : [];
+                    ?>
                     <div class="cw-points-merch-grid">
                         <?php foreach ( $rewards as $reward ) :
-                            $cost   = (int) $reward['points_cost'];
-                            $stock  = $reward['stock'];
-                            $oos    = ( $stock !== null && (int) $stock <= 0 );
-                            $can    = ! $oos && $balance >= $cost;
-                            $img    = ! empty( $reward['image_id'] ) ? wp_get_attachment_image_url( (int) $reward['image_id'], 'medium' ) : '';
+                            $cost        = (int) $reward['points_cost'];
+                            $stock       = $reward['stock'];
+                            $oos         = ( $stock !== null && (int) $stock <= 0 );
+                            $can         = ! $oos && $balance >= $cost;
+                            $img         = ! empty( $reward['image_id'] ) ? wp_get_attachment_image_url( (int) $reward['image_id'], 'medium' ) : '';
+                            $img_large   = ! empty( $reward['image_id'] ) ? wp_get_attachment_image_url( (int) $reward['image_id'], 'large' ) : $img;
+                            $fulfillment = class_exists( 'CW_Points_Rewards' )
+                                ? CW_Points_Rewards::normalize_fulfillment( $reward['fulfillment'] ?? 'physical' )
+                                : 'physical';
+                            $stock_label = $oos
+                                ? __( 'Out of stock', 'creativewings-core' )
+                                : ( $stock === null
+                                    ? __( 'In stock', 'creativewings-core' )
+                                    : sprintf( __( '%d left', 'creativewings-core' ), (int) $stock ) );
+                            $payload = [
+                                'id'           => (int) $reward['id'],
+                                'title'        => (string) $reward['title'],
+                                'description'  => (string) ( $reward['description'] ?? '' ),
+                                'cost'         => $cost,
+                                'stock_label'  => $stock_label,
+                                'fulfillment'  => $fulfillment,
+                                'image'        => $img_large ?: '',
+                                'can'          => (bool) $can,
+                                'need_address' => ( 'physical' === $fulfillment && ! $has_address ),
+                            ];
                             ?>
-                            <div class="cw-points-merch-card">
+                            <button type="button"
+                                class="cw-points-merch-card cw-points-merch-card--btn"
+                                data-cw-merch="<?php echo esc_attr( wp_json_encode( $payload ) ); ?>">
                                 <div class="cw-points-merch-card__media">
                                     <?php if ( $img ) : ?>
                                         <img src="<?php echo esc_url( $img ); ?>" alt="" loading="lazy">
                                     <?php else : ?>
-                                        <span class="cw-points-merch-card__placeholder"><i class="fas fa-gift"></i></span>
+                                        <span class="cw-points-merch-card__placeholder" aria-hidden="true"></span>
                                     <?php endif; ?>
                                 </div>
                                 <div class="cw-points-merch-card__body">
-                                    <h4><?php echo esc_html( $reward['title'] ); ?></h4>
+                                    <span class="cw-pts-fulfill-pill cw-pts-fulfill-pill--<?php echo esc_attr( $fulfillment ); ?>">
+                                        <?php echo 'digital' === $fulfillment ? esc_html__( 'Digital', 'creativewings-core' ) : esc_html__( 'Physical', 'creativewings-core' ); ?>
+                                    </span>
+                                    <h3 class="cw-points-merch-card__title"><?php echo esc_html( $reward['title'] ); ?></h3>
                                     <?php if ( ! empty( $reward['description'] ) ) : ?>
-                                        <p><?php echo esc_html( $reward['description'] ); ?></p>
+                                        <p class="cw-points-merch-card__desc"><?php echo esc_html( wp_trim_words( (string) $reward['description'], 18 ) ); ?></p>
                                     <?php endif; ?>
                                     <div class="cw-points-merch-card__meta">
-                                        <strong><?php echo number_format( $cost ); ?> pts</strong>
-                                        <span>
-                                            <?php
-                                            if ( $oos ) {
-                                                esc_html_e( 'Out of stock', 'creativewings-core' );
-                                            } elseif ( $stock === null ) {
-                                                esc_html_e( 'In stock', 'creativewings-core' );
-                                            } else {
-                                                printf(
-                                                    /* translators: %d: stock */
-                                                    esc_html__( '%d left', 'creativewings-core' ),
-                                                    (int) $stock
-                                                );
-                                            }
-                                            ?>
-                                        </span>
+                                        <strong><?php echo esc_html( number_format_i18n( $cost ) ); ?> pts</strong>
+                                        <span><?php echo esc_html( $stock_label ); ?></span>
                                     </div>
-                                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-                                        <input type="hidden" name="action" value="cw_redeem_points_reward">
-                                        <input type="hidden" name="reward_id" value="<?php echo (int) $reward['id']; ?>">
-                                        <?php wp_nonce_field( 'cw_redeem_points_reward_' . (int) $reward['id'] ); ?>
-                                        <button type="submit" class="button" <?php disabled( ! $can ); ?>>
-                                            <?php esc_html_e( 'Redeem', 'creativewings-core' ); ?>
-                                        </button>
-                                    </form>
+                                    <span class="cw-btn-primary cw-pts-btn cw-pts-merch-view"><?php esc_html_e( 'View details', 'creativewings-core' ); ?></span>
                                 </div>
-                            </div>
+                            </button>
                         <?php endforeach; ?>
                     </div>
+                    <?php $this->render_merch_redeem_modal( $addr_pref ); ?>
                 <?php endif; ?>
-            </div>
+            </section>
 
             <?php if ( ! empty( $redemptions ) ) : ?>
-                <h3 class="cw-recent-heading"><?php esc_html_e( 'Merchandise redemptions', 'creativewings-core' ); ?></h3>
-                <div class="cw-recent-table-wrap" style="margin-bottom:28px;">
-                    <table class="cw-recent-table">
-                        <thead>
-                            <tr>
-                                <th><?php esc_html_e( 'Date', 'creativewings-core' ); ?></th>
-                                <th><?php esc_html_e( 'Item', 'creativewings-core' ); ?></th>
-                                <th><?php esc_html_e( 'Points', 'creativewings-core' ); ?></th>
-                                <th><?php esc_html_e( 'Status', 'creativewings-core' ); ?></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ( $redemptions as $red ) : ?>
-                            <tr>
-                                <td><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $red['created_at'] ) ) ); ?></td>
-                                <td><?php echo esc_html( $red['reward_title'] ?? ( '#' . $red['reward_id'] ) ); ?></td>
-                                <td><?php echo number_format( (int) $red['points_spent'] ); ?></td>
-                                <td><?php echo esc_html( ucfirst( (string) $red['status'] ) ); ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
+                <section class="cw-pts-section" aria-labelledby="cw-pts-redemptions-heading">
+                    <h2 id="cw-pts-redemptions-heading" class="cw-pts-section-title"><?php esc_html_e( 'Merchandise redemptions', 'creativewings-core' ); ?></h2>
+                    <div class="cw-ov-recent-table-wrap">
+                        <table class="cw-ov-recent-table">
+                            <thead>
+                                <tr>
+                                    <th><?php esc_html_e( 'Date', 'creativewings-core' ); ?></th>
+                                    <th><?php esc_html_e( 'Item', 'creativewings-core' ); ?></th>
+                                    <th><?php esc_html_e( 'Points', 'creativewings-core' ); ?></th>
+                                    <th><?php esc_html_e( 'Status', 'creativewings-core' ); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ( $redemptions as $red ) : ?>
+                                <tr>
+                                    <td data-label="<?php esc_attr_e( 'Date', 'creativewings-core' ); ?>"><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $red['created_at'] ) ) ); ?></td>
+                                    <td data-label="<?php esc_attr_e( 'Item', 'creativewings-core' ); ?>"><?php echo esc_html( $red['reward_title'] ?? ( '#' . $red['reward_id'] ) ); ?></td>
+                                    <td data-label="<?php esc_attr_e( 'Points', 'creativewings-core' ); ?>"><?php echo esc_html( number_format_i18n( (int) $red['points_spent'] ) ); ?></td>
+                                    <td data-label="<?php esc_attr_e( 'Status', 'creativewings-core' ); ?>"><?php echo esc_html( ucfirst( (string) $red['status'] ) ); ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
             <?php endif; ?>
 
-            <h3 class="cw-recent-heading"><?php esc_html_e( 'Recent activity', 'creativewings-core' ); ?></h3>
-            <?php if ( empty( $rows ) ) : ?>
-                <div class="cw-recent-empty">
-                    <p class="cw-recent-empty-desc"><?php esc_html_e( 'No point transactions yet. Join a campaign to start earning.', 'creativewings-core' ); ?></p>
-                </div>
-            <?php else : ?>
-                <div class="cw-recent-table-wrap">
-                    <table class="cw-recent-table">
-                        <thead>
-                            <tr>
-                                <th><?php esc_html_e( 'Date', 'creativewings-core' ); ?></th>
-                                <th><?php esc_html_e( 'Type', 'creativewings-core' ); ?></th>
-                                <th><?php esc_html_e( 'Points', 'creativewings-core' ); ?></th>
-                                <th><?php esc_html_e( 'Note', 'creativewings-core' ); ?></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ( $rows as $row ) : ?>
-                            <tr>
-                                <td><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $row['created_at'] ) ) ); ?></td>
-                                <td><?php echo esc_html( ucfirst( (string) $row['type'] ) ); ?></td>
-                                <td><?php echo ( (int) $row['points'] >= 0 ? '+' : '' ) . number_format( (int) $row['points'] ); ?></td>
-                                <td><?php echo esc_html( (string) ( $row['note'] ?? '' ) ); ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endif; ?>
+            <section class="cw-pts-section" aria-labelledby="cw-pts-activity-heading">
+                <h2 id="cw-pts-activity-heading" class="cw-pts-section-title"><?php esc_html_e( 'Recent activity', 'creativewings-core' ); ?></h2>
+                <?php if ( empty( $rows ) ) : ?>
+                    <div class="cw-ov-empty">
+                        <p class="cw-ov-empty-title"><?php esc_html_e( 'No point transactions yet', 'creativewings-core' ); ?></p>
+                        <p class="cw-ov-empty-desc"><?php esc_html_e( 'Join a campaign to start earning.', 'creativewings-core' ); ?></p>
+                        <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-btn-primary"><?php esc_html_e( 'Explore Opportunities', 'creativewings-core' ); ?></a>
+                    </div>
+                <?php else : ?>
+                    <div class="cw-ov-recent-table-wrap">
+                        <table class="cw-ov-recent-table">
+                            <thead>
+                                <tr>
+                                    <th><?php esc_html_e( 'Date', 'creativewings-core' ); ?></th>
+                                    <th><?php esc_html_e( 'Type', 'creativewings-core' ); ?></th>
+                                    <th><?php esc_html_e( 'Points', 'creativewings-core' ); ?></th>
+                                    <th><?php esc_html_e( 'Note', 'creativewings-core' ); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ( $rows as $row ) : ?>
+                                <tr>
+                                    <td data-label="<?php esc_attr_e( 'Date', 'creativewings-core' ); ?>"><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $row['created_at'] ) ) ); ?></td>
+                                    <td data-label="<?php esc_attr_e( 'Type', 'creativewings-core' ); ?>"><?php echo esc_html( $this->points_ledger_type_label( (string) $row['type'] ) ); ?></td>
+                                    <td data-label="<?php esc_attr_e( 'Points', 'creativewings-core' ); ?>"><?php echo esc_html( ( (int) $row['points'] >= 0 ? '+' : '' ) . number_format_i18n( (int) $row['points'] ) ); ?></td>
+                                    <td data-label="<?php esc_attr_e( 'Note', 'creativewings-core' ); ?>"><?php echo esc_html( (string) ( $row['note'] ?? '' ) ); ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </section>
         </div>
         <?php
+    }
+
+    /**
+     * Human label for points ledger type.
+     *
+     * @param string $type Ledger type key.
+     */
+    private function points_ledger_type_label( $type ) {
+        $map = [
+            'earn'            => __( 'Earn', 'creativewings-core' ),
+            'redeem_merch'    => __( 'Merchandise', 'creativewings-core' ),
+            'spend_checkout'  => __( 'Checkout', 'creativewings-core' ),
+            'wipe'            => __( 'Expired', 'creativewings-core' ),
+            'adjust'          => __( 'Adjustment', 'creativewings-core' ),
+        ];
+        $type = sanitize_key( $type );
+        return $map[ $type ] ?? ucfirst( str_replace( '_', ' ', $type ) );
+    }
+
+    /**
+     * @param array<string,string> $addr Prefill address.
+     */
+    private function render_merch_redeem_modal( $addr ) {
+        $ajax = admin_url( 'admin-ajax.php' );
+        $nonce = wp_create_nonce( 'cw_points_merch_redeem' );
+        ?>
+        <div id="cw-pts-merch-modal" class="cw-pts-merch-modal" hidden>
+            <div class="cw-pts-merch-modal-backdrop" data-cw-merch-close tabindex="-1"></div>
+            <div class="cw-pts-merch-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cw-pts-merch-modal-title">
+                <button type="button" class="cw-pts-merch-modal-close" data-cw-merch-close aria-label="<?php esc_attr_e( 'Close', 'creativewings-core' ); ?>">&times;</button>
+
+                <div class="cw-pts-merch-step" data-step="detail">
+                    <div class="cw-pts-merch-detail-media">
+                        <img id="cw-pts-merch-img" src="" alt="" hidden>
+                        <div id="cw-pts-merch-img-fallback" class="cw-points-merch-card__placeholder" aria-hidden="true"></div>
+                    </div>
+                    <p id="cw-pts-merch-type" class="cw-pts-fulfill-pill"></p>
+                    <h2 id="cw-pts-merch-modal-title" class="cw-pts-merch-modal-title"></h2>
+                    <p id="cw-pts-merch-desc" class="cw-pts-merch-modal-desc"></p>
+                    <p class="cw-pts-merch-modal-meta"><strong id="cw-pts-merch-cost"></strong> · <span id="cw-pts-merch-stock"></span></p>
+                    <div class="cw-pts-merch-modal-actions">
+                        <button type="button" class="cw-ov-btn-secondary" data-cw-merch-close><?php esc_html_e( 'Close', 'creativewings-core' ); ?></button>
+                        <button type="button" class="cw-btn-primary" id="cw-pts-merch-to-confirm"><?php esc_html_e( 'Redeem', 'creativewings-core' ); ?></button>
+                    </div>
+                </div>
+
+                <div class="cw-pts-merch-step" data-step="confirm" hidden>
+                    <h2 class="cw-pts-merch-modal-title"><?php esc_html_e( 'Confirm redemption', 'creativewings-core' ); ?></h2>
+                    <p id="cw-pts-merch-confirm-copy" class="cw-pts-merch-modal-desc"></p>
+                    <div class="cw-pts-merch-modal-actions">
+                        <button type="button" class="cw-ov-btn-secondary" id="cw-pts-merch-back-detail"><?php esc_html_e( 'Back', 'creativewings-core' ); ?></button>
+                        <button type="button" class="cw-btn-primary" id="cw-pts-merch-confirm"><?php esc_html_e( 'Confirm redeem', 'creativewings-core' ); ?></button>
+                    </div>
+                </div>
+
+                <div class="cw-pts-merch-step" data-step="address" hidden>
+                    <h2 class="cw-pts-merch-modal-title"><?php esc_html_e( 'Shipping address', 'creativewings-core' ); ?></h2>
+                    <p class="cw-pts-merch-modal-desc"><?php esc_html_e( 'This item is physical. Enter where we should send it.', 'creativewings-core' ); ?></p>
+                    <form id="cw-pts-merch-address-form" class="cw-pts-merch-address-form">
+                        <div class="cw-pts-merch-addr-grid">
+                            <label><?php esc_html_e( 'First name', 'creativewings-core' ); ?>
+                                <input type="text" name="first_name" required value="<?php echo esc_attr( $addr['first_name'] ?? '' ); ?>">
+                            </label>
+                            <label><?php esc_html_e( 'Last name', 'creativewings-core' ); ?>
+                                <input type="text" name="last_name" value="<?php echo esc_attr( $addr['last_name'] ?? '' ); ?>">
+                            </label>
+                            <label class="cw-pts-merch-addr-span"><?php esc_html_e( 'Phone', 'creativewings-core' ); ?>
+                                <input type="tel" name="phone" required value="<?php echo esc_attr( $addr['phone'] ?? '' ); ?>">
+                            </label>
+                            <label class="cw-pts-merch-addr-span"><?php esc_html_e( 'Address', 'creativewings-core' ); ?>
+                                <input type="text" name="address_1" required value="<?php echo esc_attr( $addr['address_1'] ?? '' ); ?>">
+                            </label>
+                            <label class="cw-pts-merch-addr-span"><?php esc_html_e( 'Address line 2', 'creativewings-core' ); ?>
+                                <input type="text" name="address_2" value="<?php echo esc_attr( $addr['address_2'] ?? '' ); ?>">
+                            </label>
+                            <label><?php esc_html_e( 'City', 'creativewings-core' ); ?>
+                                <input type="text" name="city" required value="<?php echo esc_attr( $addr['city'] ?? '' ); ?>">
+                            </label>
+                            <label><?php esc_html_e( 'Postcode', 'creativewings-core' ); ?>
+                                <input type="text" name="postcode" required value="<?php echo esc_attr( $addr['postcode'] ?? '' ); ?>">
+                            </label>
+                            <label><?php esc_html_e( 'State', 'creativewings-core' ); ?>
+                                <input type="text" name="state" value="<?php echo esc_attr( $addr['state'] ?? '' ); ?>">
+                            </label>
+                            <label><?php esc_html_e( 'Country', 'creativewings-core' ); ?>
+                                <input type="text" name="country" required value="<?php echo esc_attr( $addr['country'] ?? 'MY' ); ?>">
+                            </label>
+                        </div>
+                        <p id="cw-pts-merch-addr-error" class="cw-pts-merch-error" hidden></p>
+                        <div class="cw-pts-merch-modal-actions">
+                            <button type="button" class="cw-ov-btn-secondary" id="cw-pts-merch-back-confirm"><?php esc_html_e( 'Back', 'creativewings-core' ); ?></button>
+                            <button type="submit" class="cw-btn-primary"><?php esc_html_e( 'Save & redeem', 'creativewings-core' ); ?></button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="cw-pts-merch-step" data-step="done" hidden>
+                    <h2 class="cw-pts-merch-modal-title"><?php esc_html_e( 'Redeemed!', 'creativewings-core' ); ?></h2>
+                    <p id="cw-pts-merch-done-copy" class="cw-pts-merch-modal-desc"></p>
+                    <div class="cw-pts-merch-modal-actions">
+                        <button type="button" class="cw-btn-primary" data-cw-merch-reload><?php esc_html_e( 'Done', 'creativewings-core' ); ?></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+        (function () {
+            var modal = document.getElementById('cw-pts-merch-modal');
+            if (!modal) return;
+            var current = null;
+            var ajaxUrl = <?php echo wp_json_encode( $ajax ); ?>;
+            var nonce = <?php echo wp_json_encode( $nonce ); ?>;
+
+            function showStep(name) {
+                modal.querySelectorAll('.cw-pts-merch-step').forEach(function (el) {
+                    el.hidden = el.getAttribute('data-step') !== name;
+                });
+            }
+            function openModal(data) {
+                current = data;
+                document.getElementById('cw-pts-merch-modal-title').textContent = data.title || '';
+                document.getElementById('cw-pts-merch-desc').textContent = data.description || '';
+                document.getElementById('cw-pts-merch-cost').textContent = (data.cost || 0).toLocaleString() + ' pts';
+                document.getElementById('cw-pts-merch-stock').textContent = data.stock_label || '';
+                var typeEl = document.getElementById('cw-pts-merch-type');
+                typeEl.textContent = data.fulfillment === 'digital' ? 'Digital' : 'Physical';
+                typeEl.className = 'cw-pts-fulfill-pill cw-pts-fulfill-pill--' + (data.fulfillment || 'physical');
+                var img = document.getElementById('cw-pts-merch-img');
+                var fb = document.getElementById('cw-pts-merch-img-fallback');
+                if (data.image) {
+                    img.src = data.image;
+                    img.hidden = false;
+                    fb.hidden = true;
+                } else {
+                    img.hidden = true;
+                    img.removeAttribute('src');
+                    fb.hidden = false;
+                }
+                var redeemBtn = document.getElementById('cw-pts-merch-to-confirm');
+                redeemBtn.disabled = !data.can;
+                document.getElementById('cw-pts-merch-confirm-copy').textContent =
+                    'Spend ' + (data.cost || 0).toLocaleString() + ' points on “' + (data.title || '') + '”?';
+                document.getElementById('cw-pts-merch-addr-error').hidden = true;
+                modal.hidden = false;
+                modal.classList.add('is-open');
+                document.body.classList.add('cw-pts-merch-open');
+                showStep('detail');
+            }
+            function closeModal() {
+                modal.classList.remove('is-open');
+                modal.hidden = true;
+                document.body.classList.remove('cw-pts-merch-open');
+                current = null;
+            }
+            function redeem(address) {
+                var body = new FormData();
+                body.append('action', 'cw_points_merch_redeem');
+                body.append('nonce', nonce);
+                body.append('reward_id', String(current.id));
+                if (address) {
+                    Object.keys(address).forEach(function (k) { body.append('address[' + k + ']', address[k]); });
+                }
+                var confirmBtn = document.getElementById('cw-pts-merch-confirm');
+                confirmBtn.disabled = true;
+                fetch(ajaxUrl, { method: 'POST', credentials: 'same-origin', body: body })
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        confirmBtn.disabled = false;
+                        if (!res || !res.success) {
+                            var err = (res && res.data && res.data.message) ? res.data.message : 'Could not redeem.';
+                            if (res && res.data && res.data.need_address) {
+                                document.getElementById('cw-pts-merch-addr-error').textContent = err;
+                                document.getElementById('cw-pts-merch-addr-error').hidden = false;
+                                showStep('address');
+                                return;
+                            }
+                            alert(err);
+                            return;
+                        }
+                        document.getElementById('cw-pts-merch-done-copy').textContent =
+                            res.data && res.data.message ? res.data.message : 'Your redemption is pending fulfillment.';
+                        showStep('done');
+                    })
+                    .catch(function () {
+                        confirmBtn.disabled = false;
+                        alert('Network error. Please try again.');
+                    });
+            }
+
+            document.querySelectorAll('[data-cw-merch]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    try { openModal(JSON.parse(btn.getAttribute('data-cw-merch'))); } catch (e) {}
+                });
+            });
+            modal.querySelectorAll('[data-cw-merch-close]').forEach(function (el) {
+                el.addEventListener('click', closeModal);
+            });
+            modal.querySelectorAll('[data-cw-merch-reload]').forEach(function (el) {
+                el.addEventListener('click', function () { window.location.reload(); });
+            });
+            document.getElementById('cw-pts-merch-to-confirm').addEventListener('click', function () {
+                if (!current || !current.can) return;
+                showStep('confirm');
+            });
+            document.getElementById('cw-pts-merch-back-detail').addEventListener('click', function () { showStep('detail'); });
+            document.getElementById('cw-pts-merch-back-confirm').addEventListener('click', function () { showStep('confirm'); });
+            document.getElementById('cw-pts-merch-confirm').addEventListener('click', function () {
+                if (!current) return;
+                if (current.need_address) {
+                    showStep('address');
+                    return;
+                }
+                redeem(null);
+            });
+            document.getElementById('cw-pts-merch-address-form').addEventListener('submit', function (e) {
+                e.preventDefault();
+                var fd = new FormData(e.target);
+                var address = {};
+                fd.forEach(function (v, k) { address[k] = v; });
+                redeem(address);
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && modal.classList.contains('is-open')) closeModal();
+            });
+        })();
+        </script>
+        <?php
+    }
+
+    public function ajax_merch_redeem() {
+        if ( ! is_user_logged_in() ) {
+            wp_send_json_error( [ 'message' => __( 'Please log in.', 'creativewings-core' ) ], 401 );
+        }
+        check_ajax_referer( 'cw_points_merch_redeem', 'nonce' );
+        $uid = get_current_user_id();
+
+        // Contestant / creator only (points merch is My Account contestant surface).
+        $user = wp_get_current_user();
+        $roles = (array) $user->roles;
+        $allowed = array_intersect( $roles, [ 'contestant', 'creator_role', 'administrator' ] );
+        if ( empty( $allowed ) ) {
+            wp_send_json_error( [ 'message' => __( 'Not allowed.', 'creativewings-core' ) ], 403 );
+        }
+
+        $rate_key = 'cw_merch_redeem_rl_' . $uid;
+        $hits     = (int) get_transient( $rate_key );
+        if ( $hits >= 12 ) {
+            wp_send_json_error( [ 'message' => __( 'Too many attempts. Please wait a moment.', 'creativewings-core' ) ], 429 );
+        }
+        set_transient( $rate_key, $hits + 1, MINUTE_IN_SECONDS );
+
+        $reward_id = absint( $_POST['reward_id'] ?? 0 );
+        if ( $reward_id <= 0 ) {
+            wp_send_json_error( [ 'message' => __( 'Invalid reward.', 'creativewings-core' ) ] );
+        }
+        $address   = null;
+        if ( ! empty( $_POST['address'] ) && is_array( $_POST['address'] ) ) {
+            $raw = wp_unslash( $_POST['address'] );
+            $address = [];
+            foreach ( [ 'first_name', 'last_name', 'phone', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country' ] as $key ) {
+                $val = isset( $raw[ $key ] ) ? sanitize_text_field( (string) $raw[ $key ] ) : '';
+                if ( 'country' === $key ) {
+                    $val = strtoupper( substr( preg_replace( '/[^A-Za-z]/', '', $val ), 0, 2 ) );
+                }
+                $address[ $key ] = $val;
+            }
+        }
+
+        if ( ! class_exists( 'CW_Points_Rewards' ) ) {
+            wp_send_json_error( [ 'message' => __( 'Rewards unavailable.', 'creativewings-core' ) ] );
+        }
+
+        $result = CW_Points_Rewards::redeem( $uid, $reward_id, $address );
+        if ( is_wp_error( $result ) ) {
+            $data = [ 'message' => $result->get_error_message() ];
+            $err_data = $result->get_error_data();
+            if ( is_array( $err_data ) && ! empty( $err_data['need_address'] ) ) {
+                $data['need_address'] = true;
+            }
+            wp_send_json_error( $data );
+        }
+
+        wp_send_json_success(
+            [
+                'message' => __( 'Redeemed! We will fulfill your merchandise soon.', 'creativewings-core' ),
+                'balance' => class_exists( 'CW_Points' ) ? CW_Points::get_balance( $uid ) : 0,
+            ]
+        );
     }
 
     public function handle_redeem_reward() {
@@ -1133,63 +1794,143 @@ class CW_Dashboard_Contestant {
         }
 
         $uid   = get_current_user_id();
-        $rows  = CW_Points::get_leaderboard( CW_Points::LEADERBOARD_SIZE );
-        $mine  = CW_Points::get_balance( $uid );
-        $rank  = CW_Points::get_user_rank( $uid );
+        $limit = CW_Points::PANEL_SIZE;
+
+        $week_rows = CW_Points::get_leaderboard_earned( 7, $limit );
+        $all_raw   = CW_Points::get_leaderboard( $limit );
+        $all_rows  = [];
+        foreach ( $all_raw as $row ) {
+            $all_rows[] = [
+                'user_id'      => (int) $row['user_id'],
+                'points'       => (int) $row['balance'],
+                'display_name' => (string) $row['display_name'],
+                'rank'         => (int) $row['rank'],
+            ];
+        }
+        $month_rows = CW_Points::get_leaderboard_earned( 30, $limit );
+
+        $panels = [
+            [
+                'key'         => 'week',
+                'title'       => __( 'This week', 'creativewings-core' ),
+                'eyebrow'     => __( 'Last 7 days', 'creativewings-core' ),
+                'featured'    => false,
+                'rows'        => $week_rows,
+                'you_rank'    => CW_Points::get_user_earned_rank( $uid, 7 ),
+                'you_points'  => CW_Points::get_user_earned( $uid, 7 ),
+                'empty'       => __( 'No earns this week yet.', 'creativewings-core' ),
+            ],
+            [
+                'key'         => 'alltime',
+                'title'       => __( 'All-time', 'creativewings-core' ),
+                'eyebrow'     => __( 'Current balance', 'creativewings-core' ),
+                'featured'    => true,
+                'rows'        => $all_rows,
+                'you_rank'    => CW_Points::get_user_rank( $uid ),
+                'you_points'  => CW_Points::get_balance( $uid ),
+                'empty'       => __( 'No ranked contestants yet.', 'creativewings-core' ),
+            ],
+            [
+                'key'         => 'month',
+                'title'       => __( 'This month', 'creativewings-core' ),
+                'eyebrow'     => __( 'Last 30 days', 'creativewings-core' ),
+                'featured'    => false,
+                'rows'        => $month_rows,
+                'you_rank'    => CW_Points::get_user_earned_rank( $uid, 30 ),
+                'you_points'  => CW_Points::get_user_earned( $uid, 30 ),
+                'empty'       => __( 'No earns this month yet.', 'creativewings-core' ),
+            ],
+        ];
         ?>
-        <div class="cw-content-wrapper">
+        <div class="cw-content-wrapper cw-lb">
             <div class="cw-dash-header">
                 <h2><?php esc_html_e( 'Points Leaderboard', 'creativewings-core' ); ?></h2>
-                <p><?php esc_html_e( 'Site-wide ranking by current points balance.', 'creativewings-core' ); ?></p>
+                <p><?php esc_html_e( 'Week and month rank by points earned. All-time ranks by current balance.', 'creativewings-core' ); ?></p>
             </div>
 
-            <?php if ( $rank > 0 ) : ?>
-                <p style="margin:0 0 18px;font-size:14px;color:#334155;">
-                    <?php
-                    printf(
-                        /* translators: 1: rank 2: balance */
-                        esc_html__( 'You are #%1$d with %2$s points.', 'creativewings-core' ),
-                        (int) $rank,
-                        number_format( $mine )
-                    );
-                    ?>
-                </p>
-            <?php endif; ?>
+            <div class="cw-lb-trio" role="list">
+                <?php foreach ( $panels as $panel ) :
+                    $this->render_leaderboard_panel( $panel, $uid );
+                endforeach; ?>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * @param array<string,mixed> $panel
+     * @param int                 $uid
+     */
+    private function render_leaderboard_panel( array $panel, $uid ) {
+        $featured = ! empty( $panel['featured'] );
+        $rows     = is_array( $panel['rows'] ?? null ) ? $panel['rows'] : [];
+        $you_rank = (int) ( $panel['you_rank'] ?? 0 );
+        $you_pts  = (int) ( $panel['you_points'] ?? 0 );
+        $classes  = 'cw-lb-card cw-lb-card--' . sanitize_html_class( (string) ( $panel['key'] ?? 'panel' ) );
+        if ( $featured ) {
+            $classes .= ' cw-lb-card--featured';
+        }
+        ?>
+        <article class="<?php echo esc_attr( $classes ); ?>" role="listitem">
+            <header class="cw-lb-card__head">
+                <p class="cw-lb-card__eyebrow"><?php echo esc_html( (string) $panel['eyebrow'] ); ?></p>
+                <h3 class="cw-lb-card__title"><?php echo esc_html( (string) $panel['title'] ); ?></h3>
+                <?php if ( $featured ) : ?>
+                    <span class="cw-lb-card__badge"><?php esc_html_e( 'Featured', 'creativewings-core' ); ?></span>
+                <?php endif; ?>
+            </header>
+
+            <div class="cw-lb-card__you">
+                <?php if ( $you_rank > 0 ) : ?>
+                    <span class="cw-lb-card__you-rank">#<?php echo (int) $you_rank; ?></span>
+                    <span class="cw-lb-card__you-copy">
+                        <?php
+                        printf(
+                            /* translators: %s: formatted points */
+                            esc_html__( 'You · %s pts', 'creativewings-core' ),
+                            esc_html( number_format_i18n( $you_pts ) )
+                        );
+                        ?>
+                    </span>
+                <?php else : ?>
+                    <span class="cw-lb-card__you-copy cw-lb-card__you-copy--muted">
+                        <?php esc_html_e( 'You are unranked here', 'creativewings-core' ); ?>
+                    </span>
+                <?php endif; ?>
+            </div>
 
             <?php if ( empty( $rows ) ) : ?>
-                <div class="cw-recent-empty">
-                    <p class="cw-recent-empty-desc"><?php esc_html_e( 'No ranked contestants yet. Be the first to earn points!', 'creativewings-core' ); ?></p>
-                </div>
+                <p class="cw-lb-card__empty"><?php echo esc_html( (string) ( $panel['empty'] ?? '' ) ); ?></p>
             <?php else : ?>
-                <div class="cw-recent-table-wrap">
-                    <table class="cw-recent-table">
-                        <thead>
-                            <tr>
-                                <th><?php esc_html_e( 'Rank', 'creativewings-core' ); ?></th>
-                                <th><?php esc_html_e( 'Contestant', 'creativewings-core' ); ?></th>
-                                <th><?php esc_html_e( 'Points', 'creativewings-core' ); ?></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ( $rows as $row ) :
-                                $is_me = ( (int) $row['user_id'] === (int) $uid );
-                                ?>
-                            <tr<?php echo $is_me ? ' style="background:#f0f9ff;"' : ''; ?>>
-                                <td><strong>#<?php echo (int) $row['rank']; ?></strong></td>
-                                <td>
-                                    <?php echo esc_html( $row['display_name'] ); ?>
-                                    <?php if ( $is_me ) : ?>
-                                        <span style="margin-left:6px;font-size:11px;font-weight:700;color:#0369a1;"><?php esc_html_e( 'You', 'creativewings-core' ); ?></span>
-                                    <?php endif; ?>
-                                </td>
-                                <td><?php echo number_format( (int) $row['balance'] ); ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
+                <ol class="cw-lb-list">
+                    <?php foreach ( $rows as $row ) :
+                        $is_me = ( (int) $row['user_id'] === (int) $uid );
+                        $rank  = (int) $row['rank'];
+                        $medal = $rank <= 3 ? ' cw-lb-row--medal-' . $rank : '';
+                        ?>
+                        <li class="cw-lb-row<?php echo $is_me ? ' is-me' : ''; ?><?php echo esc_attr( $medal ); ?>">
+                            <span class="cw-lb-row__rank" aria-hidden="true">
+                                <?php if ( $rank <= 3 ) : ?>
+                                    <span class="cw-lb-medal"><?php echo (int) $rank; ?></span>
+                                <?php else : ?>
+                                    <?php echo (int) $rank; ?>
+                                <?php endif; ?>
+                            </span>
+                            <span class="cw-lb-row__name">
+                                <?php echo esc_html( (string) $row['display_name'] ); ?>
+                                <?php if ( $is_me ) : ?>
+                                    <span class="cw-lb-you-pill"><?php esc_html_e( 'You', 'creativewings-core' ); ?></span>
+                                <?php endif; ?>
+                            </span>
+                            <span class="cw-lb-row__pts">
+                                <?php echo esc_html( number_format_i18n( (int) $row['points'] ) ); ?>
+                                <span class="cw-lb-row__pts-unit"><?php esc_html_e( 'pts', 'creativewings-core' ); ?></span>
+                            </span>
+                        </li>
+                    <?php endforeach; ?>
+                </ol>
             <?php endif; ?>
-        </div>
+        </article>
         <?php
     }
 }

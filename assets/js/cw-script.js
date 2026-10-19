@@ -63,13 +63,20 @@ jQuery(document).ready(function($) {
     // ======================================================
     // 2. DATEPICKER
     // ======================================================
+    // Birthdate: prefer jQuery UI datepicker when available, but never lock
+    // the field to readonly — users must be able to type dd/mm/yyyy if the
+    // calendar fails to load (complete-profile / registration).
     if ($("#birthdate").length) {
-        $("#birthdate").datepicker({ 
-            changeMonth: true, 
-            changeYear: true, 
-            yearRange: "c-80:c", // Dynamic: 80 years ago to Current Year
-            dateFormat: "dd/mm/yy" 
-        });
+        var $dob = $("#birthdate");
+        $dob.prop("readonly", false).attr("inputmode", "numeric");
+        if (typeof $.fn.datepicker === "function") {
+            $dob.datepicker({
+                changeMonth: true,
+                changeYear: true,
+                yearRange: "c-80:c",
+                dateFormat: "dd/mm/yy"
+            });
+        }
     }
 
     // ======================================================
@@ -187,4 +194,34 @@ window.onclick = function(event) {
         event.target.style.display = "none";
     }
 };
+
+    // My Badges progress tabs: All / Complete / Not complete
+    // Use a class (not [hidden]) — .cw-badge-card { display:grid } overrides [hidden].
+    document.querySelectorAll('[data-cw-badges-filter]').forEach(function (wrap) {
+        var tabs = wrap.querySelectorAll('[data-cw-badge-filter]');
+        var cards = wrap.querySelectorAll('[data-cw-badge-state]');
+        var empty = wrap.querySelector('.cw-badges-filter-empty');
+        tabs.forEach(function (tab) {
+            tab.addEventListener('click', function () {
+                var filter = tab.getAttribute('data-cw-badge-filter') || 'all';
+                tabs.forEach(function (t) {
+                    var on = t === tab;
+                    t.classList.toggle('is-active', on);
+                    t.setAttribute('aria-selected', on ? 'true' : 'false');
+                });
+                var visible = 0;
+                cards.forEach(function (card) {
+                    var state = card.getAttribute('data-cw-badge-state');
+                    var show = filter === 'all' || state === filter;
+                    card.classList.toggle('cw-badge-card--filtered-out', !show);
+                    card.setAttribute('aria-hidden', show ? 'false' : 'true');
+                    if (show) visible++;
+                });
+                if (empty) {
+                    empty.hidden = visible > 0;
+                    empty.style.display = visible > 0 ? 'none' : 'block';
+                }
+            });
+        });
+    });
 });
