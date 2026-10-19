@@ -443,6 +443,72 @@ body, html {
     background: var(--cw-danger-light);
 }
 
+/* --------------------------------------------------------------------------
+   Contestant portal shell (scoped — creator/business unchanged)
+   Spec: 2026-10-19-contestant-overview-shell-revamp-design.md
+   -------------------------------------------------------------------------- */
+.cw-layout--contestant {
+    background: #f7f8fa;
+}
+
+.cw-layout--contestant .cw-main-area {
+    background:
+        radial-gradient(1200px 480px at 100% -10%, rgba(18, 91, 154, 0.06), transparent 55%),
+        #f7f8fa;
+}
+
+.cw-layout--contestant .cw-sidebar {
+    background: #fafafa;
+    border-right-color: #e8ecf1;
+}
+
+.cw-layout--contestant .cw-logo-area {
+    padding: 20px 18px;
+    border-bottom-color: #e8ecf1;
+}
+
+.cw-layout--contestant .cw-logo-circle {
+    border-radius: 10px;
+    box-shadow: none;
+}
+
+.cw-layout--contestant .cw-nav-list {
+    padding: 16px 12px;
+}
+
+.cw-layout--contestant .cw-nav-link {
+    padding: 11px 14px;
+    margin-bottom: 4px;
+    border-radius: 8px;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.cw-layout--contestant .cw-nav-link.active {
+    background: var(--cw-primary-light);
+    color: var(--cw-primary);
+    box-shadow: none;
+}
+
+.cw-layout--contestant .cw-sidebar-user {
+    background: transparent;
+    border-radius: 8px;
+    margin: 0 4px 4px;
+    padding: 10px 12px;
+}
+
+.cw-layout--contestant .cw-sidebar-user:hover {
+    background: #eef2f7;
+}
+
+.cw-layout--contestant .cw-sidebar-avatar {
+    border-width: 1px;
+}
+
+.cw-layout--contestant .cw-mobile-header {
+    background: #fafafa;
+    border-bottom: 1px solid #e8ecf1;
+}
+
 /* Mobile Header */
 .cw-mobile-header {
     display: none;
