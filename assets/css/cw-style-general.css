@@ -507,6 +507,7 @@ body, html {
 .cw-layout--contestant .cw-mobile-header {
     background: #fafafa;
     border-bottom: 1px solid #e8ecf1;
+    box-shadow: none;
 }
 
 /* Mobile Header */

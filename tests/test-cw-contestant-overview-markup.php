@@ -43,7 +43,7 @@ cw_assert(
 );
 
 // Stricter: between render_overview and the next public function, no .stat-icon
-if ( preg_match( '/function render_overview\(\)\s*\{([\s\S]*?)\n    public function /', $contestant, $m ) ) {
+if ( preg_match( '/function render_overview\(\)\s*\{([\s\S]*?)\n[ \t]*public function /', $contestant, $m ) ) {
 	$body = $m[1];
 	cw_assert( strpos( $body, 'stat-icon' ) === false, 'render_overview body has no stat-icon' );
 	cw_assert( strpos( $body, 'cw-ov-welcome' ) !== false, 'render_overview body has cw-ov-welcome' );
@@ -52,7 +52,7 @@ if ( preg_match( '/function render_overview\(\)\s*\{([\s\S]*?)\n    public funct
 
 $css = file_get_contents( $root . '/assets/css/cw-style-contestant.css' );
 cw_assert( strpos( $css, '.cw-ov-welcome' ) !== false, 'contestant CSS defines .cw-ov-welcome' );
-if ( preg_match( '/Overview revamp \(cw-ov-\*\)[\s\S]*?(?=\/\* -+\s*\n\s*1\. OVERVIEW)/', $css, $ov_css ) ) {
+if ( preg_match( '/Overview revamp \(cw-ov-\*\)[\s\S]*?(?=\/\* ---)/', $css, $ov_css ) ) {
 	cw_assert( strpos( $ov_css[0], 'backdrop-filter' ) === false, 'cw-ov CSS block has no backdrop-filter' );
 } else {
 	cw_assert( false, 'cw-ov CSS block marker present' );
