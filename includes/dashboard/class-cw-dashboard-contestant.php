@@ -121,47 +121,55 @@ class CW_Dashboard_Contestant {
         }
 
         ?>
-        <div class="cw-content-wrapper">
-             <div class="cw-dash-header">
-                 <h2>Welcome back, <?php echo esc_html($u->first_name ?: $u->display_name); ?></h2>
-                 <p>Here's what's happening with your activities. <a href="<?php echo esc_url($activities_url); ?>" style="font-weight:600;color:var(--cw-primary);text-decoration:none;">View All Activities →</a></p>
-             </div>
-
-            <div class="cw-stats-container">
-                <!-- Total Submissions -->
-                <div class="cw-stat-box-v2">
-                    <div class="cw-stat-value-row">
-                        <div class="stat-icon blue"><i class="fas fa-trophy"></i></div>
-                        <h3><?php echo number_format($entries_count); ?></h3>
-                    </div>
-                    <span>Total Submissions</span>
+        <div class="cw-content-wrapper cw-ov">
+            <header class="cw-ov-welcome">
+                <div class="cw-ov-welcome-copy">
+                    <h2 class="cw-ov-welcome-title">
+                        <?php
+                        printf(
+                            /* translators: %s: first name or display name */
+                            esc_html__( 'Welcome back, %s', 'creativewings-core' ),
+                            esc_html( $u->first_name ?: $u->display_name )
+                        );
+                        ?>
+                    </h2>
+                    <p class="cw-ov-welcome-sub">
+                        <?php esc_html_e( 'Track your submissions, points, and next opportunities in one place.', 'creativewings-core' ); ?>
+                    </p>
                 </div>
-
-                <!-- Pending Review -->
-                <div class="cw-stat-box-v2">
-                    <div class="cw-stat-value-row">
-                        <div class="stat-icon yellow"><i class="fas fa-chart-line"></i></div>
-                        <h3><?php echo number_format($pending_review_count); ?></h3>
-                    </div>
-                    <span>Pending Review</span>
+                <div class="cw-ov-welcome-actions">
+                    <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-btn-primary cw-ov-btn-primary">
+                        <?php esc_html_e( 'Explore Opportunities', 'creativewings-core' ); ?>
+                    </a>
+                    <a href="<?php echo esc_url( $activities_url ); ?>" class="cw-ov-btn-secondary">
+                        <?php esc_html_e( 'View activities', 'creativewings-core' ); ?>
+                    </a>
                 </div>
+            </header>
 
-                <!-- Points -->
-                <div class="cw-stat-box-v2">
-                    <div class="cw-stat-value-row">
-                        <div class="stat-icon blue"><i class="fas fa-coins"></i></div>
-                        <h3><?php echo number_format( $points_balance ); ?></h3>
-                    </div>
-                    <span>
-                        <a href="<?php echo esc_url( $points_url ); ?>" style="color:inherit;text-decoration:none;font-weight:600;">
-                            <?php esc_html_e( 'Points', 'creativewings-core' ); ?>
+            <div class="cw-ov-metrics" role="list">
+                <div class="cw-ov-metric" role="listitem">
+                    <p class="cw-ov-metric-value"><?php echo esc_html( number_format_i18n( $entries_count ) ); ?></p>
+                    <p class="cw-ov-metric-label"><?php esc_html_e( 'Total submissions', 'creativewings-core' ); ?></p>
+                </div>
+                <div class="cw-ov-metric" role="listitem">
+                    <p class="cw-ov-metric-value"><?php echo esc_html( number_format_i18n( $pending_review_count ) ); ?></p>
+                    <p class="cw-ov-metric-label"><?php esc_html_e( 'Pending review', 'creativewings-core' ); ?></p>
+                </div>
+                <div class="cw-ov-metric" role="listitem">
+                    <p class="cw-ov-metric-value">
+                        <a href="<?php echo esc_url( $points_url ); ?>" class="cw-ov-metric-link">
+                            <?php echo esc_html( number_format_i18n( $points_balance ) ); ?>
                         </a>
+                    </p>
+                    <p class="cw-ov-metric-label">
+                        <?php esc_html_e( 'Points', 'creativewings-core' ); ?>
                         <?php if ( $points_rank > 0 ) : ?>
-                            · #<?php echo (int) $points_rank; ?>
+                            <span class="cw-ov-metric-meta">· #<?php echo (int) $points_rank; ?></span>
                         <?php endif; ?>
-                    </span>
+                    </p>
                     <?php if ( $points_expiry && $points_balance > 0 ) : ?>
-                        <small style="display:block;margin-top:6px;color:#64748b;font-size:11px;">
+                        <p class="cw-ov-metric-hint">
                             <?php
                             printf(
                                 /* translators: %s: expiry date */
@@ -169,54 +177,52 @@ class CW_Dashboard_Contestant {
                                 esc_html( date_i18n( get_option( 'date_format' ), strtotime( $points_expiry ) ) )
                             );
                             ?>
-                        </small>
+                        </p>
                     <?php endif; ?>
                 </div>
-
-                <!-- Upgrade Card -->
-                <div class="cw-upgrade-card-host">
-                    <h4>Looking to host?</h4>
-                    <p>Upgrade to Creator to unlock full features.</p>
-                    <a href="<?php echo esc_url($upgrade_url); ?>" class="cw-btn-upgrade">Upgrade Now <i class="fas fa-arrow-right"></i></a>
+                <div class="cw-ov-upgrade" role="listitem">
+                    <p class="cw-ov-upgrade-title"><?php esc_html_e( 'Looking to host?', 'creativewings-core' ); ?></p>
+                    <p class="cw-ov-upgrade-copy"><?php esc_html_e( 'Upgrade to Creator to unlock full features.', 'creativewings-core' ); ?></p>
+                    <a href="<?php echo esc_url( $upgrade_url ); ?>" class="cw-btn-primary cw-ov-upgrade-btn">
+                        <?php esc_html_e( 'Upgrade now', 'creativewings-core' ); ?>
+                    </a>
                 </div>
             </div>
 
-            <!-- Recent Submissions -->
-            <h3 class="cw-recent-heading">Recent Submissions</h3>
+            <section class="cw-ov-recent" aria-labelledby="cw-ov-recent-heading">
+                <h3 id="cw-ov-recent-heading" class="cw-ov-recent-heading">
+                    <?php esc_html_e( 'Recent submissions', 'creativewings-core' ); ?>
+                </h3>
 
-            <?php if ( ! empty( $renderable_recent ) ): ?>
-                <div class="cw-recent-table-wrap">
-                    <table class="cw-recent-table">
-                        <thead>
-                            <tr>
-                                <th>Activity Name</th>
-                                <th>Type</th>
-                                <th>Date</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ( $renderable_recent as $row ): ?>
-                            <tr>
-                                <td><?php echo esc_html( $row['product']->get_name() ); ?></td>
-                                <td><span class="cw-status-badge cw-status-registered"><?php echo esc_html( $row['type_tag'] ); ?></span></td>
-                                <td><?php echo get_the_date( 'Y-m-d', $row['entry']->ID ); ?></td>
-                                <td><span class="cw-status-badge <?php echo esc_attr( $row['status_class'] ); ?>"><?php echo esc_html( $row['status_label'] ); ?></span></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php else: ?>
-                <div class="cw-recent-empty">
-                    <div class="cw-recent-empty-icon"><i class="fas fa-rocket"></i></div>
-                    <h4 class="cw-recent-empty-title"><?php esc_html_e( 'No activities yet', 'creativewings-core' ); ?></h4>
-                    <p class="cw-recent-empty-desc"><?php esc_html_e( 'Join a competition or activity to see your submissions here. Browse all the latest opportunities in one place.', 'creativewings-core' ); ?></p>
-                    <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-recent-empty-btn">
-                        <i class="fas fa-bolt"></i> <?php esc_html_e( 'Explore Opportunities', 'creativewings-core' ); ?>
-                    </a>
-                </div>
-            <?php endif; ?>
+                <?php if ( ! empty( $renderable_recent ) ) : ?>
+                    <ul class="cw-ov-recent-list">
+                        <?php foreach ( $renderable_recent as $row ) : ?>
+                            <li class="cw-ov-recent-item">
+                                <div class="cw-ov-recent-main">
+                                    <span class="cw-ov-recent-name"><?php echo esc_html( $row['product']->get_name() ); ?></span>
+                                    <span class="cw-ov-recent-type"><?php echo esc_html( $row['type_tag'] ); ?></span>
+                                </div>
+                                <div class="cw-ov-recent-meta">
+                                    <time datetime="<?php echo esc_attr( get_the_date( 'c', $row['entry']->ID ) ); ?>">
+                                        <?php echo esc_html( get_the_date( 'Y-m-d', $row['entry']->ID ) ); ?>
+                                    </time>
+                                    <span class="cw-status-badge <?php echo esc_attr( $row['status_class'] ); ?>">
+                                        <?php echo esc_html( $row['status_label'] ); ?>
+                                    </span>
+                                </div>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php else : ?>
+                    <div class="cw-ov-empty">
+                        <p class="cw-ov-empty-title"><?php esc_html_e( 'No activities yet', 'creativewings-core' ); ?></p>
+                        <p class="cw-ov-empty-desc"><?php esc_html_e( 'Join a competition or activity to see your submissions here.', 'creativewings-core' ); ?></p>
+                        <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-btn-primary">
+                            <?php esc_html_e( 'Explore Opportunities', 'creativewings-core' ); ?>
+                        </a>
+                    </div>
+                <?php endif; ?>
+            </section>
         </div>
         <?php
     }
