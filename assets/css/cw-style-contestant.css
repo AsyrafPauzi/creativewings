@@ -3,6 +3,250 @@
    Per CW Brand Style Guide v2.0 | Primary: #125B9A | Accent: #F05A7E
    ========================================================================== */
 
+/* --------------------------------------------------------------------------
+   Overview revamp (cw-ov-*) — unslop-safe, contestant home
+   -------------------------------------------------------------------------- */
+
+.cw-ov {
+    padding: 0 0 48px;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.cw-ov-welcome {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px 28px;
+    margin-bottom: 28px;
+    padding-bottom: 4px;
+}
+
+.cw-ov-welcome-title {
+    margin: 0 0 8px;
+    font-size: clamp(1.5rem, 2.2vw, 1.85rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--cw-text);
+    line-height: 1.25;
+    max-width: 36rem;
+}
+
+.cw-ov-welcome-sub {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--cw-text-soft);
+    max-width: 34rem;
+}
+
+.cw-ov-welcome-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+}
+
+.cw-ov-btn-primary {
+    text-decoration: none;
+}
+
+.cw-ov-btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cw-primary);
+    text-decoration: none;
+    border: 1.5px solid var(--cw-primary);
+    border-radius: var(--cw-radius-pill, 999px);
+    background: transparent;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.cw-ov-btn-secondary:hover {
+    background: var(--cw-primary-light);
+    color: var(--cw-primary);
+}
+
+.cw-ov-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-flow: dense;
+    gap: 14px;
+    margin-bottom: 32px;
+}
+
+.cw-ov-metric,
+.cw-ov-upgrade {
+    background: var(--cw-surface, #fff);
+    border: 1px solid var(--cw-border);
+    border-radius: var(--cw-radius, 12px);
+    padding: 20px 22px;
+    box-shadow: none;
+    min-width: 0;
+}
+
+.cw-ov-metric-value {
+    margin: 0 0 6px;
+    font-size: clamp(1.75rem, 3vw, 2rem);
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: var(--cw-text);
+    line-height: 1.1;
+}
+
+.cw-ov-metric-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.cw-ov-metric-link:hover {
+    color: var(--cw-primary);
+}
+
+.cw-ov-metric-label {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--cw-text-soft);
+}
+
+.cw-ov-metric-meta {
+    font-weight: 600;
+    color: var(--cw-text);
+}
+
+.cw-ov-metric-hint {
+    margin: 8px 0 0;
+    font-size: 11px;
+    color: #64748b;
+    line-height: 1.4;
+}
+
+.cw-ov-upgrade-title {
+    margin: 0 0 6px;
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--cw-text);
+}
+
+.cw-ov-upgrade-copy {
+    margin: 0 0 14px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--cw-text-soft);
+}
+
+.cw-ov-upgrade-btn {
+    text-decoration: none;
+}
+
+.cw-ov-recent-heading {
+    margin: 0 0 14px;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--cw-text);
+}
+
+.cw-ov-recent-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--cw-border);
+    border-radius: var(--cw-radius, 12px);
+    background: var(--cw-surface, #fff);
+    overflow: hidden;
+}
+
+.cw-ov-recent-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 16px;
+    padding: 14px 18px;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background 0.2s ease;
+}
+
+.cw-ov-recent-item:last-child {
+    border-bottom: none;
+}
+
+.cw-ov-recent-item:hover {
+    background: #f8fafc;
+}
+
+.cw-ov-recent-main {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.cw-ov-recent-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--cw-text);
+}
+
+.cw-ov-recent-type {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--cw-text-soft);
+}
+
+.cw-ov-recent-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--cw-text-soft);
+}
+
+.cw-ov-empty {
+    padding: 36px 24px;
+    text-align: center;
+    border: 1px solid var(--cw-border);
+    border-radius: var(--cw-radius, 12px);
+    background: var(--cw-surface, #fff);
+}
+
+.cw-ov-empty-title {
+    margin: 0 0 8px;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--cw-text);
+}
+
+.cw-ov-empty-desc {
+    margin: 0 0 18px;
+    font-size: 14px;
+    color: var(--cw-text-soft);
+    line-height: 1.5;
+}
+
+@media (min-width: 900px) {
+    .cw-ov-metrics {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .cw-ov-welcome-actions {
+        width: 100%;
+    }
+
+    .cw-ov-btn-primary,
+    .cw-ov-btn-secondary {
+        width: 100%;
+        justify-content: center;
+        text-align: center;
+    }
+}
 
 /* --------------------------------------------------------------------------
    1. OVERVIEW (Dashboard Home)

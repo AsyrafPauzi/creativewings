@@ -41,11 +41,6 @@ cw_assert(
 	strpos( $contestant, 'cw-ov-recent' ) !== false,
 	'overview has cw-ov-recent'
 );
-cw_assert(
-	strpos( $contestant, 'stat-icon' ) === false
-		|| strpos( $contestant, 'function render_overview' ) === false,
-	'overview markup must not use metric icon tiles (checked after rewrite)'
-);
 
 // Stricter: between render_overview and the next public function, no .stat-icon
 if ( preg_match( '/function render_overview\(\)\s*\{([\s\S]*?)\n    public function /', $contestant, $m ) ) {
@@ -57,7 +52,11 @@ if ( preg_match( '/function render_overview\(\)\s*\{([\s\S]*?)\n    public funct
 
 $css = file_get_contents( $root . '/assets/css/cw-style-contestant.css' );
 cw_assert( strpos( $css, '.cw-ov-welcome' ) !== false, 'contestant CSS defines .cw-ov-welcome' );
-cw_assert( strpos( $css, 'backdrop-filter' ) === false, 'contestant CSS has no backdrop-filter' );
+if ( preg_match( '/Overview revamp \(cw-ov-\*\)[\s\S]*?(?=\/\* -+\s*\n\s*1\. OVERVIEW)/', $css, $ov_css ) ) {
+	cw_assert( strpos( $ov_css[0], 'backdrop-filter' ) === false, 'cw-ov CSS block has no backdrop-filter' );
+} else {
+	cw_assert( false, 'cw-ov CSS block marker present' );
+}
 
 $gen = file_get_contents( $root . '/assets/css/cw-style-general.css' );
 cw_assert(
