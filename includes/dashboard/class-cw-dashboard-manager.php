@@ -78,7 +78,7 @@ class CW_Dashboard_Manager {
 
         ob_start();
         ?>
-        <div class="cw-layout-container">
+        <div class="cw-layout-container<?php echo ( 'contestant' === $role ) ? ' cw-layout--contestant' : ''; ?>">
             
             <!-- MOBILE OVERLAY -->
             <div id="cw-mobile-overlay" class="cw-mobile-overlay" onclick="toggleSidebar()"></div>
