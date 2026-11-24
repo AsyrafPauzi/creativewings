@@ -1,0 +1,16 @@
+:root {
+	--cw-black: #000000;
+	--cw-white: #ffffff;
+	--cw-ink: #1a1a1a;
+	--cw-muted: #475569;
+	--cw-coral: #ef5b7d;
+	--cw-blue: #125797;
+	--cw-hero-overlay: rgba(0, 0, 0, 0.35);
+	--cw-font: "Montserrat", system-ui, sans-serif;
+	--cw-header-h: 88px;
+	--cw-container: 1200px;
+	--cw-radius-sm: 2px;
+	--cw-radius-pill: 999px;
+	--cw-nav-pad-y: 40px;
+	--cw-nav-pad-x: 20px;
+}

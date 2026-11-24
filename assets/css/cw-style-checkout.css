@@ -946,6 +946,27 @@ html.cw-success-modal-open body {
     font-variant-numeric: tabular-nums;
 }
 
+.cw-success-modal__points {
+    list-style: none;
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    text-align: left;
+    font-size: 13px;
+    line-height: 1.45;
+    color: #0c4a6e;
+}
+.cw-success-modal__points li + li { margin-top: 6px; }
+
+.cw-success-modal__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
 .cw-success-modal__cta {
     display: inline-flex;
     align-items: center;
@@ -964,6 +985,16 @@ html.cw-success-modal-open body {
 .cw-success-modal__cta:hover {
     background: var(--cw-primary-hover, #0e4a7c);
     transform: translateY(-1px);
+}
+
+.cw-success-modal__cta--ghost {
+    background: #fff;
+    color: var(--cw-primary, #125B9A) !important;
+    border: 1px solid #cbd5e1;
+}
+.cw-success-modal__cta--ghost:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
 }
 
 @media (prefers-reduced-motion: reduce) {

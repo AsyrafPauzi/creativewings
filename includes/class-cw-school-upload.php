@@ -13,6 +13,10 @@ class CW_School_Upload {
         add_action( 'admin_post_cw_generate_upload_token', [ $this, 'handle_generate_token' ] );
         add_action( 'wp_ajax_nopriv_cw_pic_lookup_code', [ $this, 'ajax_lookup_code' ] );
         add_action( 'wp_ajax_cw_pic_lookup_code', [ $this, 'ajax_lookup_code' ] );
+        add_action( 'wp_ajax_nopriv_cw_pic_lookup_email', [ $this, 'ajax_lookup_email' ] );
+        add_action( 'wp_ajax_cw_pic_lookup_email', [ $this, 'ajax_lookup_email' ] );
+        add_action( 'wp_ajax_nopriv_cw_staff_submission_save', [ $this, 'ajax_save' ] );
+        add_action( 'wp_ajax_cw_staff_submission_save', [ $this, 'ajax_save' ] );
     }
 
     public function query_vars( $vars ) {
@@ -60,6 +64,7 @@ class CW_School_Upload {
 
     private function render_page( $token, $campaign, $school_code, $prefill, $campaign_id, $from_qr = false, $qr_code = '' ) {
         $claimed_block = $prefill && ( $prefill['status'] ?? '' ) === 'claimed';
+        $already_done  = $prefill && ! empty( $prefill['artwork_attachment_id'] ) && ! $claimed_block;
         $code_value    = $qr_code ?: ( is_array( $prefill ) ? ( $prefill['submission_code'] ?? '' ) : '' );
         $code_mismatch = false;
         if ( $from_qr && $code_value && class_exists( 'CW_Submission_Code' ) ) {
@@ -95,7 +100,8 @@ class CW_School_Upload {
                 h1{font-size:22px;margin:0 0 8px;color:#0f172a}
                 .sub{color:#555555;font-size:14px;margin-bottom:20px}
                 label{display:block;font-weight:600;font-size:13px;margin:12px 0 6px}
-                input[type=text],input[type=file]{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;box-sizing:border-box}
+                input[type=text],input[type=email],input[type=file],textarea{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;box-sizing:border-box;font-family:inherit}
+                textarea{min-height:72px;resize:vertical}
                 .btn{background:#125B9A;color:#fff;border:none;padding:12px 20px;border-radius:8px;font-weight:700;cursor:pointer;width:100%;margin-top:16px}
                 .alert{padding:12px;border-radius:8px;margin-bottom:16px;font-size:14px}
                 .alert-error{background:#fef2f2;color:#b91c1c}
@@ -139,7 +145,14 @@ class CW_School_Upload {
             <p class="sub"><?php printf( esc_html__( 'School code: %s', 'creativewings-core' ), esc_html( $school_code ) ); ?></p>
 
             <?php if ( ! empty( $_GET['saved'] ) ) : ?>
-                <div class="alert alert-success"><?php esc_html_e( 'Submission saved successfully.', 'creativewings-core' ); ?></div>
+                <div class="alert alert-success">
+                    <?php if ( ! empty( $_GET['register'] ) ) : ?>
+                        <?php esc_html_e( 'Submission saved. Register on Creative Wings with this same email so we can link the artwork to your account.', 'creativewings-core' ); ?>
+                        <p style="margin:10px 0 0"><a href="<?php echo esc_url( home_url( '/my-account/' ) ); ?>" style="color:#1d4ed8;font-weight:700"><?php esc_html_e( 'Register on Creative Wings →', 'creativewings-core' ); ?></a></p>
+                    <?php else : ?>
+                        <?php esc_html_e( 'Submission saved successfully.', 'creativewings-core' ); ?>
+                    <?php endif; ?>
+                </div>
             <?php endif; ?>
             <?php if ( ! empty( $_GET['error'] ) ) : ?>
                 <div class="alert alert-error"><?php echo esc_html( sanitize_text_field( wp_unslash( $_GET['error'] ) ) ); ?></div>
@@ -147,52 +160,67 @@ class CW_School_Upload {
 
             <?php if ( $claimed_block ) : ?>
                 <div class="alert alert-warn"><?php esc_html_e( 'This submission is already claimed by a parent. Contact Creative Wings admin to make changes.', 'creativewings-core' ); ?></div>
+            <?php elseif ( $already_done ) : ?>
+                <div class="alert alert-warn"><?php esc_html_e( 'This code already has a submission. Double entry is not allowed.', 'creativewings-core' ); ?></div>
             <?php elseif ( ! $has_configured ) : ?>
                 <div class="alert alert-warn"><?php esc_html_e( 'This campaign has no image upload field yet. The organizer must add an Image Upload (or Document Upload) field in Step 5 — Participant Form Fields before school staff can upload.', 'creativewings-core' ); ?></div>
             <?php else : ?>
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" enctype="multipart/form-data">
+            <form id="cw-staff-form" class="cw-staff-form" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" enctype="multipart/form-data">
                 <?php wp_nonce_field( 'cw_staff_submission', 'cw_staff_nonce' ); ?>
                 <input type="hidden" name="action" value="cw_staff_submission_save">
                 <input type="hidden" name="token" value="<?php echo esc_attr( $token ); ?>">
 
                 <?php if ( $from_qr && $code_value && ! $code_mismatch ) : ?>
                 <div class="alert alert-success" style="margin-bottom:14px;">
-                    <?php esc_html_e( 'Submission ID loaded from QR scan. Confirm the student name and upload artwork below.', 'creativewings-core' ); ?>
+                    <?php esc_html_e( 'QR ready. Enter parent email, student name, snap a photo, and Save. Your email links this artwork to the Creative Wings account.', 'creativewings-core' ); ?>
                 </div>
                 <?php elseif ( $code_mismatch ) : ?>
                 <div class="alert alert-error">
                     <?php esc_html_e( 'This QR code is for a different school than this upload link. Ask your organizer for the correct school link.', 'creativewings-core' ); ?>
                 </div>
+                <?php else : ?>
+                <div class="alert" style="background:#eff6ff;color:#1e40af;margin-bottom:14px;">
+                    <?php esc_html_e( 'First time: scan your personal QR. Returning: enter the same email you used before.', 'creativewings-core' ); ?>
+                </div>
                 <?php endif; ?>
                 <?php
                 $code_locked = ( $from_qr && $code_value && ! $code_mismatch );
-                $code_tail   = $code_value !== '' ? substr( preg_replace( '/\D+/', '', $code_value ), -4 ) : '';
                 ?>
+
+                <label for="cw-parent-email"><?php esc_html_e( 'Parent / guardian email', 'creativewings-core' ); ?></label>
+                <input type="email" id="cw-parent-email" name="parent_email" required autocomplete="email"
+                    value="<?php echo esc_attr( is_array( $prefill ) ? ( $prefill['parent_email'] ?? '' ) : '' ); ?>"
+                    placeholder="name@email.com">
+                <p class="cw-pic-hint" style="margin-top:4px;"><?php esc_html_e( 'Same parent email can be used for siblings (each child needs their own QR). If the email has a Creative Wings account, artworks link on Save; if not, they link when you register with that email.', 'creativewings-core' ); ?></p>
+                <div id="cw-email-status" class="cw-code-status" role="status" aria-live="polite"></div>
+
+                <?php /* Submission code = internal unique ID from QR — never shown to parents. */ ?>
+                <div id="cw-code-block"<?php echo $code_locked ? ' style="display:none"' : ''; ?>>
                 <?php if ( $code_locked ) : ?>
-                    <label for="cw-submission-code-masked"><?php esc_html_e( 'Submission code', 'creativewings-core' ); ?></label>
-                    <div class="cw-code-masked" id="cw-submission-code-masked">
-                        <span class="cw-code-masked-info">
-                            <i class="fas fa-shield-alt" aria-hidden="true"></i>
-                            <span><?php esc_html_e( 'Locked from QR scan', 'creativewings-core' ); ?>
-                                <?php if ( $code_tail ) : ?>
-                                    · <span class="cw-code-masked-dots">•••• <?php echo esc_html( $code_tail ); ?></span>
-                                <?php endif; ?>
-                            </span>
-                        </span>
-                        <span class="cw-code-masked-hint"><?php esc_html_e( 'Hidden for safety', 'creativewings-core' ); ?></span>
-                    </div>
-                    <input type="hidden" id="cw-submission-code" name="submission_code" value="<?php echo esc_attr( $code_value ); ?>">
+                    <input type="hidden" id="cw-submission-code" name="submission_code" value="<?php echo esc_attr( $code_value ); ?>" data-qr-locked="1">
+                    <input type="hidden" name="cw_from_qr" value="1">
                 <?php else : ?>
-                    <label for="cw-submission-code"><?php esc_html_e( 'Submission code (13-14 digits)', 'creativewings-core' ); ?></label>
-                    <input type="text" id="cw-submission-code" name="submission_code" required minlength="13" maxlength="14" inputmode="numeric" autocomplete="off"
-                        value="<?php echo esc_attr( $code_value ); ?>"
-                        placeholder="0020500100001">
+                    <input type="hidden" id="cw-submission-code" name="submission_code" value="">
+                    <div id="cw-code-email-locked" class="cw-code-masked" style="display:none;margin-top:8px;">
+                        <span class="cw-code-masked-info">
+                            <i class="fas fa-envelope" aria-hidden="true"></i>
+                            <span id="cw-code-email-lock-label"><?php esc_html_e( 'Session found from your email', 'creativewings-core' ); ?></span>
+                        </span>
+                        <span class="cw-code-masked-hint"><?php esc_html_e( 'Continue below', 'creativewings-core' ); ?></span>
+                    </div>
+                    <div id="cw-code-need-qr" class="alert alert-warn" style="margin-top:8px;">
+                        <?php esc_html_e( 'Scan your personal QR first (Save stays locked until then). Returning for an unfinished upload? Enter the same email below.', 'creativewings-core' ); ?>
+                    </div>
                 <?php endif; ?>
                 <div id="cw-code-status" class="cw-code-status" role="status" aria-live="polite"></div>
+                </div>
 
                 <label for="cw-student-name"><?php esc_html_e( 'Student name', 'creativewings-core' ); ?></label>
                 <input type="text" id="cw-student-name" name="student_name" required
                     value="<?php echo esc_attr( is_array( $prefill ) ? ( $prefill['student_name'] ?? '' ) : '' ); ?>">
+
+                <label for="cw-artwork-note"><?php esc_html_e( 'Short note / text (optional)', 'creativewings-core' ); ?></label>
+                <textarea id="cw-artwork-note" name="artwork_note" maxlength="500" placeholder="<?php esc_attr_e( 'A short message about the smile artwork…', 'creativewings-core' ); ?>"></textarea>
 
                 <?php
                 $primary_key = CW_Campaign_Fields::get_primary_artwork_field_key( $campaign_id );
@@ -268,13 +296,23 @@ class CW_School_Upload {
         (function(){
             try {
                 var loc = window.location;
-                if (!loc || !loc.search || !window.history || !window.history.replaceState) return;
-                var qs = new URLSearchParams(loc.search);
+                if (!loc || !window.history || !window.history.replaceState) return;
+                var qs = new URLSearchParams(loc.search || '');
+                var codeInput = document.getElementById('cw-submission-code');
+                var tokenInput = document.querySelector('input[name="token"]');
+                var token = tokenInput ? tokenInput.value : '';
+                var storageKey = token ? ('cw_pic_code_' + token) : '';
+                // Keep ?code= in the URL so refresh still works. Only strip flash params.
                 var changed = false;
-                if (qs.has('code'))  { qs.delete('code'); changed = true; }
-                if (qs.has('saved')) { qs.delete('saved'); }
-                if (qs.has('error')) { qs.delete('error'); }
-                if (changed || !loc.search) {
+                if (qs.has('saved')) { qs.delete('saved'); changed = true; }
+                if (qs.has('error')) { qs.delete('error'); changed = true; }
+                // Persist QR code for this school link (siblings = different codes in different scans).
+                if (codeInput && (codeInput.value || '').replace(/\s+/g, '').length >= 13 && storageKey) {
+                    try { sessionStorage.setItem(storageKey, (codeInput.value || '').replace(/\s+/g, '')); } catch (e1) {}
+                } else if (codeInput && !(codeInput.value || '').trim() && storageKey && !codeInput.getAttribute('data-qr-locked')) {
+                    // School link opened without QR — do not invent a code from storage of another child.
+                }
+                if (changed) {
                     var cleanQs = qs.toString();
                     var newUrl  = loc.pathname + (cleanQs ? '?' + cleanQs : '') + loc.hash;
                     window.history.replaceState(null, '', newUrl);
@@ -378,6 +416,10 @@ class CW_School_Upload {
                 }
                 if (payload.status === 'exists' && payload.data) {
                     nameInput.value = payload.data.student_name || '';
+                    if (emailInput && payload.data.parent_email) {
+                        emailInput.value = payload.data.parent_email;
+                        lookupEmail();
+                    }
                     renderPreviews(payload.data.fields || []);
                     setStatus('info', payload.message || cfg.i18n.exists);
                     if (saveBtn) saveBtn.disabled = false;
@@ -386,6 +428,9 @@ class CW_School_Upload {
                 if (payload.status === 'claimed') {
                     if (payload.data && payload.data.student_name) {
                         nameInput.value = payload.data.student_name;
+                    }
+                    if (emailInput && payload.data && payload.data.parent_email) {
+                        emailInput.value = payload.data.parent_email;
                     }
                     renderPreviews(payload.data ? (payload.data.fields || []) : []);
                     setStatus('warn', payload.message || cfg.i18n.claimed);
@@ -438,6 +483,122 @@ class CW_School_Upload {
             if (cfg.autoLookup && codeInput && (codeInput.value || '').replace(/\s+/g, '').length >= 13) {
                 setTimeout(lookupCode, 200);
             }
+
+            // Email binds artwork ↔ account; submission code stays hidden (from QR / prior email).
+            var emailInput = document.getElementById('cw-parent-email');
+            var emailStatus = document.getElementById('cw-email-status');
+            var codeEmailLocked = document.getElementById('cw-code-email-locked');
+            var codeNeedQr = document.getElementById('cw-code-need-qr');
+            var codeBlock = document.getElementById('cw-code-block');
+            var emailTimer = null;
+            var emailLastReq = 0;
+            var qrLocked = !!(codeInput && codeInput.getAttribute('data-qr-locked') === '1');
+
+            function setEmailStatus(kind, text) {
+                if (!emailStatus) return;
+                emailStatus.className = 'cw-code-status is-visible ' + (kind || 'info');
+                emailStatus.textContent = text || '';
+            }
+            function hideEmailStatus() {
+                if (!emailStatus) return;
+                emailStatus.className = 'cw-code-status';
+                emailStatus.textContent = '';
+            }
+            function clearEmailCodeLock() {
+                if (qrLocked) return;
+                if (codeInput) codeInput.value = '';
+                if (codeEmailLocked) codeEmailLocked.style.display = 'none';
+                if (codeNeedQr) codeNeedQr.style.display = 'block';
+                if (codeBlock) codeBlock.style.display = '';
+                if (saveBtn) saveBtn.disabled = true;
+            }
+            function applyEmailLinked(json) {
+                // QR path: code already in hidden field — email only for bind messaging.
+                if (qrLocked) {
+                    setEmailStatus(json.already_done ? 'warn' : (json.exists ? 'success' : 'info'), json.message || '');
+                    if (json.already_done && saveBtn) saveBtn.disabled = true;
+                    else if (saveBtn) saveBtn.disabled = false;
+                    return;
+                }
+                if (!json.linked || !json.submission_code) {
+                    clearEmailCodeLock();
+                    setEmailStatus(json.exists ? 'info' : 'info', json.message || <?php echo wp_json_encode( __( 'No submission found for this email yet. Please scan your personal QR to start.', 'creativewings-core' ) ); ?>);
+                    return;
+                }
+                if (codeInput) codeInput.value = json.submission_code;
+                if (codeNeedQr) codeNeedQr.style.display = 'none';
+                if (codeEmailLocked) codeEmailLocked.style.display = 'flex';
+                if (codeBlock) codeBlock.style.display = '';
+                if (nameInput && json.student_name) {
+                    nameInput.value = json.student_name;
+                }
+                if (json.fields) {
+                    renderPreviews(json.fields);
+                }
+                if (json.already_done) {
+                    setEmailStatus('warn', json.message || '');
+                    if (saveBtn) saveBtn.disabled = true;
+                    setStatus('warn', json.message || '');
+                } else {
+                    setEmailStatus('success', json.message || '');
+                    if (saveBtn) saveBtn.disabled = false;
+                    hideStatus();
+                }
+            }
+            function lookupEmail() {
+                if (!emailInput) return;
+                var email = (emailInput.value || '').trim();
+                if (!email || email.indexOf('@') < 1) {
+                    hideEmailStatus();
+                    clearEmailCodeLock();
+                    return;
+                }
+                var reqId = ++emailLastReq;
+                setEmailStatus('loading', <?php echo wp_json_encode( __( 'Checking email…', 'creativewings-core' ) ); ?>);
+                var body = new URLSearchParams();
+                body.append('action', 'cw_pic_lookup_email');
+                body.append('nonce', cfg.nonce);
+                body.append('token', cfg.token);
+                body.append('email', email);
+                if (codeInput && (codeInput.value || '').replace(/\s+/g, '').length >= 13) {
+                    body.append('code', (codeInput.value || '').replace(/\s+/g, ''));
+                }
+                fetch(cfg.ajaxUrl, { method: 'POST', credentials: 'same-origin', body: body })
+                    .then(function(r){ return r.json(); })
+                    .then(function(json){
+                        if (reqId !== emailLastReq) return;
+                        if (!json || !json.ok) {
+                            setEmailStatus('error', (json && json.message) ? json.message : cfg.i18n.network);
+                            return;
+                        }
+                        if (!json.valid) {
+                            clearEmailCodeLock();
+                            setEmailStatus('error', json.message || '');
+                            return;
+                        }
+                        applyEmailLinked(json);
+                    })
+                    .catch(function(){
+                        if (reqId !== emailLastReq) return;
+                        setEmailStatus('error', cfg.i18n.network);
+                    });
+            }
+            if (emailInput) {
+                emailInput.addEventListener('input', function(){
+                    clearTimeout(emailTimer);
+                    emailTimer = setTimeout(lookupEmail, 450);
+                });
+                emailInput.addEventListener('blur', lookupEmail);
+                if ((emailInput.value || '').trim()) {
+                    setTimeout(lookupEmail, 200);
+                }
+            }
+            // Without personal QR: keep Save locked until email finds an unfinished session.
+            if (!qrLocked && saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.setAttribute('title', <?php echo wp_json_encode( __( 'Scan your personal QR first, or enter an email with an unfinished upload.', 'creativewings-core' ) ); ?>);
+                if (codeNeedQr) codeNeedQr.style.display = 'block';
+            }
         })();
         </script>
         <?php
@@ -465,19 +626,135 @@ class CW_School_Upload {
     }
 
     private function render_upload_script() {
-        $i18n = [
-            'cameraError' => __( 'Could not access the camera. Try “Choose image” instead.', 'creativewings-core' ),
-            'fileChosen'  => __( 'File selected. Save submission when ready.', 'creativewings-core' ),
+        $cfg = [
+            'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+            'i18n'    => [
+                'cameraError' => __( 'Could not access the camera. Try “Choose image” instead.', 'creativewings-core' ),
+                'fileChosen'  => __( 'File selected. Save submission when ready.', 'creativewings-core' ),
+                'saving'      => __( 'Saving…', 'creativewings-core' ),
+                'queued'      => __( 'Many people are uploading — you are in the queue. Keeping your photo, retrying…', 'creativewings-core' ),
+                'queuedPos'   => __( 'Waiting in queue #%d — keeping your photo…', 'creativewings-core' ),
+                'saveFailed'  => __( 'Could not save. Please try again.', 'creativewings-core' ),
+                'registerCta' => __( 'Register on Creative Wings →', 'creativewings-core' ),
+            ],
         ];
         ?>
         <script>
         (function(){
-            var i18n = <?php echo wp_json_encode( $i18n ); ?>;
+            var cfg = <?php echo wp_json_encode( $cfg ); ?>;
+            var i18n = cfg.i18n || {};
             var modal = document.getElementById('cw-camera-modal');
             var video = document.getElementById('cw-camera-video');
             var canvas = document.getElementById('cw-camera-canvas');
             var activeInput = null;
             var stream = null;
+            var form = document.getElementById('cw-staff-form') || document.querySelector('form.cw-staff-form') || document.querySelector('form');
+            var saveBtn = document.getElementById('cw-save-btn');
+            var queueAlert = null;
+            var saving = false;
+
+            function ensureAlert() {
+                if (queueAlert) return queueAlert;
+                queueAlert = document.createElement('div');
+                queueAlert.className = 'alert';
+                queueAlert.style.display = 'none';
+                if (form && form.parentNode) {
+                    form.parentNode.insertBefore(queueAlert, form);
+                }
+                return queueAlert;
+            }
+            function showAlert(kind, text, asHtml) {
+                var el = ensureAlert();
+                el.className = 'alert ' + (kind === 'error' ? 'alert-error' : (kind === 'ok' ? 'alert-success' : 'alert-error'));
+                if (kind === 'queue') {
+                    el.style.background = '#eff6ff';
+                    el.style.color = '#1e40af';
+                }
+                if (asHtml) {
+                    el.innerHTML = text || '';
+                } else {
+                    el.textContent = text || '';
+                }
+                el.style.display = text ? 'block' : 'none';
+            }
+            function setSaving(on, label) {
+                saving = !!on;
+                if (!saveBtn) return;
+                saveBtn.disabled = !!on;
+                if (on) {
+                    saveBtn.setAttribute('data-prev-label', saveBtn.textContent || '');
+                    saveBtn.textContent = label || i18n.saving;
+                } else if (saveBtn.getAttribute('data-prev-label')) {
+                    saveBtn.textContent = saveBtn.getAttribute('data-prev-label');
+                }
+            }
+            function submitWithQueue(attempt) {
+                if (!form || !cfg.ajaxUrl) {
+                    form && form.submit();
+                    return;
+                }
+                attempt = attempt || 0;
+                if (attempt > 40) {
+                    setSaving(false);
+                    showAlert('error', i18n.saveFailed);
+                    return;
+                }
+                var fd = new FormData(form);
+                fd.set('action', 'cw_staff_submission_save');
+                fd.set('cw_ajax', '1');
+                setSaving(true, attempt ? i18n.queued : i18n.saving);
+                if (attempt) showAlert('queue', i18n.queued);
+
+                fetch(cfg.ajaxUrl, { method: 'POST', credentials: 'same-origin', body: fd })
+                    .then(function(r){
+                        return r.json().then(function(j){ return { status: r.status, body: j }; }).catch(function(){
+                            return { status: r.status, body: null };
+                        });
+                    })
+                    .then(function(res){
+                        var body = res.body || {};
+                        if (body.ok && body.redirect) {
+                            window.location.href = body.redirect;
+                            return;
+                        }
+                        if (body.ok) {
+                            setSaving(false);
+                            var msg = body.message || <?php echo wp_json_encode( __( 'Submission saved successfully.', 'creativewings-core' ) ); ?>;
+                            if (body.register_url) {
+                                msg += ' <a href="' + body.register_url + '" style="color:#1d4ed8;font-weight:700">' + (i18n.registerCta || 'Register') + '</a>';
+                                showAlert('ok', msg, true);
+                            } else {
+                                showAlert('ok', msg);
+                            }
+                            return;
+                        }
+                        if (body.queue) {
+                            var qMsg = body.message || i18n.queued;
+                            if (body.queue_position && i18n.queuedPos) {
+                                qMsg = i18n.queuedPos.replace('%d', String(body.queue_position));
+                            }
+                            showAlert('queue', qMsg);
+                            setSaving(true, qMsg);
+                            var wait = Math.max(1500, parseInt(body.retry_ms, 10) || 2500);
+                            wait += Math.floor(Math.random() * 1000);
+                            setTimeout(function(){ submitWithQueue(attempt + 1); }, wait);
+                            return;
+                        }
+                        setSaving(false);
+                        showAlert('error', (body && body.message) ? body.message : i18n.saveFailed);
+                    })
+                    .catch(function(){
+                        setSaving(false);
+                        showAlert('error', i18n.saveFailed);
+                    });
+            }
+            if (form) {
+                form.addEventListener('submit', function(e){
+                    if (saving) { e.preventDefault(); return; }
+                    e.preventDefault();
+                    submitWithQueue(0);
+                });
+            }
 
             function assignFile(input, file) {
                 if (!input || !file) return;
@@ -626,6 +903,155 @@ class CW_School_Upload {
         <?php
     }
 
+    public function ajax_lookup_email() {
+        if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'cw_pic_lookup' ) ) {
+            wp_send_json( [ 'ok' => false, 'message' => __( 'Security check failed.', 'creativewings-core' ) ], 403 );
+        }
+
+        $token = sanitize_text_field( wp_unslash( $_POST['token'] ?? '' ) );
+        $row   = CW_Staged_Submissions::get_token( $token );
+        if ( ! $row ) {
+            wp_send_json( [ 'ok' => false, 'message' => __( 'Invalid upload link.', 'creativewings-core' ) ], 403 );
+        }
+
+        $email  = sanitize_email( wp_unslash( $_POST['email'] ?? '' ) );
+        $result = class_exists( 'CW_Qr_Email_Link' )
+            ? CW_Qr_Email_Link::lookup_email_status( $email )
+            : [
+                'exists'  => (bool) get_user_by( 'email', $email ),
+                'valid'   => (bool) is_email( $email ),
+                'message' => '',
+            ];
+
+        if ( empty( $result['valid'] ) ) {
+            wp_send_json( [
+                'ok'      => true,
+                'exists'  => false,
+                'valid'   => false,
+                'message' => $result['message'] ?? __( 'Enter a valid email address.', 'creativewings-core' ),
+            ] );
+        }
+
+        $campaign_id = (int) $row['campaign_id'];
+        $school_code = (string) ( $row['school_code'] ?? '' );
+        // Current QR code (if any) — siblings share email but each QR is unique.
+        $current_code = preg_replace( '/\s+/', '', sanitize_text_field( wp_unslash( $_POST['code'] ?? '' ) ) );
+
+        $payload = [
+            'ok'           => true,
+            'exists'       => ! empty( $result['exists'] ),
+            'valid'        => true,
+            'message'      => $result['message'] ?? '',
+            'linked'       => false,
+            'already_done' => false,
+            'sibling_ok'   => true,
+        ];
+
+        // QR path: only block if THIS code already has artwork — same email OK for siblings.
+        if ( $current_code !== '' ) {
+            $current = CW_Staged_Submissions::get_by_code( $current_code, $campaign_id );
+            if ( $current && ( ( $current['status'] ?? '' ) === 'claimed' || ! empty( $current['artwork_attachment_id'] ) ) ) {
+                $payload['already_done'] = true;
+                $payload['message']      = __( 'This QR already has a submission. For another child, scan their own personal QR (same parent email is fine).', 'creativewings-core' );
+            } else {
+                $open_count = $this->count_open_staged_by_email_for_school( $email, $campaign_id, $school_code );
+                $done_count = $this->count_done_staged_by_email_for_school( $email, $campaign_id, $school_code );
+                if ( $done_count > 0 && ! empty( $result['exists'] ) ) {
+                    $payload['message'] = __( 'Account found — same email can be used for siblings. After Save, this artwork links to your account.', 'creativewings-core' );
+                } elseif ( $done_count > 0 ) {
+                    $payload['message'] = __( 'Same email OK for siblings. After Save, register with this email to link all artworks.', 'creativewings-core' );
+                } elseif ( $open_count > 0 ) {
+                    $payload['message'] = $result['message'] ?? $payload['message'];
+                }
+            }
+            wp_send_json( $payload );
+        }
+
+        // School link without QR: resume first incomplete sibling session only.
+        $linked = $this->find_staged_by_email_for_school( $email, $campaign_id, $school_code, true );
+        if ( $linked ) {
+            $code    = (string) ( $linked['submission_code'] ?? '' );
+            $payload['linked']          = true;
+            $payload['submission_code'] = $code;
+            $payload['student_name']    = (string) ( $linked['student_name'] ?? '' );
+            $payload['status']          = (string) ( $linked['status'] ?? '' );
+            $payload['already_done']    = false;
+            $payload['fields']          = $this->format_lookup_fields( $linked, $campaign_id );
+            $payload['message']         = __( 'Incomplete session found for this email — continue with name and photo. For another child, scan a new personal QR.', 'creativewings-core' );
+        } else {
+            $done_count = $this->count_done_staged_by_email_for_school( $email, $campaign_id, $school_code );
+            if ( $done_count > 0 ) {
+                $payload['message'] = __( 'This email already has completed submission(s). For another child (sibling), scan their personal QR — same email is fine.', 'creativewings-core' );
+            } elseif ( ! empty( $result['exists'] ) ) {
+                $payload['message'] = __( 'Account found. First upload: scan your personal QR. Same email can be used for siblings.', 'creativewings-core' );
+            } else {
+                $payload['message'] = __( 'New email — scan your personal QR to start. Same email can cover siblings. Register later with this email to link all artworks.', 'creativewings-core' );
+            }
+        }
+
+        wp_send_json( $payload );
+    }
+
+    /**
+     * Prefer open (no artwork) row for this school. If $open_only, never return completed rows.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function find_staged_by_email_for_school( $email, $campaign_id, $school_code, $open_only = false ) {
+        $for_school = $this->list_staged_by_email_for_school( $email, $campaign_id, $school_code );
+        if ( empty( $for_school ) ) {
+            return null;
+        }
+        foreach ( $for_school as $r ) {
+            if ( ( $r['status'] ?? '' ) !== 'claimed' && empty( $r['artwork_attachment_id'] ) ) {
+                return $r;
+            }
+        }
+        return $open_only ? null : $for_school[0];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function list_staged_by_email_for_school( $email, $campaign_id, $school_code ) {
+        if ( ! class_exists( 'CW_Staged_Submissions' ) ) {
+            return [];
+        }
+        $rows = CW_Staged_Submissions::list_by_parent_email( $email, (int) $campaign_id );
+        if ( empty( $rows ) ) {
+            return [];
+        }
+        $school     = str_pad( preg_replace( '/\D/', '', (string) $school_code ), 3, '0', STR_PAD_LEFT );
+        $for_school = [];
+        foreach ( $rows as $r ) {
+            $sc = str_pad( preg_replace( '/\D/', '', (string) ( $r['school_code'] ?? '' ) ), 3, '0', STR_PAD_LEFT );
+            if ( $sc === $school ) {
+                $for_school[] = $r;
+            }
+        }
+        return $for_school;
+    }
+
+    private function count_open_staged_by_email_for_school( $email, $campaign_id, $school_code ) {
+        $n = 0;
+        foreach ( $this->list_staged_by_email_for_school( $email, $campaign_id, $school_code ) as $r ) {
+            if ( ( $r['status'] ?? '' ) !== 'claimed' && empty( $r['artwork_attachment_id'] ) ) {
+                $n++;
+            }
+        }
+        return $n;
+    }
+
+    private function count_done_staged_by_email_for_school( $email, $campaign_id, $school_code ) {
+        $n = 0;
+        foreach ( $this->list_staged_by_email_for_school( $email, $campaign_id, $school_code ) as $r ) {
+            if ( ( $r['status'] ?? '' ) === 'claimed' || ! empty( $r['artwork_attachment_id'] ) ) {
+                $n++;
+            }
+        }
+        return $n;
+    }
+
     public function ajax_lookup_code() {
         if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'cw_pic_lookup' ) ) {
             wp_send_json( [ 'ok' => false, 'status' => 'invalid', 'message' => __( 'Security check failed.', 'creativewings-core' ) ], 403 );
@@ -682,6 +1108,7 @@ class CW_School_Upload {
         $data = [
             'submission_code' => $existing['submission_code'],
             'student_name'    => $existing['student_name'] ?? '',
+            'parent_email'    => $existing['parent_email'] ?? '',
             'status'          => $existing['status'] ?? '',
             'fields'          => $fields_out,
         ];
@@ -691,6 +1118,16 @@ class CW_School_Upload {
                 'ok'      => true,
                 'status'  => 'claimed',
                 'message' => __( 'This code is already claimed by a parent and cannot be edited here.', 'creativewings-core' ),
+                'data'    => $data,
+            ] );
+        }
+
+        // Anti–double-entry: code already has artwork → no second Save.
+        if ( ! empty( $existing['artwork_attachment_id'] ) ) {
+            wp_send_json( [
+                'ok'      => true,
+                'status'  => 'claimed',
+                'message' => __( 'This code already has a submission. Double entry is not allowed.', 'creativewings-core' ),
                 'data'    => $data,
             ] );
         }
@@ -737,151 +1174,280 @@ class CW_School_Upload {
         return $fields_out;
     }
 
+    /**
+     * AJAX Save — same pipeline as admin-post, JSON responses for client queue retries.
+     */
+    public function ajax_save() {
+        $_POST['cw_ajax'] = '1';
+        $this->handle_save();
+    }
+
+    /**
+     * @param string $base Upload page URL.
+     * @param string $message Error text.
+     * @param bool   $json    Whether to respond with JSON.
+     * @param bool   $queue   Busy / wait-in-queue signal for the client.
+     */
+    private function save_fail( $base, $message, $json = false, $queue = false ) {
+        if ( $json ) {
+            wp_send_json(
+                [
+                    'ok'       => false,
+                    'queue'    => (bool) $queue,
+                    'retry_ms' => $queue ? 2500 : 0,
+                    'message'  => $message,
+                ],
+                $queue ? 429 : 400
+            );
+        }
+        wp_safe_redirect( add_query_arg( 'error', rawurlencode( $message ), $base ) );
+        exit;
+    }
+
     public function handle_save() {
+        $json = ! empty( $_POST['cw_ajax'] ) || ( defined( 'DOING_AJAX' ) && DOING_AJAX );
+
         if ( ! isset( $_POST['cw_staff_nonce'] ) || ! wp_verify_nonce( $_POST['cw_staff_nonce'], 'cw_staff_submission' ) ) {
+            if ( $json ) {
+                wp_send_json( [ 'ok' => false, 'message' => 'Security check failed' ], 403 );
+            }
             wp_die( 'Security check failed', 403 );
         }
 
+        $token = sanitize_text_field( $_POST['token'] ?? '' );
+        $base  = home_url( '/cw-school-upload/' . $token . '/' );
+
         if ( class_exists( 'CW_Security' ) ) {
-            $rl = CW_Security::rate_limit( CW_Security::RATE_PIC_UPLOAD . sanitize_text_field( $_POST['token'] ?? '' ), 60, 3600 );
+            $rl = CW_Security::rate_limit( CW_Security::RATE_PIC_UPLOAD . $token, 60, 3600 );
             if ( is_wp_error( $rl ) ) {
-                wp_die( esc_html( $rl->get_error_message() ), 429 );
+                $this->save_fail( $base, $rl->get_error_message(), $json );
             }
         }
 
-        $token = sanitize_text_field( $_POST['token'] ?? '' );
-        $row   = CW_Staged_Submissions::get_token( $token );
-        $base  = home_url( '/cw-school-upload/' . $token . '/' );
-
+        $row = CW_Staged_Submissions::get_token( $token );
         if ( ! $row ) {
+            if ( $json ) {
+                wp_send_json( [ 'ok' => false, 'message' => 'Invalid token' ], 403 );
+            }
             wp_die( 'Invalid token', 403 );
         }
 
-        $campaign_id = (int) $row['campaign_id'];
-        $school_code = $row['school_code'];
-        $code_raw    = sanitize_text_field( $_POST['submission_code'] ?? '' );
-        $parsed      = CW_Submission_Code::parse( $code_raw );
-
-        if ( ! $parsed['valid'] ) {
-            wp_safe_redirect( add_query_arg( 'error', rawurlencode( $parsed['error'] ), $base ) );
-            exit;
-        }
-
-        if ( $parsed['school'] !== $school_code ) {
-            wp_safe_redirect( add_query_arg( 'error', rawurlencode( 'School code in submission does not match this upload link.' ), $base ) );
-            exit;
-        }
-
-        if ( ! CW_Submission_Code::matches_campaign_serial( $parsed, $campaign_id ) ) {
-            wp_safe_redirect( add_query_arg( 'error', rawurlencode( 'Campaign code does not match this campaign.' ), $base ) );
-            exit;
-        }
-
-        $existing = CW_Staged_Submissions::get_by_code( $parsed['normalized'], $campaign_id );
-
-        if ( $existing && ( $existing['status'] ?? '' ) === 'claimed' ) {
-            wp_safe_redirect( add_query_arg( [ 'error' => rawurlencode( 'Already claimed - cannot edit via staff link.' ) ], $base ) );
-            exit;
-        }
-
-        if ( ! class_exists( 'CW_Campaign_Fields' ) || ! CW_Campaign_Fields::campaign_has_configured_pic_uploads( $campaign_id ) ) {
-            wp_safe_redirect( add_query_arg( 'error', rawurlencode( __( 'This campaign has no upload fields configured.', 'creativewings-core' ) ), $base ) );
-            exit;
-        }
-
-        $upload_fields = CW_Campaign_Fields::get_pic_upload_fields( $campaign_id );
-        $primary_key   = CW_Campaign_Fields::get_primary_artwork_field_key( $campaign_id );
-        $stored_by     = [];
-        if ( $existing ) {
-            foreach ( CW_Campaign_Fields::decode_staged_field_data( $existing ) as $item ) {
-                $stored_by[ (string) ( $item['index'] ?? '' ) ] = $item;
+        // Cap concurrent Saves so 100 phones do not exhaust PHP/MySQL (queue the rest).
+        $have_slot = true;
+        if ( class_exists( 'CW_Upload_Concurrency' ) ) {
+            $have_slot = CW_Upload_Concurrency::acquire();
+            if ( ! $have_slot ) {
+                $this->save_fail(
+                    $base,
+                    __( 'Many people are uploading right now. You are in the queue — please wait…', 'creativewings-core' ),
+                    $json,
+                    true
+                );
             }
+            CW_Upload_Concurrency::begin_light_media();
         }
 
-        $field_data = [];
-        foreach ( $upload_fields as $idx => $field ) {
-            $input_key = 'cw_field_' . $idx;
-            $type      = strtolower( (string) ( $field['type'] ?? 'media' ) );
-            $label     = trim( (string) ( $field['label'] ?? __( 'Upload', 'creativewings-core' ) ) );
-            $aid       = 0;
-            if ( ! empty( $stored_by[ (string) $idx ]['attachment_id'] ) ) {
-                $aid = (int) $stored_by[ (string) $idx ]['attachment_id'];
-            }
-            if ( ! empty( $_FILES[ $input_key ]['name'] ) ) {
-                $uploaded = class_exists( 'CW_Security' )
-                    ? CW_Security::handle_field_upload( $input_key, $type )
-                    : 0;
-                if ( is_wp_error( $uploaded ) ) {
-                    wp_safe_redirect( add_query_arg( 'error', rawurlencode( $uploaded->get_error_message() ), $base ) );
-                    exit;
+        try {
+            $campaign_id  = (int) $row['campaign_id'];
+            $school_code  = $row['school_code'];
+            $parent_email = sanitize_email( wp_unslash( $_POST['parent_email'] ?? '' ) );
+            $code_raw     = sanitize_text_field( wp_unslash( $_POST['submission_code'] ?? '' ) );
+
+            // Returning parent: resolve submission code from email when ID was not entered.
+            if ( $code_raw === '' && $parent_email && is_email( $parent_email ) ) {
+                // Resume incomplete sibling session only — never reuse a finished code.
+                $by_email = $this->find_staged_by_email_for_school( $parent_email, $campaign_id, $school_code, true );
+                if ( $by_email && ! empty( $by_email['submission_code'] ) ) {
+                    $code_raw = (string) $by_email['submission_code'];
                 }
-                $aid = (int) $uploaded;
             }
-            if ( ! empty( $field['required'] ) && ! $aid ) {
-                wp_safe_redirect( add_query_arg( 'error', rawurlencode( sprintf( __( '%s is required.', 'creativewings-core' ), $label ) ), $base ) );
-                exit;
+
+            $parsed = CW_Submission_Code::parse( $code_raw );
+
+            if ( ! $parsed['valid'] ) {
+                $this->save_fail(
+                    $base,
+                    $code_raw === ''
+                        ? __( 'Enter your email (if you uploaded before) or scan your personal QR / enter the ID code.', 'creativewings-core' )
+                        : $parsed['error'],
+                    $json
+                );
             }
-            if ( $aid ) {
+
+            if ( $parsed['school'] !== $school_code ) {
+                $this->save_fail( $base, 'School code in submission does not match this upload link.', $json );
+            }
+
+            if ( ! CW_Submission_Code::matches_campaign_serial( $parsed, $campaign_id ) ) {
+                $this->save_fail( $base, 'Campaign code does not match this campaign.', $json );
+            }
+
+            $existing = CW_Staged_Submissions::get_by_code( $parsed['normalized'], $campaign_id );
+            $from_qr  = ! empty( $_POST['cw_from_qr'] );
+
+            if ( $existing && ( $existing['status'] ?? '' ) === 'claimed' ) {
+                $this->save_fail( $base, __( 'Already claimed — cannot edit via this link.', 'creativewings-core' ), $json );
+            }
+
+            // Anti–double-entry: same code already has artwork → reject (no timed cooldown).
+            if ( $existing && ! empty( $existing['artwork_attachment_id'] ) ) {
+                $this->save_fail(
+                    $base,
+                    __( 'This code already has a submission. Double entry is not allowed.', 'creativewings-core' ),
+                    $json
+                );
+            }
+
+            if ( ! $parent_email || ! is_email( $parent_email ) ) {
+                $this->save_fail( $base, __( 'A valid parent / guardian email is required.', 'creativewings-core' ), $json );
+            }
+
+            $artwork_note = sanitize_textarea_field( wp_unslash( $_POST['artwork_note'] ?? '' ) );
+            if ( strlen( $artwork_note ) > 500 ) {
+                $artwork_note = substr( $artwork_note, 0, 500 );
+            }
+
+            if ( ! class_exists( 'CW_Campaign_Fields' ) || ! CW_Campaign_Fields::campaign_has_configured_pic_uploads( $campaign_id ) ) {
+                $this->save_fail( $base, __( 'This campaign has no upload fields configured.', 'creativewings-core' ), $json );
+            }
+
+            $upload_fields = CW_Campaign_Fields::get_pic_upload_fields( $campaign_id );
+            $primary_key   = CW_Campaign_Fields::get_primary_artwork_field_key( $campaign_id );
+            $stored_by     = [];
+            if ( $existing ) {
+                foreach ( CW_Campaign_Fields::decode_staged_field_data( $existing ) as $item ) {
+                    $stored_by[ (string) ( $item['index'] ?? '' ) ] = $item;
+                }
+            }
+
+            $field_data = [];
+            foreach ( $upload_fields as $idx => $field ) {
+                $input_key = 'cw_field_' . $idx;
+                $type      = strtolower( (string) ( $field['type'] ?? 'media' ) );
+                $label     = trim( (string) ( $field['label'] ?? __( 'Upload', 'creativewings-core' ) ) );
+                $aid       = 0;
+                if ( ! empty( $stored_by[ (string) $idx ]['attachment_id'] ) ) {
+                    $aid = (int) $stored_by[ (string) $idx ]['attachment_id'];
+                }
+                if ( ! empty( $_FILES[ $input_key ]['name'] ) ) {
+                    $uploaded = class_exists( 'CW_Security' )
+                        ? CW_Security::handle_field_upload( $input_key, $type )
+                        : 0;
+                    if ( is_wp_error( $uploaded ) ) {
+                        $this->save_fail( $base, $uploaded->get_error_message(), $json );
+                    }
+                    $aid = (int) $uploaded;
+                }
+                if ( ! empty( $field['required'] ) && ! $aid ) {
+                    $this->save_fail( $base, sprintf( __( '%s is required.', 'creativewings-core' ), $label ), $json );
+                }
+                if ( $aid ) {
+                    $field_data[] = [
+                        'index'         => $idx,
+                        'label'         => $label,
+                        'type'          => $type,
+                        'attachment_id' => $aid,
+                        'value'         => wp_get_attachment_url( $aid ) ?: '',
+                    ];
+                }
+            }
+
+            $attachment_id = 0;
+            if ( null !== $primary_key ) {
+                foreach ( $field_data as $item ) {
+                    if ( (string) ( $item['index'] ?? '' ) === (string) $primary_key ) {
+                        $attachment_id = (int) ( $item['attachment_id'] ?? 0 );
+                        break;
+                    }
+                }
+            }
+
+            if ( ! $attachment_id ) {
+                $this->save_fail( $base, __( 'Primary artwork image is required.', 'creativewings-core' ), $json );
+            }
+
+            $name = sanitize_text_field( $_POST['student_name'] ?? '' );
+            if ( $artwork_note !== '' ) {
                 $field_data[] = [
-                    'index'         => $idx,
-                    'label'         => $label,
-                    'type'          => $type,
-                    'attachment_id' => $aid,
-                    'value'         => wp_get_attachment_url( $aid ) ?: '',
+                    'index' => 'artwork_note',
+                    'label' => __( 'Short note', 'creativewings-core' ),
+                    'type'  => 'text',
+                    'value' => $artwork_note,
                 ];
             }
-        }
 
-        $attachment_id = 0;
-        if ( null !== $primary_key ) {
-            foreach ( $field_data as $item ) {
-                if ( (string) ( $item['index'] ?? '' ) === (string) $primary_key ) {
-                    $attachment_id = (int) ( $item['attachment_id'] ?? 0 );
-                    break;
-                }
-            }
-        }
-
-        if ( ! $attachment_id ) {
-            wp_safe_redirect( add_query_arg( 'error', rawurlencode( __( 'Primary artwork image is required.', 'creativewings-core' ) ), $base ) );
-            exit;
-        }
-
-        $name    = sanitize_text_field( $_POST['student_name'] ?? '' );
-        $payload = [
-            'submission_code'       => $parsed['normalized'],
-            'campaign_id'           => $campaign_id,
-            'school_code'           => $parsed['school'],
-            'month_code'            => $parsed['month'],
-            'seq_code'              => $parsed['seq'],
-            'student_name'          => $name,
-            'artwork_attachment_id' => $attachment_id,
-            'field_data'            => $field_data,
-        ];
-
-        if ( $existing ) {
-            $sid = (int) $existing['id'];
-            CW_Staged_Submissions::update( $sid, [
+            $payload = [
+                'submission_code'       => $parsed['normalized'],
+                'campaign_id'           => $campaign_id,
+                'school_code'           => $parsed['school'],
+                'month_code'            => $parsed['month'],
+                'seq_code'              => $parsed['seq'],
                 'student_name'          => $name,
+                'parent_email'          => $parent_email,
                 'artwork_attachment_id' => $attachment_id,
                 'field_data'            => $field_data,
-            ] );
-            if ( class_exists( 'CW_Audit_Log' ) ) {
-                CW_Audit_Log::log( 'staged_update', 'staged', $sid, [ 'code' => $parsed['normalized'] ] );
+            ];
+
+            if ( $existing ) {
+                $sid = (int) $existing['id'];
+                CW_Staged_Submissions::update( $sid, [
+                    'student_name'          => $name,
+                    'parent_email'          => $parent_email,
+                    'artwork_attachment_id' => $attachment_id,
+                    'field_data'            => $field_data,
+                ] );
+                if ( class_exists( 'CW_Audit_Log' ) ) {
+                    CW_Audit_Log::log( 'staged_update', 'staged', $sid, [ 'code' => $parsed['normalized'] ] );
+                }
+            } else {
+                $sid = (int) CW_Staged_Submissions::insert( $payload );
+                if ( class_exists( 'CW_Audit_Log' ) ) {
+                    CW_Audit_Log::log( 'staged_create', 'staged', $sid, [ 'code' => $parsed['normalized'] ] );
+                }
             }
-        } else {
-            $sid = (int) CW_Staged_Submissions::insert( $payload );
-            if ( class_exists( 'CW_Audit_Log' ) ) {
-                CW_Audit_Log::log( 'staged_create', 'staged', $sid, [ 'code' => $parsed['normalized'] ] );
+
+            if ( class_exists( 'CW_Qr_Email_Link' ) ) {
+                CW_Qr_Email_Link::after_qr_save( $sid, $campaign_id, $parsed['normalized'], $parent_email );
+            } elseif ( class_exists( 'CW_Pending_Parent_Link' ) ) {
+                CW_Pending_Parent_Link::on_staged_uploaded( $sid, $campaign_id, $parsed['normalized'] );
+            }
+
+            $email_exists = (bool) get_user_by( 'email', $parent_email );
+            $register_url = '';
+            $ok_message   = __( 'Submission saved successfully.', 'creativewings-core' );
+            if ( ! $email_exists ) {
+                $register_url = home_url( '/my-account/' );
+                $ok_message   = __( 'Artwork saved. It is not linked to an account yet — register on Creative Wings with this same email and it will bind automatically.', 'creativewings-core' );
+            } else {
+                $ok_message = __( 'Artwork saved and linked to your Creative Wings account.', 'creativewings-core' );
+            }
+
+            $ok_args = [ 'saved' => '1' ];
+            if ( $register_url ) {
+                $ok_args['register'] = '1';
+            }
+            $ok_url = add_query_arg( $ok_args, $base );
+            if ( $json ) {
+                $resp = [
+                    'ok'      => true,
+                    'message' => $ok_message,
+                    'redirect'=> $ok_url,
+                ];
+                if ( $register_url ) {
+                    $resp['register_url'] = $register_url;
+                    // Stay on page so the register CTA is visible (no immediate redirect).
+                    unset( $resp['redirect'] );
+                }
+                wp_send_json( $resp );
+            }
+            wp_safe_redirect( $ok_url );
+            exit;
+        } finally {
+            if ( class_exists( 'CW_Upload_Concurrency' ) && $have_slot ) {
+                CW_Upload_Concurrency::end_light_media();
+                CW_Upload_Concurrency::release();
             }
         }
-
-        if ( class_exists( 'CW_Pending_Parent_Link' ) ) {
-            CW_Pending_Parent_Link::on_staged_uploaded( $sid, $campaign_id, $parsed['normalized'] );
-        }
-
-        wp_safe_redirect( add_query_arg( [ 'saved' => '1' ], $base ) );
-        exit;
     }
 
     public function handle_generate_token() {

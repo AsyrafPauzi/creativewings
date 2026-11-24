@@ -32,6 +32,11 @@ class CW_Points {
     /** Minimum points that can be applied at checkout. */
     const MIN_CHECKOUT_SPEND = 10;
     const ORDER_META_SPENT = '_cw_points_spent';
+    /** Transient queue for earn toasts (register / invite / first_join). */
+    const TOAST_PREFIX     = 'cw_points_toast_';
+    const TOAST_TTL        = 600;
+    /** Bonus ref_types that trigger a toast. */
+    const TOAST_REF_TYPES  = [ 'register', 'invite', 'first_join' ];
 
     public static function register_hooks() {
         add_action( 'init', [ __CLASS__, 'maybe_install' ], 5 );
@@ -383,6 +388,200 @@ class CW_Points {
         self::recompute_top_contributors();
 
         return true;
+    }
+
+    /**
+     * Credit a non-order bonus (register, invite, first join, etc.).
+     *
+     * @param int    $user_id
+     * @param int    $points
+     * @param string $ref_type register|invite|first_join|…
+     * @param int    $ref_id
+     * @param string $note
+     */
+    public static function credit_bonus( $user_id, $points, $ref_type, $ref_id = 0, $note = '' ) {
+        $user_id  = (int) $user_id;
+        $points   = max( 0, (int) $points );
+        $ref_type = sanitize_key( $ref_type );
+        if ( $user_id <= 0 || $points <= 0 || $ref_type === '' ) {
+            return false;
+        }
+
+        $balance  = self::get_balance( $user_id ) + $points;
+        $lifetime = self::get_lifetime_earned( $user_id ) + $points;
+        update_user_meta( $user_id, self::META_BALANCE, $balance );
+        update_user_meta( $user_id, self::META_LIFETIME, $lifetime );
+
+        $ok = self::add_ledger_row( $user_id, $points, 'earn', $ref_type, (int) $ref_id, $note );
+        if ( ! $ok ) {
+            return false;
+        }
+
+        if ( in_array( $ref_type, self::TOAST_REF_TYPES, true ) ) {
+            self::queue_toast( $user_id, $points, $ref_type );
+        }
+
+        if ( class_exists( 'CW_Badges_Engine' ) ) {
+            CW_Badges_Engine::evaluate_user( $user_id, [ 'source' => 'points_bonus', 'ref_type' => $ref_type ] );
+        }
+
+        self::recompute_top_contributors();
+
+        return true;
+    }
+
+    /**
+     * Queue a one-shot earn toast for the next front-end pageload.
+     *
+     * @param int    $user_id
+     * @param int    $points
+     * @param string $ref_type
+     */
+    public static function queue_toast( $user_id, $points, $ref_type ) {
+        $user_id  = (int) $user_id;
+        $points   = max( 0, (int) $points );
+        $ref_type = sanitize_key( $ref_type );
+        if ( $user_id <= 0 || $points <= 0 || $ref_type === '' ) {
+            return;
+        }
+
+        $key   = self::TOAST_PREFIX . $user_id;
+        $queue = get_transient( $key );
+        if ( ! is_array( $queue ) ) {
+            $queue = [];
+        }
+        $queue[] = [
+            'points'   => $points,
+            'ref_type' => $ref_type,
+        ];
+        // Cap stack so a buggy loop cannot flood the footer.
+        if ( count( $queue ) > 5 ) {
+            $queue = array_slice( $queue, -5 );
+        }
+        set_transient( $key, $queue, self::TOAST_TTL );
+    }
+
+    /**
+     * Human label for a bonus toast.
+     *
+     * @param string $ref_type
+     * @param int    $points
+     * @return string
+     */
+    public static function toast_message( $ref_type, $points ) {
+        $points = (int) $points;
+        switch ( sanitize_key( $ref_type ) ) {
+            case 'register':
+                return sprintf(
+                    /* translators: %d: points awarded */
+                    __( '+%d welcome bonus', 'creativewings-core' ),
+                    $points
+                );
+            case 'invite':
+                return sprintf(
+                    /* translators: %d: points awarded */
+                    __( '+%d invite bonus', 'creativewings-core' ),
+                    $points
+                );
+            case 'first_join':
+                return sprintf(
+                    /* translators: %d: points awarded */
+                    __( '+%d first join bonus', 'creativewings-core' ),
+                    $points
+                );
+            default:
+                return sprintf(
+                    /* translators: %d: points awarded */
+                    __( '+%d points', 'creativewings-core' ),
+                    $points
+                );
+        }
+    }
+
+    /**
+     * Render pending earn toasts in wp_footer (SweetAlert2 or CSS fallback).
+     */
+    public static function maybe_render_toasts() {
+        if ( ! is_user_logged_in() || is_admin() ) {
+            return;
+        }
+        $uid   = get_current_user_id();
+        $key   = self::TOAST_PREFIX . $uid;
+        $queue = get_transient( $key );
+        if ( ! is_array( $queue ) || empty( $queue ) ) {
+            return;
+        }
+        delete_transient( $key );
+
+        $messages = [];
+        foreach ( $queue as $entry ) {
+            $pts = (int) ( $entry['points'] ?? 0 );
+            $ref = sanitize_key( $entry['ref_type'] ?? '' );
+            if ( $pts <= 0 || $ref === '' ) {
+                continue;
+            }
+            $messages[] = self::toast_message( $ref, $pts );
+        }
+        if ( empty( $messages ) ) {
+            return;
+        }
+        ?>
+        <div class="cw-points-toast-stack" id="cw-points-toast-stack" hidden>
+            <?php foreach ( $messages as $i => $msg ) : ?>
+                <div class="cw-points-toast" data-delay="<?php echo (int) ( $i * 280 ); ?>">
+                    <span class="cw-points-toast-icon" aria-hidden="true"><i class="fas fa-star"></i></span>
+                    <div class="cw-points-toast-body">
+                        <strong><?php esc_html_e( 'Points earned', 'creativewings-core' ); ?></strong>
+                        <div class="cw-points-toast-title"><?php echo esc_html( $msg ); ?></div>
+                    </div>
+                    <button type="button" class="cw-points-toast-dismiss" aria-label="<?php esc_attr_e( 'Dismiss', 'creativewings-core' ); ?>">&times;</button>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <script>
+        (function () {
+            var msgs = <?php echo wp_json_encode( array_values( $messages ) ); ?>;
+            if (!msgs || !msgs.length) return;
+
+            function showCssFallback() {
+                var stack = document.getElementById('cw-points-toast-stack');
+                if (!stack) return;
+                stack.hidden = false;
+                Array.prototype.forEach.call(stack.querySelectorAll('.cw-points-toast'), function (el) {
+                    var delay = parseInt(el.getAttribute('data-delay') || '0', 10);
+                    setTimeout(function () { el.classList.add('cw-points-toast--in'); }, delay);
+                    setTimeout(function () { el.classList.remove('cw-points-toast--in'); }, delay + 6500);
+                });
+                stack.addEventListener('click', function (e) {
+                    if (e.target && e.target.classList && e.target.classList.contains('cw-points-toast-dismiss')) {
+                        var t = e.target.closest('.cw-points-toast');
+                        if (t) t.classList.remove('cw-points-toast--in');
+                    }
+                });
+            }
+
+            if (typeof Swal !== 'undefined' && Swal.fire) {
+                var i = 0;
+                function next() {
+                    if (i >= msgs.length) return;
+                    var text = msgs[i++];
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: 'success',
+                        title: text,
+                        showConfirmButton: false,
+                        timer: 4200,
+                        timerProgressBar: true
+                    }).then(next);
+                }
+                next();
+                return;
+            }
+            showCssFallback();
+        })();
+        </script>
+        <?php
     }
 
     /**

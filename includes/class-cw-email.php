@@ -12,12 +12,46 @@ class CW_Email {
         add_action( 'cw_certificate_ready', [ $this, 'on_cert_ready' ], 10, 3 );
     }
 
-    public static function send( $to, $subject, $body ) {
+    public static function send( $to, $subject, $body, $heading = '' ) {
         if ( ! $to || ! is_email( $to ) ) {
             return false;
         }
+        if ( ! $heading ) {
+            $heading = wp_strip_all_tags( (string) $subject );
+            $heading = preg_replace( '/^\[[^\]]+\]\s*/', '', $heading );
+        }
+        $html    = self::email_template_wrap(
+            [
+                'heading' => $heading,
+                'body'    => $body,
+            ]
+        );
         $headers = [ 'Content-Type: text/html; charset=UTF-8' ];
-        return wp_mail( $to, $subject, wp_kses_post( $body ), $headers );
+        return wp_mail( $to, $subject, $html, $headers );
+    }
+
+    /**
+     * Brand Style Guide v2.0 tokens (May 2026).
+     * Coral #F05A7E CTA · Blue #125B9A structure · Off-white #F8F9FB · Text #555555.
+     */
+    public static function brand_logo_url() {
+        // Brand Style Guide: colour logo on white/off-white — must be transparent PNG (not black-backed).
+        $logo = 'https://creativewings.asia/wp-content/uploads/2026/01/cropped-CW-Logo.png';
+        /**
+         * Filter the logo used in Creative Wings HTML emails.
+         *
+         * @param string $logo Absolute image URL.
+         */
+        return (string) apply_filters( 'cw_email_brand_logo_url', $logo );
+    }
+
+    /**
+     * Public branded shell for all Creative Wings transactional emails.
+     *
+     * @param array{heading?:string,body?:string,preheader?:string} $args
+     */
+    public static function wrap( array $args ) {
+        return self::email_template_wrap( $args );
     }
 
     /**
@@ -261,33 +295,38 @@ class CW_Email {
         );
         $privacy_note = esc_html__( 'This link is for you — please don\'t share it publicly.', 'creativewings-core' );
 
-        $body  = '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;">' . $hi_line . '</p>';
-        $body .= '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;">' . $registered . '</p>';
+        $body  = '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#555555;">' . $hi_line . '</p>';
+        $body .= '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#555555;">' . $registered . '</p>';
         if ( $when_line ) {
             $body .= '<p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#555555;">' . $when_line . '</p>';
         }
-        $body .= '<p style="text-align:center;margin:28px 0;"><a href="' . $url_esc . '" style="display:inline-block;background:#0F6796;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:999px;font-weight:700;font-size:15px;line-height:1;">' . $cta_label . '</a></p>';
+        $body .= '<p style="text-align:center;margin:28px 0;"><a href="' . $url_esc . '" style="display:inline-block;background:#F05A7E;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;font-size:15px;line-height:1;">' . $cta_label . '</a></p>';
         $body .= '<p style="margin:0 0 10px;font-size:13px;line-height:1.65;color:#555555;">' . $fallback . '</p>';
-        $body .= '<p style="margin:0 0 22px;font-size:13px;line-height:1.65;color:#0F6796;word-break:break-all;"><a href="' . $url_esc . '" style="color:#0F6796;">' . esc_html( $args['online_link'] ) . '</a></p>';
-        $body .= '<p style="margin:0 0 6px;font-size:14px;line-height:1.65;color:#475569;">' . $hosted_by . '</p>';
-        $body .= '<p style="margin:18px 0 0;padding:14px 16px;background:#f1f5f9;border-radius:10px;font-size:13px;line-height:1.6;color:#555555;">' . $privacy_note . '</p>';
+        $body .= '<p style="margin:0 0 22px;font-size:13px;line-height:1.65;color:#125B9A;word-break:break-all;"><a href="' . $url_esc . '" style="color:#125B9A;">' . esc_html( $args['online_link'] ) . '</a></p>';
+        $body .= '<p style="margin:0 0 6px;font-size:14px;line-height:1.65;color:#555555;">' . $hosted_by . '</p>';
+        $body .= '<p style="margin:18px 0 0;padding:14px 16px;background:#F8F9FB;border-radius:10px;font-size:13px;line-height:1.6;color:#555555;">' . $privacy_note . '</p>';
 
         return $body;
     }
 
     /**
-     * Creative Wings branded HTML email shell (matches the password-reset email).
+     * Creative Wings branded HTML email shell — Brand Style Guide v2.0.
+     * White header + primary logo (colour on light). Coral CTA. Blue structure.
      * Table-based + inline styles for max email-client compatibility.
      *
-     * @param array{heading:string,body:string} $args
+     * @param array{heading?:string,body?:string,preheader?:string} $args
      */
     private static function email_template_wrap( array $args ) {
-        $heading      = isset( $args['heading'] ) ? $args['heading'] : '';
-        $body         = isset( $args['body'] ) ? $args['body'] : '';
-        $year         = date( 'Y' );
-        $site_url     = esc_url( home_url() );
-        $heading_esc  = esc_html( $heading );
-        $brand        = 'Creative Wings';
+        $heading     = isset( $args['heading'] ) ? $args['heading'] : '';
+        $body        = isset( $args['body'] ) ? $args['body'] : '';
+        $preheader   = isset( $args['preheader'] ) ? $args['preheader'] : $heading;
+        $year        = gmdate( 'Y' );
+        $site_url    = esc_url( home_url( '/' ) );
+        $heading_esc = esc_html( $heading );
+        $pre_esc     = esc_html( $preheader );
+        $brand       = 'Creative Wings';
+        $logo_url    = esc_url( self::brand_logo_url() );
+        $tagline     = esc_html__( 'Together, We Help Young Talents Soar', 'creativewings-core' );
 
         $footer_copy = sprintf(
             /* translators: 1: year, 2: brand name */
@@ -296,6 +335,7 @@ class CW_Email {
             $brand
         );
         $footer_note = esc_html__( "This is an automated message — please don't reply directly.", 'creativewings-core' );
+        $font_stack  = "Montserrat,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
         return <<<HTML
 <!DOCTYPE html>
@@ -305,26 +345,35 @@ class CW_Email {
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>{$heading_esc}</title>
 </head>
-<body style="margin:0;padding:0;background:#F8F9FB;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1A1A1A;">
+<body style="margin:0;padding:0;background:#F8F9FB;font-family:{$font_stack};color:#000000;">
+    <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">{$pre_esc}</div>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F8F9FB;padding:32px 16px;">
         <tr>
             <td align="center">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e8edf2;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #E8EDF2;">
                     <tr>
-                        <td style="background:#125B9A;padding:28px 32px;text-align:center;">
-                            <a href="{$site_url}" style="color:#ffffff;text-decoration:none;font-size:22px;font-weight:800;letter-spacing:-0.3px;">{$brand}</a>
+                        <td style="background:#FFFFFF;padding:28px 32px 20px;text-align:center;">
+                            <a href="{$site_url}" style="text-decoration:none;display:inline-block;">
+                                <img src="{$logo_url}" alt="{$brand}" width="180" style="display:block;margin:0 auto;width:180px;max-width:70%;height:auto;border:0;">
+                            </a>
+                            <p style="margin:12px 0 0;font-size:12px;line-height:1.4;color:#555555;letter-spacing:0.02em;">{$tagline}</p>
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:36px 32px 28px;">
-                            <h2 style="margin:0 0 18px;font-size:22px;font-weight:800;color:#1A1A1A;letter-spacing:-0.2px;">{$heading_esc}</h2>
+                        <td style="background:#F05A7E;height:4px;font-size:0;line-height:0;">&nbsp;</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:32px 32px 28px;">
+                            <h2 style="margin:0 0 18px;font-size:22px;font-weight:700;color:#125B9A;letter-spacing:-0.2px;font-family:{$font_stack};">{$heading_esc}</h2>
                             {$body}
                         </td>
                     </tr>
                     <tr>
-                        <td style="background:#f8fafc;padding:20px 32px;text-align:center;color:#94a3b8;font-size:12px;border-top:1px solid #e8edf2;">
-                            <p style="margin:0;">{$footer_copy}</p>
-                            <p style="margin:6px 0 0;">{$footer_note}</p>
+                        <td style="background:#F8F9FB;padding:20px 32px;text-align:center;border-top:1px solid #E8EDF2;">
+                            <p style="margin:0 0 6px;font-size:12px;color:#125B9A;font-weight:600;">{$tagline}</p>
+                            <p style="margin:0;font-size:12px;color:#555555;">{$footer_copy}</p>
+                            <p style="margin:6px 0 0;font-size:11px;color:#555555;">{$footer_note}</p>
+                            <p style="margin:10px 0 0;font-size:11px;"><a href="{$site_url}" style="color:#125B9A;text-decoration:none;">www.creativewings.asia</a> · <a href="mailto:hello@creativewings.asia" style="color:#125B9A;text-decoration:none;">hello@creativewings.asia</a></p>
                         </td>
                     </tr>
                 </table>
@@ -518,13 +567,13 @@ HTML;
         $fallback   = esc_html__( "If the button doesn't work, copy this link into your browser:", 'creativewings-core' );
         $disclaimer = esc_html__( 'This link is personal to you and expires after 14 days.', 'creativewings-core' );
 
-        $body  = '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;">' . $hi_line . '</p>';
-        $body .= '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;">' . $thanks . '</p>';
-        $body .= '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;">' . $next_step . '</p>';
-        $body .= '<p style="text-align:center;margin:28px 0;"><a href="' . $url_esc . '" style="display:inline-block;background:#0F6796;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:999px;font-weight:700;font-size:15px;line-height:1;">' . $cta_label . '</a></p>';
+        $body  = '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#555555;">' . $hi_line . '</p>';
+        $body .= '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#555555;">' . $thanks . '</p>';
+        $body .= '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#555555;">' . $next_step . '</p>';
+        $body .= '<p style="text-align:center;margin:28px 0;"><a href="' . $url_esc . '" style="display:inline-block;background:#F05A7E;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;font-size:15px;line-height:1;">' . $cta_label . '</a></p>';
         $body .= '<p style="margin:0 0 10px;font-size:13px;line-height:1.65;color:#555555;">' . $fallback . '</p>';
-        $body .= '<p style="margin:0 0 22px;font-size:13px;line-height:1.65;color:#0F6796;word-break:break-all;"><a href="' . $url_esc . '" style="color:#0F6796;">' . esc_html( $args['complete_url'] ) . '</a></p>';
-        $body .= '<p style="margin:24px 0 0;padding:14px 16px;background:#f1f5f9;border-radius:10px;font-size:13px;line-height:1.6;color:#555555;">' . $disclaimer . '</p>';
+        $body .= '<p style="margin:0 0 22px;font-size:13px;line-height:1.65;color:#125B9A;word-break:break-all;"><a href="' . $url_esc . '" style="color:#125B9A;">' . esc_html( $args['complete_url'] ) . '</a></p>';
+        $body .= '<p style="margin:24px 0 0;padding:14px 16px;background:#F8F9FB;border-radius:10px;font-size:13px;line-height:1.6;color:#555555;">' . $disclaimer . '</p>';
 
         return $body;
     }

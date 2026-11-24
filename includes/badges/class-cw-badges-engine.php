@@ -113,11 +113,15 @@ class CW_Badges_Engine {
         if ( ! empty( $badge['description'] ) ) {
             $body .= '<p style="color:#475569;">' . esc_html( wp_strip_all_tags( $badge['description'] ) ) . '</p>';
         }
-        $body .= '<p><a href="' . esc_url( home_url( '/my-account/?tab=badges' ) ) . '" style="display:inline-block;padding:10px 18px;background:#0ea5e9;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;">' . esc_html__( 'View your badges', 'creativewings-core' ) . '</a></p>';
-        $body .= '<p style="font-size:12px;color:#94a3b8;">' . esc_html__( 'You are receiving this because badge emails are enabled in your settings.', 'creativewings-core' ) . '</p>';
+        $body .= '<p style="text-align:center;margin:28px 0;"><a href="' . esc_url( home_url( '/my-account/?tab=badges' ) ) . '" style="display:inline-block;padding:14px 32px;background:#F05A7E;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;line-height:1;">' . esc_html__( 'View your badges', 'creativewings-core' ) . '</a></p>';
+        $body .= '<p style="font-size:12px;color:#555555;">' . esc_html__( 'You are receiving this because badge emails are enabled in your settings.', 'creativewings-core' ) . '</p>';
 
-        $headers = [ 'Content-Type: text/html; charset=UTF-8' ];
-        wp_mail( $user->user_email, $subject, $body, $headers );
+        if ( class_exists( 'CW_Email' ) ) {
+            CW_Email::send( $user->user_email, $subject, $body, __( 'New badge unlocked', 'creativewings-core' ) );
+        } else {
+            $headers = [ 'Content-Type: text/html; charset=UTF-8' ];
+            wp_mail( $user->user_email, $subject, $body, $headers );
+        }
     }
 
     /* ──────────────────────────────────────────────────────────────────

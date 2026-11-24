@@ -1135,6 +1135,66 @@ class CW_Business_Reports {
     }
 
     /**
+     * Site-wide published entry count (students reached), cached ~1 hour.
+     *
+     * @return int
+     */
+    public static function count_students_reached() {
+        $cached = get_transient( 'cw_students_reached' );
+        if ( false !== $cached ) {
+            return (int) $cached;
+        }
+
+        global $wpdb;
+        $entry_types = self::entry_post_types_sql_list();
+        $count       = (int) $wpdb->get_var(
+            "SELECT COUNT(p.ID)
+             FROM {$wpdb->posts} p
+             INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = 'product_id'
+             INNER JOIN {$wpdb->posts} prod ON prod.ID = CAST(pm.meta_value AS UNSIGNED) AND prod.post_type = 'product'
+             WHERE p.post_type IN ({$entry_types})
+               AND p.post_status = 'publish'"
+        );
+
+        set_transient( 'cw_students_reached', $count, HOUR_IN_SECONDS );
+        return $count;
+    }
+
+    /**
+     * Count published competition/activity entries for campaign product IDs since N days ago.
+     *
+     * @param int|int[] $campaign_ids Single ID or list of product IDs.
+     * @param int       $days         Lookback window (default 7).
+     * @return int
+     */
+    public static function count_entries_since( $campaign_ids, $days = 7 ) {
+        global $wpdb;
+
+        $ids = array_values( array_filter( array_map( 'intval', (array) $campaign_ids ) ) );
+        if ( empty( $ids ) ) {
+            return 0;
+        }
+
+        $days        = max( 1, (int) $days );
+        $since_local = date( 'Y-m-d H:i:s', current_time( 'timestamp' ) - ( ( $days - 1 ) * DAY_IN_SECONDS ) );
+
+        $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+        $entry_types  = self::entry_post_types_sql_list();
+        $sql          = "SELECT COUNT(p.ID)
+            FROM {$wpdb->posts} p
+            INNER JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = 'product_id'
+            WHERE p.post_type IN ({$entry_types})
+              AND p.post_status = 'publish'
+              AND pm.meta_value IN ({$placeholders})
+              AND p.post_date >= %s";
+
+        $args   = $ids;
+        $args[] = $since_local;
+
+        return (int) $wpdb->get_var( $wpdb->prepare( $sql, $args ) );
+    }
+
+    /**
      * Bulk fetch the common entry meta keys we need for the roster.
      *
      * @param int[] $entry_ids

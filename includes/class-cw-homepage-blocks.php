@@ -47,7 +47,7 @@ class CW_Homepage_Blocks {
         $deadline = (string) get_post_meta( $pid, 'submission_deadline', true );
         $org_id   = (int) get_post_meta( $pid, 'organizer_id', true );
         $org_name = $org_id ? ( get_user_meta( $org_id, 'business_name', true ) ?: '' ) : '';
-        $excerpt  = wp_trim_words( wp_strip_all_tags( (string) get_post_field( 'post_content', $pid ) ), 14, '…' );
+        $excerpt  = wp_trim_words( wp_strip_all_tags( (string) get_post_field( 'post_content', $pid ) ), 42, '…' );
 
         $days_left = null;
         $closes    = '';

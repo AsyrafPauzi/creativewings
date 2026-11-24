@@ -21,6 +21,9 @@ class CW_Loader {
         require_once CW_PATH . 'includes/badges/class-cw-badges-engine.php';
         require_once CW_PATH . 'includes/badges/class-cw-badges-display.php';
         require_once CW_PATH . 'includes/class-cw-points.php';
+        require_once CW_PATH . 'includes/class-cw-invite.php';
+        require_once CW_PATH . 'includes/class-cw-sponsor-leads.php';
+        require_once CW_PATH . 'includes/class-cw-partner-clicks.php';
         require_once CW_PATH . 'includes/class-cw-points-rewards.php';
         require_once CW_PATH . 'includes/class-cw-security.php';
         require_once CW_PATH . 'includes/class-cw-page-cache.php';
@@ -80,8 +83,14 @@ class CW_Loader {
         require_once CW_PATH . 'includes/dashboard/class-cw-dashboard-contestant.php';
 
         // Always load: hooks are lightweight; avoids get_query_var() before main query exists (wp-admin fatal).
+        require_once CW_PATH . 'includes/class-cw-pagination.php';
+        require_once CW_PATH . 'includes/class-cw-upload-concurrency.php';
+        require_once CW_PATH . 'includes/class-cw-qr-email-link.php';
         require_once CW_PATH . 'includes/class-cw-school-upload.php';
         require_once CW_PATH . 'includes/class-cw-claim-flow.php';
+        if ( class_exists( 'CW_Qr_Email_Link' ) ) {
+            CW_Qr_Email_Link::init();
+        }
         require_once CW_PATH . 'includes/class-cw-guest-join.php';
         require_once CW_PATH . 'includes/class-cw-post-checkout.php';
 
@@ -91,6 +100,7 @@ class CW_Loader {
             require_once CW_PATH . 'includes/admin/class-cw-badges-admin.php';
             require_once CW_PATH . 'includes/admin/class-cw-points-rewards-admin.php';
             require_once CW_PATH . 'includes/admin/class-cw-sync-center.php';
+            require_once CW_PATH . 'includes/admin/class-cw-payment-export.php';
         }
 
         return true;

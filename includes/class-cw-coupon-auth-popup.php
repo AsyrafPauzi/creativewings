@@ -304,6 +304,9 @@ class CW_Coupon_Auth_Popup {
         if ( class_exists( 'CW_Auth' ) ) {
             CW_Auth::mark_contestant_onboarded( $user_id );
         }
+        if ( class_exists( 'CW_Invite' ) ) {
+            CW_Invite::on_user_registered( (int) $user_id );
+        }
 
         wp_set_current_user( $user_id );
         wp_set_auth_cookie( $user_id, true );

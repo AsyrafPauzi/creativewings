@@ -2185,50 +2185,14 @@ class CW_Dashboard_Creator {
        SHARED: Pagination renderer
        ========================================================================== */
     private function render_pagination( $current_page, $total_pages, $base_url, $page_arg = 'cw_page' ) {
-        if ( $total_pages <= 1 ) return;
-        ?>
-        <nav class="cw-pagination-nav" aria-label="Pagination">
-            <?php if ( $current_page > 1 ): ?>
-                <a href="<?php echo esc_url( add_query_arg( $page_arg, $current_page - 1, $base_url ) ); ?>" class="cw-page-btn prev" aria-label="Previous page">
-                    <i class="fas fa-chevron-left"></i>
-                </a>
-            <?php else: ?>
-                <span class="cw-page-btn prev disabled" aria-label="Previous page"><i class="fas fa-chevron-left"></i></span>
-            <?php endif; ?>
-
-            <?php
-            $range   = 2;
-            $start   = max( 1, $current_page - $range );
-            $end     = min( $total_pages, $current_page + $range );
-
-            if ( $start > 1 ) {
-                echo '<a href="' . esc_url( add_query_arg( $page_arg, 1, $base_url ) ) . '" class="cw-page-btn">1</a>';
-                if ( $start > 2 ) echo '<span class="cw-page-ellipsis">…</span>';
-            }
-            for ( $i = $start; $i <= $end; $i++ ):
-                $active = ( $i === $current_page ) ? 'active' : '';
-            ?>
-                <a href="<?php echo esc_url( add_query_arg( $page_arg, $i, $base_url ) ); ?>"
-                   class="cw-page-btn <?php echo $active; ?>"
-                   <?php echo $active ? 'aria-current="page"' : ''; ?>>
-                    <?php echo $i; ?>
-                </a>
-            <?php endfor;
-            if ( $end < $total_pages ) {
-                if ( $end < $total_pages - 1 ) echo '<span class="cw-page-ellipsis">…</span>';
-                echo '<a href="' . esc_url( add_query_arg( $page_arg, $total_pages, $base_url ) ) . '" class="cw-page-btn">' . $total_pages . '</a>';
-            }
-            ?>
-
-            <?php if ( $current_page < $total_pages ): ?>
-                <a href="<?php echo esc_url( add_query_arg( $page_arg, $current_page + 1, $base_url ) ); ?>" class="cw-page-btn next" aria-label="Next page">
-                    <i class="fas fa-chevron-right"></i>
-                </a>
-            <?php else: ?>
-                <span class="cw-page-btn next disabled" aria-label="Next page"><i class="fas fa-chevron-right"></i></span>
-            <?php endif; ?>
-        </nav>
-        <?php
+        if ( class_exists( 'CW_Pagination' ) ) {
+            CW_Pagination::render( [
+                'current'  => (int) $current_page,
+                'total'    => (int) $total_pages,
+                'base_url' => $base_url,
+                'page_arg' => $page_arg,
+            ] );
+        }
     }
 
     /* ==========================================================================

@@ -36,7 +36,7 @@ $query = [];
 if ( ! empty( $parts['query'] ) ) {
     parse_str( $parts['query'], $query );
     foreach ( array_keys( $query ) as $k ) {
-        if ( preg_match( '/^(utm_|fbclid|gclid|mc_)/i', $k ) ) {
+        if ( preg_match( '/^(utm_|fbclid|gclid|mc_|msclkid|ttclid|li_fat_id|vero_|ref$|_ga|_gl)/i', $k ) ) {
             unset( $query[ $k ] );
         }
     }
@@ -69,6 +69,9 @@ if ( ! is_string( $html ) || strlen( $html ) < 500 ) {
 header( 'Content-Type: text/html; charset=UTF-8' );
 header( 'X-CW-Page-Cache: HIT-EARLY' );
 header( 'Cache-Control: public, max-age=60, s-maxage=3600' );
+// Ask Cloudflare edge to store HTML even when browser max-age is short.
+header( 'CDN-Cache-Control: max-age=3600' );
+header( 'Cloudflare-CDN-Cache-Control: max-age=3600' );
 header( 'Expires: ' . gmdate( 'D, d M Y H:i:s', time() + 60 ) . ' GMT' );
 echo $html;
 exit;

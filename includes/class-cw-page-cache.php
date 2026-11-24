@@ -110,7 +110,7 @@ class CW_Page_Cache {
         if ( ! empty( $parts['query'] ) ) {
             parse_str( $parts['query'], $query );
             foreach ( array_keys( $query ) as $k ) {
-                if ( preg_match( '/^(utm_|fbclid|gclid|mc_)/i', $k ) ) {
+                if ( preg_match( '/^(utm_|fbclid|gclid|mc_|msclkid|ttclid|li_fat_id|vero_|ref$|_ga|_gl)/i', $k ) ) {
                     unset( $query[ $k ] );
                 }
             }
@@ -191,6 +191,8 @@ class CW_Page_Cache {
         header( 'Content-Type: text/html; charset=UTF-8' );
         header( 'X-CW-Page-Cache: HIT' );
         header( 'Cache-Control: public, max-age=60, s-maxage=' . self::TTL );
+        header( 'CDN-Cache-Control: max-age=' . self::TTL );
+        header( 'Cloudflare-CDN-Cache-Control: max-age=' . self::TTL );
         header( 'Expires: ' . gmdate( 'D, d M Y H:i:s', time() + 60 ) . ' GMT' );
         echo $html;
         exit;

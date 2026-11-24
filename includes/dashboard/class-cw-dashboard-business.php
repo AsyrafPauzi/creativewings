@@ -575,6 +575,22 @@ class CW_Dashboard_Business {
         // Coupon roll-up for the card meta line.
         $coupon_used_total = 0;
         foreach ( $coupons as $c ) { $coupon_used_total += (int) $c['usage_count']; }
+
+        $joined_this_week = class_exists( 'CW_Business_Reports' )
+            ? (int) CW_Business_Reports::count_entries_since( $campaign_id, 7 )
+            : 0;
+
+        $logo_clicks = class_exists( 'CW_Partner_Clicks' )
+            ? (int) CW_Partner_Clicks::get_campaign_total( $campaign_id )
+            : 0;
+
+        $share_invite_text = sprintf(
+            /* translators: 1: campaign title, 2: permalink */
+            __( 'Join %1$s on Creative Wings: %2$s', 'creativewings-core' ),
+            $title,
+            $permalink
+        );
+        $share_wa_url = 'https://wa.me/?text=' . rawurlencode( $share_invite_text );
         ?>
         <div class="cwcd">
 
@@ -636,13 +652,27 @@ class CW_Dashboard_Business {
                         <span class="cwcd-kpi-value"><?php echo number_format( $coupon_used_total ); ?></span>
                     </span>
                 </article>
+                <article class="cwcd-kpi cwcd-kpi-teal">
+                    <span class="cwcd-kpi-ico"><i class="fas fa-calendar-week"></i></span>
+                    <span class="cwcd-kpi-meta">
+                        <span class="cwcd-kpi-label"><?php esc_html_e( 'Joined this week', 'creativewings-core' ); ?></span>
+                        <span class="cwcd-kpi-value"><?php echo number_format_i18n( $joined_this_week ); ?></span>
+                    </span>
+                </article>
+                <article class="cwcd-kpi cwcd-kpi-soft">
+                    <span class="cwcd-kpi-ico"><i class="fas fa-mouse-pointer"></i></span>
+                    <span class="cwcd-kpi-meta">
+                        <span class="cwcd-kpi-label"><?php esc_html_e( 'Logo clicks', 'creativewings-core' ); ?></span>
+                        <span class="cwcd-kpi-value"><?php echo number_format_i18n( $logo_clicks ); ?></span>
+                    </span>
+                </article>
             </section>
 
             <!-- ── Public link + QR (split card) ───────────────────────────── -->
             <section class="cwcd-card cwcd-card-split">
                 <header class="cwcd-card-head">
                     <h2><i class="fas fa-link"></i> <?php esc_html_e( 'Public campaign link', 'creativewings-core' ); ?></h2>
-                    <p class="cwcd-card-sub"><?php esc_html_e( 'Share this URL or QR with participants so they can find the campaign.', 'creativewings-core' ); ?></p>
+                    <p class="cwcd-card-sub"><?php esc_html_e( 'Share kit: Link · QR · WhatsApp', 'creativewings-core' ); ?></p>
                 </header>
                 <div class="cwcd-link-grid">
                     <div class="cwcd-link-col">
@@ -654,9 +684,18 @@ class CW_Dashboard_Business {
                                 <span class="cwcd-copy-text"><?php esc_html_e( 'Copy', 'creativewings-core' ); ?></span>
                             </button>
                         </div>
-                        <a href="<?php echo esc_url( $permalink ); ?>" target="_blank" rel="noopener" class="cwcd-link-open">
-                            <i class="fas fa-external-link-alt"></i> <?php esc_html_e( 'Open public page', 'creativewings-core' ); ?>
-                        </a>
+                        <div class="cwcd-share-kit">
+                            <a href="<?php echo esc_url( $share_wa_url ); ?>" target="_blank" rel="noopener" class="cwcd-btn cwcd-btn-ghost">
+                                <i class="fab fa-whatsapp"></i> <?php esc_html_e( 'WhatsApp', 'creativewings-core' ); ?>
+                            </a>
+                            <button type="button" class="cwcd-btn cwcd-btn-ghost cwcd-copy" data-copy="<?php echo esc_attr( $share_invite_text ); ?>">
+                                <i class="fas fa-comment-dots"></i>
+                                <span class="cwcd-copy-text"><?php esc_html_e( 'Copy invite text', 'creativewings-core' ); ?></span>
+                            </button>
+                            <a href="<?php echo esc_url( $permalink ); ?>" target="_blank" rel="noopener" class="cwcd-link-open">
+                                <i class="fas fa-external-link-alt"></i> <?php esc_html_e( 'Open public page', 'creativewings-core' ); ?>
+                            </a>
+                        </div>
                     </div>
                     <?php if ( $public_qr ): ?>
                     <div class="cwcd-qr-col">
@@ -923,6 +962,10 @@ class CW_Dashboard_Business {
             ) );
         }
 
+        $joined_this_week = class_exists( 'CW_Business_Reports' ) && ! empty( $campaign_ids )
+            ? (int) CW_Business_Reports::count_entries_since( $campaign_ids, 7 )
+            : 0;
+
         // Base URL for links
         $base = get_permalink( wc_get_page_id( 'myaccount' ) );
 
@@ -1083,8 +1126,8 @@ class CW_Dashboard_Business {
             }
             ?>
 
-            <!-- STATS GRID (4 cols) -->
-            <div class="cw-stats-grid cols-4">
+            <!-- STATS GRID -->
+            <div class="cw-stats-grid cols-5">
                 <div class="cw-stat-card">
                     <div>
                         <span class="cw-stat-label">Active Campaigns</span>
@@ -1107,6 +1150,14 @@ class CW_Dashboard_Business {
                         <h3 class="cw-stat-value"><?php echo intval($total_entries); ?></h3>
                     </div>
                     <div class="cw-stat-icon-wrapper blue"><i class="fas fa-users"></i></div>
+                </div>
+
+                <div class="cw-stat-card">
+                    <div>
+                        <span class="cw-stat-label"><?php esc_html_e( 'Joined this week', 'creativewings-core' ); ?></span>
+                        <h3 class="cw-stat-value"><?php echo (int) $joined_this_week; ?></h3>
+                    </div>
+                    <div class="cw-stat-icon-wrapper teal"><i class="fas fa-calendar-week"></i></div>
                 </div>
 
                 <div class="cw-stat-card">
@@ -1683,7 +1734,9 @@ class CW_Dashboard_Business {
                                 <small class="cw-pending-note">Awaiting admin approval</small>
                                 <?php endif; ?>
                                 <div class="cw-card-stats">
-                                    <div class="cw-stat-item"><i class="fas fa-users"></i> <?php echo number_format($entries_count); ?> Joined</div>
+                                    <a href="<?php echo esc_url( $entries_link ); ?>" class="cw-stat-item cw-stat-item--link" title="<?php esc_attr_e( 'View submissions', 'creativewings-core' ); ?>">
+                                        <i class="fas fa-users"></i> <?php echo number_format( $entries_count ); ?> <?php esc_html_e( 'Joined', 'creativewings-core' ); ?>
+                                    </a>
                                     <div class="cw-stat-item"><i class="fas fa-wallet"></i> RM <?php echo number_format($earnings, 0); ?></div>
                                 </div>
                                 <div class="cw-card-actions cw-card-actions-icons">
@@ -1692,6 +1745,7 @@ class CW_Dashboard_Business {
                                        title="<?php echo esc_attr( sprintf( _n( '%s entry — manage', '%s entries — manage', $entries_count, 'creativewings-core' ), number_format_i18n( $entries_count ) ) ); ?>"
                                        aria-label="<?php echo esc_attr( sprintf( _n( '%s entry, manage', '%s entries, manage', $entries_count, 'creativewings-core' ), number_format_i18n( $entries_count ) ) ); ?>">
                                         <i class="fas fa-user-check" aria-hidden="true"></i>
+                                        <span class="cw-action-sr"><?php esc_html_e( 'Entries', 'creativewings-core' ); ?></span>
                                         <span class="cw-action-count"><?php echo number_format_i18n( $entries_count ); ?></span>
                                     </a>
                                     <a href="<?php echo esc_url( add_query_arg( 'details_id', $pid, $base_campaigns_url ) ); ?>"
@@ -1813,6 +1867,20 @@ class CW_Dashboard_Business {
                 </a>
             </div>
 
+            <div class="cw-wallet-faq" role="note">
+                <p class="cw-wallet-faq__title"><?php esc_html_e( 'How payouts work', 'creativewings-core' ); ?></p>
+                <ul class="cw-wallet-faq__list">
+                    <li><?php esc_html_e( 'Total earned — gross revenue from your campaigns (lifetime).', 'creativewings-core' ); ?></li>
+                    <li><?php esc_html_e( 'Pending clearance — funds still held until campaigns settle.', 'creativewings-core' ); ?></li>
+                    <li><?php esc_html_e( 'Available — ready to withdraw after bank details are saved. Minimum request RM10.', 'creativewings-core' ); ?></li>
+                    <li><?php esc_html_e( 'Creative Wings reviews each payout request before transfer.', 'creativewings-core' ); ?></li>
+                </ul>
+                <p class="cw-wallet-faq__help">
+                    <?php esc_html_e( 'Need help?', 'creativewings-core' ); ?>
+                    <a href="mailto:hello@creativewings.asia">hello@creativewings.asia</a>
+                </p>
+            </div>
+
             <!-- STATS ROW (3 Cards) -->
             <div class="cw-stats-grid">
                 <!-- Dark Card: Total -->
@@ -1821,6 +1889,7 @@ class CW_Dashboard_Business {
                         <span class="cw-stat-label text-gray">Total Earned (Lifetime)</span>
                         <h2 class="cw-stat-val cw-stat-money text-white"><?php echo wc_price($wallet['total_earned']); ?></h2>
                         <div class="cw-mini-tag"><span class="dot green"></span> Gross Revenue</div>
+                        <div class="cw-stat-meta text-muted" style="opacity:.85;margin-top:6px;"><?php esc_html_e( 'All-time campaign earnings', 'creativewings-core' ); ?></div>
                     </div>
                 </div>
 
@@ -1829,7 +1898,7 @@ class CW_Dashboard_Business {
                     <div>
                         <span class="cw-stat-label">Pending Clearance</span>
                         <h2 class="cw-stat-val cw-stat-money text-yellow"><?php echo wc_price($wallet['pending']); ?></h2>
-                        <div class="cw-stat-meta text-muted">Held funds</div>
+                        <div class="cw-stat-meta text-muted"><?php esc_html_e( 'Not withdrawable yet', 'creativewings-core' ); ?></div>
                     </div>
                 </div>
 
@@ -1838,7 +1907,7 @@ class CW_Dashboard_Business {
                     <div>
                         <span class="cw-stat-label">Available Balance</span>
                         <h2 class="cw-stat-val cw-stat-money text-blue"><?php echo wc_price($wallet['available']); ?></h2>
-                        <div class="cw-stat-meta text-muted">Ready to withdraw</div>
+                        <div class="cw-stat-meta text-muted"><?php esc_html_e( 'Min withdraw RM10 · bank required', 'creativewings-core' ); ?></div>
                     </div>
                 </div>
             </div>
@@ -3403,20 +3472,20 @@ class CW_Dashboard_Business {
                             'mention' => ['label'=>'⭐ Honorable Mention','color'=>'#1e40af','bg'=>'#eff6ff','border'=>'#bfdbfe'],
                         ];
                         ?>
-                        <div style="display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
+                        <div class="cw-entry-card-actions">
                             <?php if ( $is_judged ): ?>
                                 <span class="cwb-vote-badge"><i class="fas fa-heart"></i> <?php echo $vote_count; ?> votes</span>
                                 <?php if ($is_winner && $winner_rank_val && isset($rank_label[$winner_rank_val])): $rl = $rank_label[$winner_rank_val]; ?>
-                                <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:<?php echo $rl['bg']; ?>;color:<?php echo $rl['color']; ?>;border:1px solid <?php echo $rl['border']; ?>;"><?php echo $rl['label']; ?></span>
+                                <span class="cw-status-badge cw-status-rank" style="background:<?php echo esc_attr( $rl['bg'] ); ?>;color:<?php echo esc_attr( $rl['color'] ); ?>;border-color:<?php echo esc_attr( $rl['border'] ); ?>;"><?php echo esc_html( $rl['label'] ); ?></span>
                                 <?php elseif ($is_winner): ?>
-                                <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:#fef3c7;color:#b45309;border:1px solid #fde68a;">🏆 Winner</span>
+                                <span class="cw-status-badge cw-status-winner"><?php esc_html_e( 'Winner', 'creativewings-core' ); ?></span>
                                 <?php endif; ?>
-                                <button class="cw-btn-primary small cw-open-eval-btn" style="flex:1; min-width:100px;">
-                                    <i class="fas fa-pencil-alt"></i> Evaluate
+                                <button type="button" class="cw-btn-primary small cw-open-eval-btn">
+                                    <i class="fas fa-pencil-alt" aria-hidden="true"></i> <?php esc_html_e( 'Evaluate', 'creativewings-core' ); ?>
                                 </button>
                             <?php else: ?>
-                                <span class="cw-status-badge cw-status-completed" style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:#dcfce7;color:#166534;border:1px solid #bbf7d0;">
-                                    <i class="fas fa-check-circle"></i> Completed
+                                <span class="cw-status-badge cw-status-completed">
+                                    <i class="fas fa-check-circle" aria-hidden="true"></i> <?php esc_html_e( 'Completed', 'creativewings-core' ); ?>
                                 </span>
                             <?php endif; ?>
                             <?php if ( $entry_staged_id > 0 ) : ?>
@@ -3436,38 +3505,22 @@ class CW_Dashboard_Business {
                 <?php endforeach; ?>
             </div>
             
-            <!-- Pagination -->
-            <?php if ($total_pages > 1): ?>
-            <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:24px;flex-wrap:wrap;">
-                <?php
-                // Pagination circles. `aspect-ratio:1/1` + `flex-shrink:0`
-                // keep them as perfect circles even when the surrounding
-                // flex row stretches its children, which used to produce
-                // visible ovals.
-                $pg_base = 'display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;min-width:36px;min-height:36px;aspect-ratio:1/1;flex-shrink:0;border-radius:50%;text-decoration:none;font-size:13px;transition:all .15s;box-sizing:border-box;';
-                ?>
-                <?php if ($paged > 1): ?>
-                <a href="<?php echo esc_url(add_query_arg(['sort'=>$sort_by,'order'=>$sort_order,'entries_page'=>$paged-1],$base_url)); ?>"
-                   class="cw-pagination-circle"
-                   style="<?php echo $pg_base; ?>background:var(--cw-bg);border:1.5px solid var(--cw-border);color:var(--cw-text);"
-                   onmouseover="this.style.background='var(--cw-primary-light)'" onmouseout="this.style.background='var(--cw-bg)'">
-                   <i class="fas fa-chevron-left"></i></a>
-                <?php endif; ?>
-                <?php for ($pi = 1; $pi <= $total_pages; $pi++): ?>
-                <a href="<?php echo esc_url(add_query_arg(['sort'=>$sort_by,'order'=>$sort_order,'entries_page'=>$pi],$base_url)); ?>"
-                   class="cw-pagination-circle"
-                   style="<?php echo $pg_base; ?>border:1.5px solid <?php echo $pi===$paged?'var(--cw-primary)':'var(--cw-border)'; ?>;background:<?php echo $pi===$paged?'var(--cw-primary)':'var(--cw-bg)'; ?>;color:<?php echo $pi===$paged?'#fff':'var(--cw-text)'; ?>;font-weight:600;">
-                   <?php echo $pi; ?></a>
-                <?php endfor; ?>
-                <?php if ($paged < $total_pages): ?>
-                <a href="<?php echo esc_url(add_query_arg(['sort'=>$sort_by,'order'=>$sort_order,'entries_page'=>$paged+1],$base_url)); ?>"
-                   class="cw-pagination-circle"
-                   style="<?php echo $pg_base; ?>background:var(--cw-bg);border:1.5px solid var(--cw-border);color:var(--cw-text);"
-                   onmouseover="this.style.background='var(--cw-primary-light)'" onmouseout="this.style.background='var(--cw-bg)'">
-                   <i class="fas fa-chevron-right"></i></a>
-                <?php endif; ?>
-            </div>
-            <?php endif; ?>
+            <!-- Pagination (shared windowed control — same as Activities / Portfolio) -->
+            <?php
+            if ( $total_pages > 1 && class_exists( 'CW_Pagination' ) ) {
+                CW_Pagination::render( [
+                    'current'     => (int) $paged,
+                    'total'       => (int) $total_pages,
+                    'base_url'    => $base_url,
+                    'page_arg'    => 'entries_page',
+                    'query_args'  => [
+                        'sort'  => $sort_by,
+                        'order' => $sort_order,
+                    ],
+                    'aria_label'  => __( 'Manage entries pagination', 'creativewings-core' ),
+                ] );
+            }
+            ?>
 
             <?php else: ?>
                 <div class="cw-empty-state">

@@ -52,6 +52,13 @@ class CW_Auth {
         // 5. Social Login Integration (Nextend)
         add_action( 'nextend_social_login_register', [ $this, 'social_register_metadata' ], 10, 3 );
         add_action( 'nsl_register_new_user', [ $this, 'on_nsl_register_new_user' ], 10, 2 );
+        // NSL's default post-login page is a blank HTML+JS interstitial. If JS/meta-refresh
+        // fails (common with Facebook #_=_ callbacks), the browser stays on
+        // /wp-login.php?loginSocial=…&code=… forever. Force real HTTP redirects.
+        add_action( 'init', [ $this, 'nsl_boot_callback_guard' ], 0 );
+        add_action( 'nsl_login', [ $this, 'force_nsl_post_login_redirect' ], 5, 2 );
+        add_action( 'nsl_facebook_login', [ $this, 'force_nsl_post_login_redirect' ], 5, 2 );
+        add_action( 'nsl_google_login', [ $this, 'force_nsl_post_login_redirect' ], 5, 2 );
         add_filter( 'nsl_register_roles', [ $this, 'filter_nsl_register_roles' ], 10, 2 );
         add_filter( 'google_login_redirect_url', [ $this, 'filter_nsl_redirect_url' ], 10, 2 );
         add_filter( 'google_register_redirect_url', [ $this, 'filter_nsl_redirect_url' ], 10, 2 );
@@ -60,7 +67,8 @@ class CW_Auth {
         add_filter( 'nsl_google_auto_link_allowed', [ $this, 'filter_nsl_auto_link_allowed' ], 10, 3 );
         add_filter( 'nsl_facebook_auto_link_allowed', [ $this, 'filter_nsl_auto_link_allowed' ], 10, 3 );
         add_filter( 'nsl_already_linked_error_message', [ $this, 'filter_nsl_already_linked_message' ] );
-        add_filter( 'nsl_disabled_register_error_message', [ $this, 'filter_nsl_disabled_register_message' ], 10, 2 );
+        add_filter( 'nsl_disabled_register_error_message', [ $this, 'filter_nsl_disabled_register_message' ] );
+        add_filter( 'nsl_autolink_error_redirect_url', [ $this, 'filter_nsl_autolink_error_redirect_url' ] );
     }
 
     /**
@@ -356,7 +364,7 @@ class CW_Auth {
         ?>
         <div class="cw-auth-wrapper">
             <div class="cw-auth-card cw-card-nova">
-                <h1 class="cw-auth-heading">Reset Password</h1>
+                <h1 class="cw-auth-heading">Forgot Password</h1>
                 
                 <?php $this->display_auth_messages(); ?>
 
@@ -364,10 +372,10 @@ class CW_Auth {
                     <?php wp_nonce_field('forgot_pass_action', 'forgot_pass_nonce'); ?>
                     
                     <div class="cw-input-group-v2">
-                        <label class="cw-label">Enter your email address</label>
+                        <label class="cw-label">Email</label>
                         <div class="cw-input-icon-v2">
                             <i class="fas fa-envelope"></i>
-                            <input type="email" name="user_login" placeholder="Email address" required class="cw-input-text-v2">
+                            <input type="email" name="user_login" placeholder="Enter Email" required class="cw-input-text-v2">
                         </div>
                     </div>
 
@@ -375,6 +383,7 @@ class CW_Auth {
                     
                     <div class="cw-auth-links-v2">
                         <a href="<?php echo home_url('/login'); ?>" class="cw-link-sub">Back to Login</a>
+                        <a href="<?php echo home_url('/registration'); ?>" class="cw-link-main">Create a new account</a>
                     </div>
                     
                     <input type="hidden" name="action" value="handle_forgot_password">
@@ -475,6 +484,9 @@ class CW_Auth {
             $user = new WP_User( $user_id );
             $user->set_role( 'contestant' ); 
             self::mark_contestant_onboarded( $user_id );
+            if ( class_exists( 'CW_Invite' ) ) {
+                CW_Invite::on_user_registered( (int) $user_id );
+            }
 
             wp_set_current_user( $user_id );
             wp_set_auth_cookie( $user_id );
@@ -1456,6 +1468,9 @@ class CW_Auth {
         $user = new WP_User( $user_id );
         $user->set_role( 'contestant' );
         self::mark_contestant_onboarded( $user_id );
+        if ( class_exists( 'CW_Invite' ) ) {
+            CW_Invite::on_user_registered( (int) $user_id );
+        }
 
         if ( ! CW_Guest_Join::attach_order_to_user( $order_id, $user_id ) ) {
             wp_delete_user( $user_id );
@@ -1569,77 +1584,43 @@ class CW_Auth {
         $fallback   = esc_html__( "If the button doesn't work, copy this link into your browser:", 'creativewings-core' );
         $disclaimer = esc_html__( "If you didn't request this, you can safely ignore this email — your password will stay the same.", 'creativewings-core' );
 
-        $body  = '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;">' . $hi_line . '</p>';
-        $body .= '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;">' . $intro . '</p>';
-        $body .= '<p style="text-align:center;margin:28px 0;"><a href="' . $url_esc . '" style="display:inline-block;background:#125B9A;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;line-height:1;">' . $cta_label . '</a></p>';
+        $body  = '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#555555;">' . $hi_line . '</p>';
+        $body .= '<p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#555555;">' . $intro . '</p>';
+        $body .= '<p style="text-align:center;margin:28px 0;"><a href="' . $url_esc . '" style="display:inline-block;background:#F05A7E;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;font-size:15px;line-height:1;">' . $cta_label . '</a></p>';
         $body .= '<p style="margin:0 0 10px;font-size:13px;line-height:1.65;color:#555555;">' . $fallback . '</p>';
         $body .= '<p style="margin:0 0 22px;font-size:13px;line-height:1.65;color:#125B9A;word-break:break-all;"><a href="' . $url_esc . '" style="color:#125B9A;">' . esc_html( $reset_url ) . '</a></p>';
-        $body .= '<p style="margin:24px 0 0;padding:14px 16px;background:#f1f5f9;border-radius:10px;font-size:13px;line-height:1.6;color:#555555;">' . $disclaimer . '</p>';
+        $body .= '<p style="margin:24px 0 0;padding:14px 16px;background:#F8F9FB;border-radius:10px;font-size:13px;line-height:1.6;color:#555555;">' . $disclaimer . '</p>';
 
-        return $this->email_template_wrap( [
-            'heading' => __( 'Reset your password', 'creativewings-core' ),
-            'body'    => $body,
-        ] );
+        // Shared Brand Style Guide shell (CW_Email).
+        if ( class_exists( 'CW_Email' ) ) {
+            return CW_Email::wrap(
+                [
+                    'heading' => __( 'Reset your password', 'creativewings-core' ),
+                    'body'    => $body,
+                ]
+            );
+        }
+
+        return $this->email_template_wrap(
+            [
+                'heading' => __( 'Reset your password', 'creativewings-core' ),
+                'body'    => $body,
+            ]
+        );
     }
 
     /**
-     * Reusable Creative Wings email shell.
-     * Accepts: ['heading' => string, 'body' => HTML]
-     * Uses table-based layout + inline styles for max email-client compatibility.
+     * Fallback shell if CW_Email is unavailable.
+     *
+     * @param array{heading?:string,body?:string} $args
      */
     private function email_template_wrap( $args ) {
-        $heading  = isset( $args['heading'] ) ? $args['heading'] : '';
-        $body     = isset( $args['body'] )    ? $args['body']    : '';
-        $year     = date( 'Y' );
-        $site_url = esc_url( home_url() );
-        $heading_esc = esc_html( $heading );
-        $brand    = 'Creative Wings';
-
-        $footer_copy = sprintf(
-            /* translators: 1: year, 2: brand name */
-            esc_html__( '© %1$d %2$s. All rights reserved.', 'creativewings-core' ),
-            $year,
-            $brand
-        );
-        $footer_note = esc_html__( "This is an automated message — please don't reply directly.", 'creativewings-core' );
-
-        return <<<HTML
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>{$heading_esc}</title>
-</head>
-<body style="margin:0;padding:0;background:#F8F9FB;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1A1A1A;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F8F9FB;padding:32px 16px;">
-        <tr>
-            <td align="center">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e8edf2;">
-                    <tr>
-                        <td style="background:#125B9A;padding:28px 32px;text-align:center;">
-                            <a href="{$site_url}" style="color:#ffffff;text-decoration:none;font-size:22px;font-weight:800;letter-spacing:-0.3px;">{$brand}</a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding:36px 32px 28px;">
-                            <h2 style="margin:0 0 18px;font-size:22px;font-weight:800;color:#1A1A1A;letter-spacing:-0.2px;">{$heading_esc}</h2>
-                            {$body}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="background:#f8fafc;padding:20px 32px;text-align:center;color:#94a3b8;font-size:12px;border-top:1px solid #e8edf2;">
-                            <p style="margin:0;">{$footer_copy}</p>
-                            <p style="margin:6px 0 0;">{$footer_note}</p>
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>
-</body>
-</html>
-HTML;
+        if ( class_exists( 'CW_Email' ) ) {
+            return CW_Email::wrap( $args );
+        }
+        $heading = isset( $args['heading'] ) ? esc_html( $args['heading'] ) : '';
+        $body    = isset( $args['body'] ) ? $args['body'] : '';
+        return '<div style="font-family:Montserrat,Arial,sans-serif;color:#555555;"><h2 style="color:#125B9A;">' . $heading . '</h2>' . $body . '</div>';
     }
 
     /* ==========================================================================
@@ -1675,6 +1656,9 @@ HTML;
         if ( $provider && is_object( $provider ) && method_exists( $provider, 'getId' ) ) {
             update_user_meta( (int) $user_id, 'social_provider', $provider->getId() );
         }
+        if ( class_exists( 'CW_Invite' ) ) {
+            CW_Invite::on_user_registered( (int) $user_id );
+        }
     }
 
     /**
@@ -1706,8 +1690,144 @@ HTML;
     }
 
     /**
-     * Do not auto-link Google/Facebook to an existing email/password account.
-     * User must log in with their password first (role stays unchanged).
+     * On OAuth callback requests, buffer NSL's blank interstitial so we can
+     * convert it into a real HTTP Location redirect (works for success + error).
+     */
+    public function nsl_boot_callback_guard() {
+        if ( empty( $_REQUEST['loginSocial'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+            return;
+        }
+        if ( headers_sent() ) {
+            return;
+        }
+        ob_start( [ $this, 'nsl_rewrite_interstitial_redirect' ] );
+    }
+
+    /**
+     * OB callback: rewrite Nextend interstitial into an opener-aware bridge.
+     * (HTTP 302 alone only moves the popup; parent login tab would stay put.)
+     *
+     * @param string $html
+     * @return string
+     */
+    public function nsl_rewrite_interstitial_redirect( $html ) {
+        if ( ! is_string( $html ) || $html === '' ) {
+            return $html;
+        }
+
+        $looks_like_nsl = ( false !== stripos( $html, 'window.location' ) )
+            || ( false !== stripos( $html, 'Authentication successful' ) )
+            || ( false !== stripos( $html, 'Authentication error' ) );
+        if ( ! $looks_like_nsl ) {
+            return $html;
+        }
+
+        $url = '';
+        if ( preg_match( '/window\.location(?:\.replace)?\s*=\s*(\"[^\"]*\"|\'[^\']*\')/', $html, $m )
+            || preg_match( '/location\.replace\(\s*(\"[^\"]*\"|\'[^\']*\')\s*\)/', $html, $m ) ) {
+            $url = stripcslashes( substr( $m[1], 1, -1 ) );
+        } elseif ( preg_match( '/content=\"0;(?:url=)?([^\"]+)\"/i', $html, $m ) ) {
+            $url = html_entity_decode( $m[1], ENT_QUOTES, 'UTF-8' );
+        }
+
+        if ( ! is_string( $url ) || $url === '' ) {
+            $url = self::get_contestant_dashboard_url();
+        }
+
+        return $this->nsl_redirect_bridge_html( self::sanitize_post_login_redirect( $url ) );
+    }
+
+    /**
+     * After Nextend finishes social login, issue a real HTTP redirect.
+     * Avoids the blank /wp-login.php?loginSocial=… interstitial when JS redirect fails.
+     *
+     * @param int    $user_id
+     * @param object $provider
+     */
+    public function force_nsl_post_login_redirect( $user_id, $provider = null ) {
+        static $done = false;
+        if ( $done ) {
+            return;
+        }
+        $done = true;
+
+        // Nextend sets redirect_prevent_external=1 and installs a wp_redirect filter that
+        // re-enters finishLogin(). Strip it so our Location header actually leaves the page.
+        remove_all_filters( 'wp_redirect' );
+
+        $user = get_userdata( (int) $user_id );
+        if ( ! $user || ! $user->exists() ) {
+            return;
+        }
+
+        $dest = self::get_contestant_dashboard_url();
+
+        if ( ! empty( $_REQUEST['redirect'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+            $dest = self::sanitize_post_login_redirect( esc_url_raw( wp_unslash( $_REQUEST['redirect'] ) ) );
+        } elseif ( ! empty( $_REQUEST['redirect_to'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+            $dest = self::sanitize_post_login_redirect( esc_url_raw( wp_unslash( $_REQUEST['redirect_to'] ) ) );
+        } else {
+            $dest = $this->custom_login_redirect( $dest, '', $user );
+        }
+
+        // Social signups often lack birthdate/PDPA — send them to complete profile first.
+        if ( ! user_can( $user, 'edit_posts' ) && $this->user_needs_profile_completion( $user ) ) {
+            $dest = home_url( '/complete-profile/' );
+        }
+
+        $dest = self::sanitize_post_login_redirect( $dest );
+        $this->nsl_http_redirect( $dest );
+    }
+
+    /**
+     * Leave the OAuth callback via an opener-aware HTML bridge.
+     * Nextend "prefer-popup" finishes inside a popup — a raw Location header would
+     * only navigate the popup and leave the parent /login/ tab unchanged.
+     *
+     * @param string $dest
+     */
+    private function nsl_http_redirect( $dest ) {
+        $dest = self::sanitize_post_login_redirect( $dest );
+
+        $uid = get_current_user_id();
+        if ( $uid > 0 ) {
+            wp_set_current_user( $uid );
+            wp_set_auth_cookie( $uid, true );
+        }
+
+        if ( ! headers_sent() ) {
+            nocache_headers();
+            header( 'Content-Type: text/html; charset=utf-8' );
+        }
+
+        echo $this->nsl_redirect_bridge_html( $dest ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+        exit;
+    }
+
+    /**
+     * Tiny HTML page: update opener (popup flow) or self, then continue.
+     *
+     * @param string $dest
+     * @return string
+     */
+    private function nsl_redirect_bridge_html( $dest ) {
+        $dest = self::sanitize_post_login_redirect( $dest );
+        $json = wp_json_encode( $dest );
+
+        return '<!doctype html><html><head><meta charset="utf-8">'
+            . '<meta http-equiv="refresh" content="0;url=' . esc_attr( $dest ) . '">'
+            . '<title>Redirecting…</title>'
+            . '<script>(function(){var u=' . $json . ';'
+            . 'try{if(window.opener&&window.opener!==window){window.opener.location=u;window.close();return;}}catch(e){}'
+            . 'window.location.replace(u);})();</script>'
+            . '</head><body>'
+            . '<p><a href="' . esc_url( $dest ) . '">' . esc_html__( 'Continue', 'creativewings-core' ) . '</a></p>'
+            . '</body></html>';
+    }
+
+    /**
+     * Allow email auto-link so returning users can sign in with Google/Facebook
+     * without getting stuck on the OAuth callback page.
      *
      * @param bool   $allowed
      * @param object $provider
@@ -1715,7 +1835,15 @@ HTML;
      * @return bool
      */
     public function filter_nsl_auto_link_allowed( $allowed, $provider = null, $user_id = 0 ) {
-        return false;
+        return true;
+    }
+
+    /**
+     * @param string $url
+     * @return string
+     */
+    public function filter_nsl_autolink_error_redirect_url( $url ) {
+        return add_query_arg( 'login', 'social_failed', home_url( '/login/' ) );
     }
 
     /**
@@ -1765,6 +1893,10 @@ HTML;
 
         if ( isset( $_GET['login'] ) && $_GET['login'] === 'social_email_exists' ) {
             echo '<div class="cw-alert error">' . esc_html__( 'This email is already registered. Please log in with your existing password.', 'creativewings-core' ) . '</div>';
+        }
+
+        if ( isset( $_GET['login'] ) && $_GET['login'] === 'social_failed' ) {
+            echo '<div class="cw-alert error">' . esc_html__( 'Social login could not be completed. Please try again or log in with your email and password.', 'creativewings-core' ) . '</div>';
         }
 
         if ( isset( $_GET['reset'] ) ) {

@@ -7,11 +7,11 @@ class CW_Business_Form {
 
     private $sdg_map;
     private $step_labels = [
-        1 => ['label' => 'Classify',     'icon' => 'fa-tag'],
-        2 => ['label' => 'Basic Details','icon' => 'fa-pen'],
-        3 => ['label' => 'Specifics',    'icon' => 'fa-cog'],
-        4 => ['label' => 'Page & Extras', 'icon' => 'fa-leaf'],
-        5 => ['label' => 'Form & Publish','icon' => 'fa-rocket'],
+        1 => ['label' => 'Classify',          'icon' => 'fa-tag'],
+        2 => ['label' => 'Basic Details',     'icon' => 'fa-pen'],
+        3 => ['label' => 'Rules (optional)',  'icon' => 'fa-cog'],
+        4 => ['label' => 'Extras (optional)', 'icon' => 'fa-leaf'],
+        5 => ['label' => 'Form & Publish',    'icon' => 'fa-rocket'],
     ];
 
     public function __construct() {
@@ -493,10 +493,10 @@ class CW_Business_Form {
                                 <?php endforeach; ?>
                             </div>
 
-                            <!-- ════════════ STEP 3: SPECIFICS ════════════ -->
+                            <!-- ════════════ STEP 3: SPECIFICS (optional) ════════════ -->
                             <div class="cw-wizard-step" data-step="3" style="display:none;">
-                                <h4 class="cw-step-title">Specific Logic</h4>
-                                <p class="cw-step-subtitle">Configure competition rules, prizes, or activity details.</p>
+                                <h4 class="cw-step-title">Rules &amp; specifics <span class="cww-optional-tag">Optional</span></h4>
+                                <p class="cw-step-subtitle">Enable only if you need voting, multi-entry, design upload, or prizes. Skip if not needed — you can edit later.</p>
 
                                 <div id="cw-conditional-section" style="display:none;">
                                     <!-- Competition block -->
@@ -793,7 +793,7 @@ class CW_Business_Form {
                                                     <input type="text" name="cw_templates[<?php echo (int) $tpl_idx; ?>][label]" class="cw-input-dark"
                                                         value="<?php echo esc_attr( $row_label ); ?>"
                                                         placeholder="Download Template" maxlength="80">
-                                                </div>
+                            </div>
                                                 <div class="cw-field" style="margin:0;">
                                                     <label>Replace file <small style="color:var(--cw-text-soft);font-weight:400;">(optional)</small></label>
                                                     <input type="file" name="cw_template_file_<?php echo (int) $tpl_idx; ?>"
@@ -858,10 +858,10 @@ class CW_Business_Form {
                                 </div>
                             </div>
 
-                            <!-- ════════════ STEP 4: SDG & EXTRAS ════════════ -->
+                            <!-- ════════════ STEP 4: SDG & EXTRAS (optional) ════════════ -->
                             <div class="cw-wizard-step" data-step="4" style="display:none;">
-                                <h4 class="cw-step-title">Campaign Page, SDG &amp; Extras</h4>
-                                <p class="cw-step-subtitle">Add supporting partners and mentors for the public campaign page, select SDG goals, then configure FAQs and optional add-ons.</p>
+                                <h4 class="cw-step-title">Page extras <span class="cww-optional-tag">Optional</span></h4>
+                                <p class="cw-step-subtitle">Skip if not needed. Add partners, mentors, SDGs, FAQs, or add-ons only when you want them on the public page.</p>
 
                                 <div id="cw-section-campaign-showcase" class="cw-config-card" style="margin-bottom:24px;">
                                     <p class="cw-mini-head" style="margin-top:0;"><?php esc_html_e( 'Public campaign page', 'creativewings-core' ); ?></p>
@@ -1150,8 +1150,13 @@ class CW_Business_Form {
 
                             <!-- ════════════ STEP 5: FORM BUILDER & PUBLISH ════════════ -->
                             <div class="cw-wizard-step" data-step="5" style="display:none;">
-                                <h4 class="cw-step-title">Participant Form Fields</h4>
-                                <p class="cw-step-subtitle">Define what information to collect from participants at registration.</p>
+                                <h4 class="cw-step-title">Ready to publish</h4>
+                                <p class="cw-step-subtitle">Quick check, then set registration fields and submit for review.</p>
+                                <ul class="cww-ready-checklist" id="cww-ready-checklist" aria-label="<?php esc_attr_e( 'Publish checklist', 'creativewings-core' ); ?>">
+                                    <li data-check="title"><i class="fas fa-circle" aria-hidden="true"></i> <?php esc_html_e( 'Campaign title', 'creativewings-core' ); ?></li>
+                                    <li data-check="category"><i class="fas fa-circle" aria-hidden="true"></i> <?php esc_html_e( 'Category selected', 'creativewings-core' ); ?></li>
+                                    <li data-check="date"><i class="fas fa-circle" aria-hidden="true"></i> <?php esc_html_e( 'At least one date', 'creativewings-core' ); ?></li>
+                                </ul>
 
                                 <div id="cw-step5-name-block" class="cw-config-card" style="margin-bottom:20px;display:none;">
                                     <p class="cw-mini-head" style="margin-top:0;">Participant name (certificate)</p>
@@ -1346,8 +1351,11 @@ class CW_Business_Form {
                             <!-- ── Footer nav ── -->
                             <div class="cww-footer" id="cww-footer">
                                 <span class="cww-footer-step-info" id="cww-footer-info">Step 1 of 5</span>
-                                <div style="display:flex;gap:10px;align-items:center;">
+                                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
                                     <button type="button" class="cw-btn-nav back" id="btn-back" onclick="window.changeStep(-1)" disabled><i class="fas fa-chevron-left"></i> Back</button>
+                                    <button type="button" class="cw-btn-nav cww-skip-publish" id="btn-skip-publish" style="display:none;" onclick="window.skipToPublish()">
+                                        <?php esc_html_e( 'Skip to publish', 'creativewings-core' ); ?>
+                                    </button>
                                     <button type="button" class="cw-btn-nav next" id="btn-next" onclick="window.changeStep(1)">Next Step <i class="fas fa-chevron-right"></i></button>
                                     <button type="submit" class="cw-btn-nav submit" id="btn-submit" style="display:none;">Submit Campaign</button>
                                 </div>
@@ -1410,12 +1418,17 @@ class CW_Business_Form {
                 const btnBack   = document.getElementById('btn-back');
                 const btnNext   = document.getElementById('btn-next');
                 const btnSubmit = document.getElementById('btn-submit');
+                const btnSkip   = document.getElementById('btn-skip-publish');
                 if (btnBack)   btnBack.disabled = (currentStep === 1);
+                if (btnSkip) {
+                    btnSkip.style.display = (currentStep === 3 || currentStep === 4) ? 'inline-flex' : 'none';
+                }
                 if (btnNext && btnSubmit) {
                     if (currentStep === totalSteps) {
                         btnNext.style.display   = 'none';
                         btnSubmit.style.display = 'inline-flex';
                         btnSubmit.textContent   = editMode ? 'Save Changes' : 'Submit Campaign';
+                        window.refreshPublishChecklist();
                     } else {
                         btnNext.style.display   = 'inline-flex';
                         btnSubmit.style.display = 'none';
@@ -1423,6 +1436,32 @@ class CW_Business_Form {
                 }
 
                 window.handleConditionalFields();
+            };
+
+            window.skipToPublish = function() {
+                const cur = document.querySelector(`.cw-wizard-step[data-step="${currentStep}"]`);
+                if (cur) cur.style.display = 'none';
+                currentStep = totalSteps;
+                const scroll = document.getElementById('cww-scroll');
+                if (scroll) scroll.scrollTop = 0;
+                window.updateWizardUI();
+            };
+
+            window.refreshPublishChecklist = function() {
+                const list = document.getElementById('cww-ready-checklist');
+                if (!list) return;
+                const title = (document.querySelector('input[name="post_title"]') || {}).value || '';
+                const cat   = (document.getElementById('cw_sub_cat') || {}).value || '';
+                const dateInputs = document.querySelectorAll('.cw-wizard-step[data-step="2"] input[type="date"]');
+                let hasDate = false;
+                dateInputs.forEach(function (el) { if (el.value) hasDate = true; });
+                const map = { title: !!title.trim(), category: !!cat, date: hasDate };
+                list.querySelectorAll('[data-check]').forEach(function (li) {
+                    const ok = !!map[li.getAttribute('data-check')];
+                    li.classList.toggle('is-ok', ok);
+                    const icon = li.querySelector('i');
+                    if (icon) icon.className = ok ? 'fas fa-check-circle' : 'fas fa-circle';
+                });
             };
 
             window.changeStep = function(dir) {
@@ -1510,18 +1549,26 @@ class CW_Business_Form {
 
             window.validateStep = function(step) {
                 if (step === 1 && !document.getElementById('cw_sub_cat').value) {
-                    alert('Please select a Sub Category.');
+                    alert('Choose a main category and sub-category to continue.');
                     return false;
                 }
                 if (step === 2) {
+                    const title = document.querySelector('input[name="post_title"]');
+                    if (!title || !title.value.trim()) {
+                        alert('Add a campaign title to continue.');
+                        if (title) title.focus();
+                        return false;
+                    }
                     const reqs = document.querySelectorAll('.cw-wizard-step[data-step="2"] [required]');
                     for (let r of reqs) {
                         if (r.id !== 'post_content' && !r.value) {
-                            alert('Please fill all required fields in Basic Details.');
+                            alert('Complete the highlighted required fields in Basic Details.');
+                            r.focus();
                             return false;
                         }
                     }
                 }
+                // Steps 3–4 are optional — no hard validation.
                 return true;
             };
 

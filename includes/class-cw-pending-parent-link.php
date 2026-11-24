@@ -13,8 +13,13 @@ class CW_Pending_Parent_Link {
         return $wpdb->prefix . 'cw_pending_parent_links';
     }
 
+    /**
+     * Upsert by submission code + campaign so one parent email/account
+     * can hold multiple sibling submissions.
+     */
     public static function save( $user_id, array $parsed, $campaign_id ) {
         global $wpdb;
+        self::maybe_allow_multi_per_user_campaign();
         $now = current_time( 'mysql' );
         $data = [
             'user_id'         => (int) $user_id,
@@ -26,7 +31,8 @@ class CW_Pending_Parent_Link {
             'updated_at'      => $now,
         ];
 
-        $existing = self::get_for_user_campaign( $user_id, $campaign_id );
+        // Prefer match on code (unique) — siblings = multiple codes, same user.
+        $existing = self::get_by_code( $parsed['normalized'], $campaign_id );
         if ( $existing ) {
             $wpdb->update(
                 self::table(),
@@ -47,6 +53,28 @@ class CW_Pending_Parent_Link {
         return (int) $wpdb->insert_id;
     }
 
+    /**
+     * Drop old UNIQUE(user_id, campaign_id) so siblings can share one account.
+     */
+    public static function maybe_allow_multi_per_user_campaign() {
+        global $wpdb;
+        static $done = false;
+        if ( $done ) {
+            return;
+        }
+        $done  = true;
+        $table = self::table();
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $indexes = $wpdb->get_results( "SHOW INDEX FROM {$table} WHERE Key_name = 'user_campaign'" );
+        if ( ! empty( $indexes ) ) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $wpdb->query( "ALTER TABLE {$table} DROP INDEX user_campaign" );
+            // Non-unique helper for listing.
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $wpdb->query( "ALTER TABLE {$table} ADD KEY user_campaign (user_id, campaign_id)" );
+        }
+    }
+
     public static function get_by_code( $code, $campaign_id ) {
         global $wpdb;
         $parsed = CW_Submission_Code::parse( $code );
@@ -61,12 +89,34 @@ class CW_Pending_Parent_Link {
         return $row ?: null;
     }
 
+    /**
+     * Most recent pending row for user+campaign (siblings may have several).
+     */
     public static function get_for_user_campaign( $user_id, $campaign_id ) {
+        $rows = self::list_for_user_campaign( $user_id, $campaign_id );
+        return $rows[0] ?? null;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public static function list_for_user_campaign( $user_id, $campaign_id ) {
         global $wpdb;
-        $row = $wpdb->get_row( $wpdb->prepare(
-            'SELECT * FROM ' . self::table() . ' WHERE user_id = %d AND campaign_id = %d',
+        self::maybe_allow_multi_per_user_campaign();
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            'SELECT * FROM ' . self::table() . ' WHERE user_id = %d AND campaign_id = %d ORDER BY updated_at DESC, id DESC',
             (int) $user_id,
             (int) $campaign_id
+        ), ARRAY_A );
+        return $rows ?: [];
+    }
+
+    public static function get_by_id_for_user( $pending_id, $user_id ) {
+        global $wpdb;
+        $row = $wpdb->get_row( $wpdb->prepare(
+            'SELECT * FROM ' . self::table() . ' WHERE id = %d AND user_id = %d',
+            (int) $pending_id,
+            (int) $user_id
         ), ARRAY_A );
         return $row ?: null;
     }

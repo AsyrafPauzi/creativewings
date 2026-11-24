@@ -564,20 +564,27 @@
     align-items: center;
     gap: 8px;
     background: var(--cw-primary);
-    color: #fff;
+    color: #fff !important;
+    -webkit-text-fill-color: #fff;
     padding: 11px 22px;
     border-radius: var(--cw-radius-pill);
     font-weight: 700;
     font-size: 14px;
-    text-decoration: none;
+    text-decoration: none !important;
     transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
     box-shadow: 0 4px 12px rgba(18, 91, 154, 0.18);
+}
+.cw-recent-empty-btn i {
+    color: inherit;
+    -webkit-text-fill-color: inherit;
 }
 .cw-recent-empty-btn:hover {
     background: #004f7a;
     transform: translateY(-1px);
     box-shadow: 0 6px 16px rgba(18, 91, 154, 0.28);
-    color: #fff;
+    color: #fff !important;
+    -webkit-text-fill-color: #fff;
+    text-decoration: none !important;
 }
 
 /* Contestant settings page — modern left-aligned form card */
@@ -1148,56 +1155,8 @@
    -------------------------------------------------------------------------- */
 .cw-status-badge.completed { background: var(--cw-success-light); color: #14532d; }
 
-.cw-pagination-nav {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    margin-top: 36px;
-    flex-wrap: wrap;
-}
-.cw-page-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 38px; height: 38px;
-    padding: 0 10px;
-    border-radius: 10px;
-    border: 1.5px solid var(--cw-border);
-    background: var(--cw-surface);
-    color: var(--cw-text-soft);
-    font-size: 14px;
-    font-weight: 600;
-    text-decoration: none;
-    transition: all 0.18s;
-    cursor: pointer;
-    line-height: 1;
-}
-.cw-page-btn:hover {
-    border-color: var(--cw-primary);
-    color: var(--cw-primary);
-    background: var(--cw-primary-light);
-}
-.cw-page-btn.active {
-    background: var(--cw-primary);
-    border-color: var(--cw-primary);
-    color: #fff;
-    box-shadow: 0 3px 10px rgba(18, 91, 154, 0.28);
-}
-.cw-page-btn.disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-    pointer-events: none;
-}
-.cw-page-ellipsis {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 28px; height: 38px;
-    color: var(--cw-muted);
-    font-size: 14px;
-    font-weight: 600;
-}
+/* Pagination: canonical styles in cw-style-general.css */
+.cw-pagination-nav { margin-top: 36px; }
 
 
 /* --------------------------------------------------------------------------
@@ -1563,6 +1522,66 @@
 
 body.cw-ov-link-modal-open {
     overflow: hidden;
+}
+
+.cw-ov-invite-label {
+    display: block;
+    margin: 0 0 6px;
+    font-size: 12px;
+    font-weight: 650;
+    color: var(--cw-text-soft);
+}
+.cw-ov-invite-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+.cw-ov-invite-input,
+.cw-pts-invite-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--cw-border);
+    border-radius: 10px;
+    font-size: 13px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: #f8fafc;
+    color: var(--cw-text);
+}
+.cw-ov-invite-code,
+.cw-pts-invite-code {
+    margin: 10px 0 0;
+    font-size: 12px;
+    font-weight: 650;
+    color: var(--cw-text-soft);
+    letter-spacing: 0.04em;
+}
+.cw-ov-invite-status {
+    margin: 10px 0 0;
+    font-size: 12px;
+    font-weight: 650;
+    color: #15803d;
+}
+.cw-ov-invite-learn,
+.cw-pts-learn {
+    display: inline-block;
+    margin-left: 6px;
+    font-weight: 650;
+    color: var(--cw-primary, #125b9a);
+    text-decoration: none;
+}
+.cw-ov-invite-learn:hover,
+.cw-pts-learn:hover {
+    text-decoration: underline;
+}
+.cw-pts-panel--invite {
+    align-items: flex-start;
+}
+.cw-pts-invite-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: min(100%, 28rem);
 }
 
 /* --------------------------------------------------------------------------

@@ -42,8 +42,30 @@ class CW_Staged_Submissions {
         return $row ?: null;
     }
 
+    /**
+     * Ensure parent_email column exists (QR flow). Safe to call repeatedly.
+     */
+    public static function maybe_ensure_parent_email_column() {
+        global $wpdb;
+        static $done = false;
+        if ( $done ) {
+            return;
+        }
+        $done  = true;
+        $table = self::table();
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $col = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'parent_email'" );
+        if ( empty( $col ) ) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $wpdb->query( "ALTER TABLE {$table} ADD COLUMN parent_email varchar(190) NOT NULL DEFAULT '' AFTER student_name" );
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $wpdb->query( "ALTER TABLE {$table} ADD KEY parent_email (parent_email)" );
+        }
+    }
+
     public static function insert( array $data ) {
         global $wpdb;
+        self::maybe_ensure_parent_email_column();
         $now = current_time( 'mysql' );
         $campaign_id = (int) $data['campaign_id'];
         $mod         = $data['moderation_status'] ?? null;
@@ -66,6 +88,7 @@ class CW_Staged_Submissions {
                 'month_code'            => $data['month_code'],
                 'seq_code'              => $data['seq_code'],
                 'student_name'          => $data['student_name'],
+                'parent_email'          => sanitize_email( $data['parent_email'] ?? '' ),
                 'artwork_attachment_id' => (int) ( $data['artwork_attachment_id'] ?? 0 ),
                 'field_data'            => $field_data,
                 'status'                => 'staged',
@@ -74,17 +97,21 @@ class CW_Staged_Submissions {
                 'created_at'            => $now,
                 'updated_at'            => $now,
             ],
-            [ '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s' ]
+            [ '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s' ]
         );
         return $wpdb->insert_id;
     }
 
     public static function update( $id, array $data ) {
         global $wpdb;
+        self::maybe_ensure_parent_email_column();
         if ( isset( $data['field_data'] ) && is_array( $data['field_data'] ) ) {
             $data['field_data'] = wp_json_encode( array_values( $data['field_data'] ) );
         }
-        $allowed = [ 'student_name', 'artwork_attachment_id', 'field_data', 'status', 'claimed_by_user_id', 'order_id', 'entry_id', 'checkout_message', 'age_bracket_key', 'moderation_status', 'claim_reserved_by', 'claim_reserved_until' ];
+        if ( isset( $data['parent_email'] ) ) {
+            $data['parent_email'] = sanitize_email( $data['parent_email'] );
+        }
+        $allowed = [ 'student_name', 'parent_email', 'artwork_attachment_id', 'field_data', 'status', 'claimed_by_user_id', 'order_id', 'entry_id', 'checkout_message', 'age_bracket_key', 'moderation_status', 'claim_reserved_by', 'claim_reserved_until' ];
         $update  = [ 'updated_at' => current_time( 'mysql' ) ];
         $formats = [ '%s' ];
 
@@ -96,6 +123,32 @@ class CW_Staged_Submissions {
         }
 
         return $wpdb->update( self::table(), $update, [ 'id' => (int) $id ], $formats, [ '%d' ] );
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public static function list_by_parent_email( $email, $campaign_id = 0 ) {
+        global $wpdb;
+        self::maybe_ensure_parent_email_column();
+        $email = sanitize_email( $email );
+        if ( ! $email ) {
+            return [];
+        }
+        $table = self::table();
+        if ( $campaign_id ) {
+            $rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT * FROM {$table} WHERE parent_email = %s AND campaign_id = %d ORDER BY id DESC",
+                $email,
+                (int) $campaign_id
+            ), ARRAY_A );
+        } else {
+            $rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT * FROM {$table} WHERE parent_email = %s ORDER BY id DESC",
+                $email
+            ), ARRAY_A );
+        }
+        return $rows ?: [];
     }
 
     public static function user_has_claimed_campaign( $user_id, $campaign_id ) {

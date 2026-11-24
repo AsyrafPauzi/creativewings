@@ -52,7 +52,27 @@ class CW_Post_Types {
             'map_meta_cap' => true,
         ]);
 
-        // 3. REMOVED: 'creator_portfolio' 
+        // 3. Sponsor interest leads (from /sponsors/ form).
+        register_post_type( 'cw_sponsor_lead', [
+            'labels' => [
+                'name'               => __( 'Sponsor Leads', 'creativewings-core' ),
+                'singular_name'      => __( 'Sponsor Lead', 'creativewings-core' ),
+                'menu_name'          => __( 'Sponsor Leads', 'creativewings-core' ),
+                'all_items'          => __( 'All Leads', 'creativewings-core' ),
+                'search_items'       => __( 'Search Leads', 'creativewings-core' ),
+                'not_found'          => __( 'No leads found', 'creativewings-core' ),
+            ],
+            'public'       => false,
+            'show_ui'      => true,
+            'show_in_menu' => true,
+            'supports'     => [ 'title', 'editor', 'custom-fields' ],
+            'menu_icon'    => 'dashicons-megaphone',
+            'rewrite'      => false,
+            'map_meta_cap' => true,
+            'capability_type' => 'post',
+        ] );
+
+        // 4. REMOVED: 'creator_portfolio'
         // Reason: Handled by JetEngine Custom Content Table (CCT).
     }
 }

@@ -170,6 +170,11 @@ class CW_Dashboard_Contestant {
                     <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-btn-primary cw-ov-btn-primary">
                         <?php esc_html_e( 'Explore Opportunities', 'creativewings-core' ); ?>
                     </a>
+                    <?php if ( class_exists( 'CW_Invite' ) ) : ?>
+                    <button type="button" class="cw-ov-btn-secondary" id="cw-ov-invite-open" aria-haspopup="dialog" aria-controls="cw-ov-invite-modal">
+                        <?php esc_html_e( 'Invite friends', 'creativewings-core' ); ?>
+                    </button>
+                    <?php endif; ?>
                     <button type="button" class="cw-ov-btn-secondary" id="cw-ov-link-code-open" aria-haspopup="dialog" aria-controls="cw-ov-link-modal">
                         <?php esc_html_e( 'Link a code', 'creativewings-core' ); ?>
                     </button>
@@ -279,8 +284,110 @@ class CW_Dashboard_Contestant {
             </section>
         </div>
         <?php
+        $this->render_overview_invite_modal();
         $this->render_overview_link_code_modal();
         $this->render_activity_detail_modal();
+    }
+
+    /**
+     * Overview invite-friends modal (platform +50).
+     */
+    private function render_overview_invite_modal() {
+        if ( ! class_exists( 'CW_Invite' ) ) {
+            return;
+        }
+        $uid  = get_current_user_id();
+        $url  = CW_Invite::get_invite_url( $uid );
+        $code = CW_Invite::get_invite_code( $uid );
+        $bonus = (int) CW_Invite::BONUS_POINTS;
+        ?>
+        <div id="cw-ov-invite-modal" class="cw-ov-link-modal" role="dialog" aria-modal="true" aria-labelledby="cw-ov-invite-modal-title" hidden>
+            <div class="cw-ov-link-modal-backdrop" data-cw-ov-invite-close tabindex="-1"></div>
+            <div class="cw-ov-link-modal-panel">
+                <button type="button" class="cw-ov-link-modal-close" data-cw-ov-invite-close aria-label="<?php esc_attr_e( 'Close', 'creativewings-core' ); ?>">&times;</button>
+                <h2 id="cw-ov-invite-modal-title" class="cw-ov-link-modal-title"><?php esc_html_e( 'Invite friends', 'creativewings-core' ); ?></h2>
+                <p class="cw-ov-link-modal-sub">
+                    <?php
+                    printf(
+                        /* translators: %d: bonus points */
+                        esc_html__( 'Share your link. When a friend creates an account, you earn +%d points.', 'creativewings-core' ),
+                        $bonus
+                    );
+                    ?>
+                    <a href="<?php echo esc_url( home_url( '/rewards/' ) ); ?>" class="cw-ov-invite-learn"><?php esc_html_e( 'Learn how points work', 'creativewings-core' ); ?></a>
+                </p>
+                <label class="cw-ov-invite-label" for="cw-ov-invite-url"><?php esc_html_e( 'Your invite link', 'creativewings-core' ); ?></label>
+                <div class="cw-ov-invite-row">
+                    <input type="text" id="cw-ov-invite-url" class="cw-ov-invite-input" value="<?php echo esc_attr( $url ); ?>" readonly>
+                    <button type="button" class="cw-ov-btn-secondary" id="cw-ov-invite-copy" data-copy="<?php echo esc_attr( $url ); ?>">
+                        <?php esc_html_e( 'Copy', 'creativewings-core' ); ?>
+                    </button>
+                </div>
+                <p class="cw-ov-invite-code">
+                    <?php
+                    printf(
+                        /* translators: %s: invite code */
+                        esc_html__( 'Code: %s', 'creativewings-core' ),
+                        esc_html( $code )
+                    );
+                    ?>
+                </p>
+                <p class="cw-ov-invite-status" id="cw-ov-invite-status" role="status" hidden></p>
+            </div>
+        </div>
+        <script>
+        (function () {
+            var modal = document.getElementById('cw-ov-invite-modal');
+            var openBtn = document.getElementById('cw-ov-invite-open');
+            if (!modal || !openBtn) return;
+            var lastFocus = null;
+            var statusEl = document.getElementById('cw-ov-invite-status');
+            var copyBtn = document.getElementById('cw-ov-invite-copy');
+
+            function openModal() {
+                lastFocus = document.activeElement;
+                modal.hidden = false;
+                modal.classList.add('is-open');
+                document.body.classList.add('cw-ov-link-modal-open');
+                var input = document.getElementById('cw-ov-invite-url');
+                if (input) setTimeout(function () { input.focus(); input.select(); }, 20);
+            }
+            function closeModal() {
+                modal.classList.remove('is-open');
+                modal.hidden = true;
+                document.body.classList.remove('cw-ov-link-modal-open');
+                if (lastFocus && lastFocus.focus) lastFocus.focus();
+            }
+            openBtn.addEventListener('click', openModal);
+            modal.querySelectorAll('[data-cw-ov-invite-close]').forEach(function (el) {
+                el.addEventListener('click', closeModal);
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && modal.classList.contains('is-open')) closeModal();
+            });
+            if (copyBtn) {
+                copyBtn.addEventListener('click', function () {
+                    var text = copyBtn.getAttribute('data-copy') || '';
+                    var done = function () {
+                        if (!statusEl) return;
+                        statusEl.hidden = false;
+                        statusEl.textContent = <?php echo wp_json_encode( __( 'Link copied', 'creativewings-core' ) ); ?>;
+                        setTimeout(function () { statusEl.hidden = true; }, 2000);
+                    };
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(text).then(done).catch(function () {
+                            var input = document.getElementById('cw-ov-invite-url');
+                            if (input) { input.select(); document.execCommand('copy'); done(); }
+                        });
+                    } else {
+                        var input = document.getElementById('cw-ov-invite-url');
+                        if (input) { input.select(); document.execCommand('copy'); done(); }
+                    }
+                });
+            }
+        })();
+        </script>
+        <?php
     }
 
     /**
@@ -553,7 +660,7 @@ class CW_Dashboard_Contestant {
                         ?>
                     </p>
                     <?php if ( 'active' === $scope ) : ?>
-                    <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-recent-empty-btn">
+                    <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-btn-primary cw-recent-empty-btn">
                         <i class="fas fa-bolt"></i> <?php esc_html_e( 'Explore Opportunities', 'creativewings-core' ); ?>
                     </a>
                     <?php endif; ?>
@@ -563,7 +670,7 @@ class CW_Dashboard_Contestant {
                     <div class="cw-recent-empty-icon"><i class="fas fa-rocket"></i></div>
                     <h4 class="cw-recent-empty-title"><?php esc_html_e( "You haven't joined any activities yet", 'creativewings-core' ); ?></h4>
                     <p class="cw-recent-empty-desc"><?php esc_html_e( 'Browse the latest competitions and activities to get started.', 'creativewings-core' ); ?></p>
-                    <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-recent-empty-btn">
+                    <a href="<?php echo esc_url( $explore_url ); ?>" class="cw-btn-primary cw-recent-empty-btn">
                         <i class="fas fa-bolt"></i> <?php esc_html_e( 'Explore Opportunities', 'creativewings-core' ); ?>
                     </a>
                 </div>
@@ -1152,29 +1259,14 @@ class CW_Dashboard_Contestant {
        5. HANDLER
        ========================================================================== */
     private function render_pagination( $current_page, $total_pages, $base_url ) {
-        if ( $total_pages <= 1 ) return;
-        ?>
-        <nav class="cw-pagination-nav" aria-label="Pagination">
-            <?php if ( $current_page > 1 ): ?>
-                <a href="<?php echo esc_url( add_query_arg( 'cw_page', $current_page - 1, $base_url ) ); ?>" class="cw-page-btn prev"><i class="fas fa-chevron-left"></i></a>
-            <?php else: ?>
-                <span class="cw-page-btn prev disabled"><i class="fas fa-chevron-left"></i></span>
-            <?php endif; ?>
-            <?php
-            $range = 2; $start = max(1, $current_page - $range); $end = min($total_pages, $current_page + $range);
-            if ($start > 1) { echo '<a href="'.esc_url(add_query_arg('cw_page', 1, $base_url)).'" class="cw-page-btn">1</a>'; if ($start > 2) echo '<span class="cw-page-ellipsis">…</span>'; }
-            for ($i = $start; $i <= $end; $i++): $active = ($i === $current_page) ? 'active' : ''; ?>
-                <a href="<?php echo esc_url(add_query_arg('cw_page', $i, $base_url)); ?>" class="cw-page-btn <?php echo $active; ?>" <?php echo $active ? 'aria-current="page"' : ''; ?>><?php echo $i; ?></a>
-            <?php endfor;
-            if ($end < $total_pages) { if ($end < $total_pages - 1) echo '<span class="cw-page-ellipsis">…</span>'; echo '<a href="'.esc_url(add_query_arg('cw_page', $total_pages, $base_url)).'" class="cw-page-btn">'.$total_pages.'</a>'; }
-            ?>
-            <?php if ( $current_page < $total_pages ): ?>
-                <a href="<?php echo esc_url( add_query_arg( 'cw_page', $current_page + 1, $base_url ) ); ?>" class="cw-page-btn next"><i class="fas fa-chevron-right"></i></a>
-            <?php else: ?>
-                <span class="cw-page-btn next disabled"><i class="fas fa-chevron-right"></i></span>
-            <?php endif; ?>
-        </nav>
-        <?php
+        if ( class_exists( 'CW_Pagination' ) ) {
+            CW_Pagination::render( [
+                'current'  => (int) $current_page,
+                'total'    => (int) $total_pages,
+                'base_url' => $base_url,
+                'page_arg' => 'cw_page',
+            ] );
+        }
     }
 
     public function handle_save_settings() {
@@ -1251,9 +1343,7 @@ class CW_Dashboard_Contestant {
        ========================================================================== */
 
     public function render_points() {
-        $uid      = get_current_user_id();
-        $base_url = get_permalink( wc_get_page_id( 'myaccount' ) );
-        $board_url = add_query_arg( 'tab', 'leaderboard', $base_url );
+        $uid = get_current_user_id();
 
         if ( ! class_exists( 'CW_Points' ) ) {
             echo '<p>' . esc_html__( 'Points are unavailable.', 'creativewings-core' ) . '</p>';
@@ -1289,7 +1379,10 @@ class CW_Dashboard_Contestant {
         <div class="cw-content-wrapper cw-pts">
             <header class="cw-pts-hero">
                 <h1 class="cw-pts-title"><?php esc_html_e( 'Your Points', 'creativewings-core' ); ?></h1>
-                <p class="cw-pts-sub"><?php esc_html_e( 'Earn when you pay to join. Spend at checkout or redeem merchandise.', 'creativewings-core' ); ?></p>
+                <p class="cw-pts-sub">
+                    <?php esc_html_e( 'Earn when you pay to join. Spend at checkout or redeem merchandise.', 'creativewings-core' ); ?>
+                    <a href="<?php echo esc_url( home_url( '/rewards/' ) ); ?>" class="cw-pts-learn"><?php esc_html_e( 'Learn how points work', 'creativewings-core' ); ?></a>
+                </p>
             </header>
 
             <?php if ( $flash !== '' ) : ?>
@@ -1314,9 +1407,7 @@ class CW_Dashboard_Contestant {
                 </div>
                 <div class="cw-pts-metric" role="listitem">
                     <p class="cw-pts-metric-value"><?php echo $rank > 0 ? '#' . (int) $rank : '—'; ?></p>
-                    <p class="cw-pts-metric-label">
-                        <a href="<?php echo esc_url( $board_url ); ?>" class="cw-pts-metric-link"><?php esc_html_e( 'Leaderboard rank', 'creativewings-core' ); ?></a>
-                    </p>
+                    <p class="cw-pts-metric-label"><?php esc_html_e( 'Rank', 'creativewings-core' ); ?></p>
                 </div>
             </div>
 
@@ -1339,6 +1430,65 @@ class CW_Dashboard_Contestant {
                 </div>
                 <a href="<?php echo esc_url( $explore_url ?: $shop_url ); ?>" class="cw-btn-primary cw-pts-btn"><?php esc_html_e( 'Explore Opportunities', 'creativewings-core' ); ?></a>
             </section>
+
+            <?php if ( class_exists( 'CW_Invite' ) ) :
+                $invite_url  = CW_Invite::get_invite_url( $uid );
+                $invite_code = CW_Invite::get_invite_code( $uid );
+                ?>
+            <section class="cw-pts-panel cw-pts-panel--invite" aria-labelledby="cw-pts-invite-heading">
+                <div class="cw-pts-panel-copy">
+                    <h2 id="cw-pts-invite-heading" class="cw-pts-panel-title"><?php esc_html_e( 'Invite friends', 'creativewings-core' ); ?></h2>
+                    <p class="cw-pts-panel-text">
+                        <?php
+                        printf(
+                            /* translators: %d: bonus points */
+                            esc_html__( 'Share your link — earn +%d when a friend registers. They get +%d too.', 'creativewings-core' ),
+                            (int) CW_Invite::BONUS_POINTS,
+                            (int) CW_Invite::BONUS_POINTS
+                        );
+                        ?>
+                    </p>
+                    <p class="cw-pts-invite-code">
+                        <?php
+                        printf(
+                            /* translators: %s: invite code */
+                            esc_html__( 'Code: %s', 'creativewings-core' ),
+                            esc_html( $invite_code )
+                        );
+                        ?>
+                    </p>
+                </div>
+                <div class="cw-pts-invite-actions">
+                    <input type="text" class="cw-pts-invite-input" id="cw-pts-invite-url" value="<?php echo esc_attr( $invite_url ); ?>" readonly aria-label="<?php esc_attr_e( 'Invite link', 'creativewings-core' ); ?>">
+                    <button type="button" class="cw-ov-btn-secondary cw-pts-invite-copy" data-copy="<?php echo esc_attr( $invite_url ); ?>">
+                        <?php esc_html_e( 'Copy link', 'creativewings-core' ); ?>
+                    </button>
+                </div>
+            </section>
+            <script>
+            (function () {
+                var btn = document.querySelector('.cw-pts-invite-copy');
+                if (!btn) return;
+                btn.addEventListener('click', function () {
+                    var text = btn.getAttribute('data-copy') || '';
+                    var finish = function () {
+                        var prev = btn.textContent;
+                        btn.textContent = <?php echo wp_json_encode( __( 'Copied', 'creativewings-core' ) ); ?>;
+                        setTimeout(function () { btn.textContent = prev; }, 1600);
+                    };
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(text).then(finish).catch(function () {
+                            var input = document.getElementById('cw-pts-invite-url');
+                            if (input) { input.select(); document.execCommand('copy'); finish(); }
+                        });
+                    } else {
+                        var input = document.getElementById('cw-pts-invite-url');
+                        if (input) { input.select(); document.execCommand('copy'); finish(); }
+                    }
+                });
+            })();
+            </script>
+            <?php endif; ?>
 
             <section class="cw-pts-section" aria-labelledby="cw-pts-merch-heading">
                 <h2 id="cw-pts-merch-heading" class="cw-pts-section-title"><?php esc_html_e( 'Redeem merchandise', 'creativewings-core' ); ?></h2>
@@ -1458,7 +1608,7 @@ class CW_Dashboard_Contestant {
                                 <?php foreach ( $rows as $row ) : ?>
                                 <tr>
                                     <td data-label="<?php esc_attr_e( 'Date', 'creativewings-core' ); ?>"><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $row['created_at'] ) ) ); ?></td>
-                                    <td data-label="<?php esc_attr_e( 'Type', 'creativewings-core' ); ?>"><?php echo esc_html( $this->points_ledger_type_label( (string) $row['type'] ) ); ?></td>
+                                    <td data-label="<?php esc_attr_e( 'Type', 'creativewings-core' ); ?>"><?php echo esc_html( $this->points_ledger_type_label( (string) $row['type'], (string) ( $row['ref_type'] ?? '' ) ) ); ?></td>
                                     <td data-label="<?php esc_attr_e( 'Points', 'creativewings-core' ); ?>"><?php echo esc_html( ( (int) $row['points'] >= 0 ? '+' : '' ) . number_format_i18n( (int) $row['points'] ) ); ?></td>
                                     <td data-label="<?php esc_attr_e( 'Note', 'creativewings-core' ); ?>"><?php echo esc_html( (string) ( $row['note'] ?? '' ) ); ?></td>
                                 </tr>
@@ -1473,11 +1623,22 @@ class CW_Dashboard_Contestant {
     }
 
     /**
-     * Human label for points ledger type.
+     * Human label for points ledger type (prefer ref_type for bonus rows).
      *
-     * @param string $type Ledger type key.
+     * @param string $type     Ledger type key.
+     * @param string $ref_type Optional ref_type (register|invite|first_join|order).
      */
-    private function points_ledger_type_label( $type ) {
+    private function points_ledger_type_label( $type, $ref_type = '' ) {
+        $ref_type = sanitize_key( $ref_type );
+        $ref_map  = [
+            'register'   => __( 'Welcome bonus', 'creativewings-core' ),
+            'invite'     => __( 'Invite bonus', 'creativewings-core' ),
+            'first_join' => __( 'First join bonus', 'creativewings-core' ),
+            'order'      => __( 'Campaign join', 'creativewings-core' ),
+        ];
+        if ( $ref_type !== '' && isset( $ref_map[ $ref_type ] ) ) {
+            return $ref_map[ $ref_type ];
+        }
         $map = [
             'earn'            => __( 'Earn', 'creativewings-core' ),
             'redeem_merch'    => __( 'Merchandise', 'creativewings-core' ),

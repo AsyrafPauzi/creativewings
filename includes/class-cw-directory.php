@@ -100,30 +100,32 @@ class CW_Directory {
         $prefix       = self::QV_ORG;
         $q            = isset( $_GET[ $prefix . 'q' ] )    ? sanitize_text_field( wp_unslash( $_GET[ $prefix . 'q' ] ) )    : '';
         $industry     = isset( $_GET[ $prefix . 'ind' ] )  ? sanitize_text_field( wp_unslash( $_GET[ $prefix . 'ind' ] ) )  : '';
+        $loc          = isset( $_GET[ $prefix . 'loc' ] )  ? sanitize_text_field( wp_unslash( $_GET[ $prefix . 'loc' ] ) )  : '';
         $sort         = isset( $_GET[ $prefix . 'sort' ] ) ? sanitize_key( wp_unslash( $_GET[ $prefix . 'sort' ] ) )        : 'newest';
         $current_page = isset( $_GET[ $prefix . 'page' ] ) ? max( 1, (int) $_GET[ $prefix . 'page' ] )                       : 1;
 
         // Cache the rendered HTML by filter signature. Busted automatically on
         // profile / product / role changes via CW_Cache hooks.
         if ( class_exists( 'CW_Cache' ) ) {
-            $sig = md5( wp_json_encode( [ 'a' => $atts, 'q' => $q, 'i' => $industry, 's' => $sort, 'p' => $current_page ] ) );
+            $sig = md5( wp_json_encode( [ 'a' => $atts, 'q' => $q, 'i' => $industry, 'l' => $loc, 's' => $sort, 'p' => $current_page ] ) );
             $hit = CW_Cache::get( 'org:' . $sig, 'directory' );
             if ( $hit !== null ) {
                 return $hit;
             }
-            $html = (string) $this->render_organizers_uncached( $atts, $q, $industry, $sort, $current_page );
+            $html = (string) $this->render_organizers_uncached( $atts, $q, $industry, $loc, $sort, $current_page );
             CW_Cache::set( 'org:' . $sig, 'directory', $html, 15 * MINUTE_IN_SECONDS );
             return $html;
         }
-        return (string) $this->render_organizers_uncached( $atts, $q, $industry, $sort, $current_page );
+        return (string) $this->render_organizers_uncached( $atts, $q, $industry, $loc, $sort, $current_page );
     }
 
-    private function render_organizers_uncached( $atts, $q, $industry, $sort, $current_page ) {
+    private function render_organizers_uncached( $atts, $q, $industry, $loc, $sort, $current_page ) {
         $prefix = self::QV_ORG;
 
         $result    = $this->query_directory_users( 'organizer', [
             'q'        => $q,
             'filter'   => $industry,
+            'loc'      => $loc,
             'sort'     => $sort,
             'page'     => $current_page,
             'per_page' => $atts['per_page'],
@@ -136,6 +138,7 @@ class CW_Directory {
         $counts   = $this->bulk_campaign_counts( $user_ids );
 
         $industries = $this->get_industry_values();
+        $locations  = $this->get_location_values( 'organizer' );
 
         ob_start();
         ?>
@@ -148,9 +151,12 @@ class CW_Directory {
                 'show_sort'    => (bool) $atts['show_sort'],
                 'search'       => $q,
                 'industry'     => $industry,
+                'location'     => $loc,
                 'sort'         => $sort,
                 'filter_label' => __( 'Industries', 'creativewings-core' ),
                 'filter_values'=> $industries,
+                'location_label' => __( 'Location', 'creativewings-core' ),
+                'location_values'=> $locations,
                 'search_ph'    => __( 'Search organizers…', 'creativewings-core' ),
                 'sort_opts'    => [
                     'newest'   => __( 'Newest', 'creativewings-core' ),
@@ -160,6 +166,7 @@ class CW_Directory {
                 'total_label'  => _n( '%s organizer', '%s organizers', $total, 'creativewings-core' ),
             ] ); ?>
 
+            <div class="cw-dir-results">
             <?php if ( empty( $users ) ) : ?>
                 <?php $this->render_empty_state( 'organizers', $prefix ); ?>
             <?php else : ?>
@@ -170,6 +177,7 @@ class CW_Directory {
                 </div>
                 <?php $this->render_pagination( $current_page, $max_pages, $prefix ); ?>
             <?php endif; ?>
+            </div>
         </section>
         <?php
         return ob_get_clean();
@@ -195,28 +203,30 @@ class CW_Directory {
         $prefix       = self::QV_CR;
         $q            = isset( $_GET[ $prefix . 'q' ] )    ? sanitize_text_field( wp_unslash( $_GET[ $prefix . 'q' ] ) )    : '';
         $skill        = isset( $_GET[ $prefix . 'skill' ] )? sanitize_text_field( wp_unslash( $_GET[ $prefix . 'skill' ] ) ): '';
+        $loc          = isset( $_GET[ $prefix . 'loc' ] )  ? sanitize_text_field( wp_unslash( $_GET[ $prefix . 'loc' ] ) )  : '';
         $sort         = isset( $_GET[ $prefix . 'sort' ] ) ? sanitize_key( wp_unslash( $_GET[ $prefix . 'sort' ] ) )        : 'newest';
         $current_page = isset( $_GET[ $prefix . 'page' ] ) ? max( 1, (int) $_GET[ $prefix . 'page' ] )                       : 1;
 
         if ( class_exists( 'CW_Cache' ) ) {
-            $sig = md5( wp_json_encode( [ 'a' => $atts, 'q' => $q, 'k' => $skill, 's' => $sort, 'p' => $current_page ] ) );
+            $sig = md5( wp_json_encode( [ 'a' => $atts, 'q' => $q, 'k' => $skill, 'l' => $loc, 's' => $sort, 'p' => $current_page ] ) );
             $hit = CW_Cache::get( 'cr:' . $sig, 'directory' );
             if ( $hit !== null ) {
                 return $hit;
             }
-            $html = (string) $this->render_creators_uncached( $atts, $q, $skill, $sort, $current_page );
+            $html = (string) $this->render_creators_uncached( $atts, $q, $skill, $loc, $sort, $current_page );
             CW_Cache::set( 'cr:' . $sig, 'directory', $html, 15 * MINUTE_IN_SECONDS );
             return $html;
         }
-        return (string) $this->render_creators_uncached( $atts, $q, $skill, $sort, $current_page );
+        return (string) $this->render_creators_uncached( $atts, $q, $skill, $loc, $sort, $current_page );
     }
 
-    private function render_creators_uncached( $atts, $q, $skill, $sort, $current_page ) {
+    private function render_creators_uncached( $atts, $q, $skill, $loc, $sort, $current_page ) {
         $prefix = self::QV_CR;
 
         $result    = $this->query_directory_users( 'creator', [
             'q'        => $q,
             'filter'   => $skill,
+            'loc'      => $loc,
             'sort'     => $sort,
             'page'     => $current_page,
             'per_page' => $atts['per_page'],
@@ -228,7 +238,8 @@ class CW_Directory {
         $user_ids = array_map( static fn( WP_User $u ) => (int) $u->ID, $users );
         $counts   = $this->bulk_portfolio_counts( $user_ids );
 
-        $skills = $this->get_skill_values();
+        $skills    = $this->get_skill_values();
+        $locations = $this->get_location_values( 'creator' );
 
         ob_start();
         ?>
@@ -241,10 +252,13 @@ class CW_Directory {
                 'show_sort'    => (bool) $atts['show_sort'],
                 'search'       => $q,
                 'industry'     => $skill,
+                'location'     => $loc,
                 'sort'         => $sort,
                 'filter_param' => 'skill',
                 'filter_label' => __( 'Skills', 'creativewings-core' ),
                 'filter_values'=> $skills,
+                'location_label' => __( 'Location', 'creativewings-core' ),
+                'location_values'=> $locations,
                 'search_ph'    => __( 'Search creators…', 'creativewings-core' ),
                 'sort_opts'    => [
                     'newest'   => __( 'Newest', 'creativewings-core' ),
@@ -254,6 +268,7 @@ class CW_Directory {
                 'total_label'  => _n( '%s creator', '%s creators', $total, 'creativewings-core' ),
             ] ); ?>
 
+            <div class="cw-dir-results">
             <?php if ( empty( $users ) ) : ?>
                 <?php $this->render_empty_state( 'creators', $prefix ); ?>
             <?php else : ?>
@@ -264,6 +279,7 @@ class CW_Directory {
                 </div>
                 <?php $this->render_pagination( $current_page, $max_pages, $prefix ); ?>
             <?php endif; ?>
+            </div>
         </section>
         <?php
         return ob_get_clean();
@@ -279,6 +295,7 @@ class CW_Directory {
     private function query_directory_users( $kind, array $opts ) {
         $q        = (string) ( $opts['q'] ?? '' );
         $filter   = (string) ( $opts['filter'] ?? '' );
+        $loc      = (string) ( $opts['loc'] ?? '' );
         $sort     = (string) ( $opts['sort'] ?? 'newest' );
         $page     = (int) ( $opts['page'] ?? 1 );
         $per_page = (int) ( $opts['per_page'] ?? 12 );
@@ -296,6 +313,12 @@ class CW_Directory {
         if ( $filter !== '' ) {
             $ids = array_values( array_filter( $ids, function ( $id ) use ( $kind, $filter ) {
                 return $this->id_matches_directory_filter( (int) $id, $kind, $filter );
+            } ) );
+        }
+
+        if ( $loc !== '' ) {
+            $ids = array_values( array_filter( $ids, function ( $id ) use ( $kind, $loc ) {
+                return $this->id_matches_directory_location( (int) $id, $kind, $loc );
             } ) );
         }
 
@@ -405,6 +428,50 @@ class CW_Directory {
     }
 
     /**
+     * Match city / state / country text against profile location fields.
+     *
+     * @param int    $id
+     * @param string $kind
+     * @param string $loc
+     * @return bool
+     */
+    private function id_matches_directory_location( $id, $kind, $loc ) {
+        $loc = trim( (string) $loc );
+        if ( $loc === '' ) {
+            return true;
+        }
+        $haystack = '';
+        if ( $kind === 'creator' ) {
+            $haystack = trim(
+                implode(
+                    ' ',
+                    [
+                        (string) get_user_meta( $id, 'creator_address', true ),
+                        (string) get_user_meta( $id, 'billing_city', true ),
+                        (string) get_user_meta( $id, 'billing_state', true ),
+                    ]
+                )
+            );
+        } else {
+            $haystack = trim(
+                implode(
+                    ' ',
+                    [
+                        (string) get_user_meta( $id, 'business_city', true ),
+                        (string) get_user_meta( $id, 'business_country', true ),
+                        (string) get_user_meta( $id, 'billing_city', true ),
+                        (string) get_user_meta( $id, 'billing_state', true ),
+                    ]
+                )
+            );
+        }
+        if ( $haystack === '' ) {
+            return false;
+        }
+        return stripos( $haystack, $loc ) !== false;
+    }
+
+    /**
      * @param int[] $ids
      * @return int[]
      */
@@ -456,7 +523,8 @@ class CW_Directory {
         $kind         = $cfg['kind'];
         $filter_param = $cfg['filter_param'] ?? 'ind';
         $filter_qs    = $prefix . $filter_param;
-        $current_url  = remove_query_arg( [ $prefix . 'q', $prefix . 'page', $filter_qs, $prefix . 'sort' ] );
+        $loc_qs       = $prefix . 'loc';
+        $current_url  = remove_query_arg( [ $prefix . 'q', $prefix . 'page', $filter_qs, $loc_qs, $prefix . 'sort' ] );
 
         $hidden_inputs = '';
         foreach ( $_GET as $k => $v ) {
@@ -515,6 +583,29 @@ class CW_Directory {
                                     }
                                     ?>
                                     <option value="<?php echo esc_attr( $val ); ?>" <?php selected( $cfg['industry'], $val ); ?>>
+                                        <?php echo esc_html( $val ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                    <?php endif; ?>
+
+                    <?php if ( $cfg['show_filters'] && ! empty( $cfg['location_values'] ) ) : ?>
+                        <label class="cw-dir-select">
+                            <span class="screen-reader-text"><?php echo esc_html( $cfg['location_label'] ?? __( 'Location', 'creativewings-core' ) ); ?></span>
+                            <select
+                                name="<?php echo esc_attr( $loc_qs ); ?>"
+                                aria-label="<?php echo esc_attr( $cfg['location_label'] ?? __( 'Location', 'creativewings-core' ) ); ?>"
+                                onchange="this.form.submit()"
+                            >
+                                <option value=""><?php esc_html_e( 'All locations', 'creativewings-core' ); ?></option>
+                                <?php foreach ( $cfg['location_values'] as $val ) :
+                                    $val = (string) $val;
+                                    if ( $val === '' ) {
+                                        continue;
+                                    }
+                                    ?>
+                                    <option value="<?php echo esc_attr( $val ); ?>" <?php selected( $cfg['location'] ?? '', $val ); ?>>
                                         <?php echo esc_html( $val ); ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -951,6 +1042,90 @@ class CW_Directory {
             $out = array_slice( $out, 0, 30 );
         }
         set_transient( 'cw_dir_skills', $out, 15 * MINUTE_IN_SECONDS );
+        return $out;
+    }
+
+    /**
+     * Distinct locations for directory sidebar filters.
+     *
+     * @param string $kind organizer|creator
+     * @return string[]
+     */
+    private function get_location_values( $kind ) {
+        $cache_key = 'cw_dir_locations_' . $kind;
+        $cached    = get_transient( $cache_key );
+        if ( is_array( $cached ) ) {
+            return $cached;
+        }
+
+        global $wpdb;
+        $bucket = [];
+
+        if ( $kind === 'creator' ) {
+            $rows = $wpdb->get_col(
+                "SELECT meta_value FROM {$wpdb->usermeta}
+                 WHERE meta_key IN ('creator_address','billing_city','billing_state')
+                 AND meta_value != ''
+                 LIMIT 800"
+            );
+            $state_map = [
+                'SGR' => 'Selangor',
+                'KUL' => 'Kuala Lumpur',
+                'JHR' => 'Johor',
+                'NSN' => 'Negeri Sembilan',
+                'PRK' => 'Perak',
+                'PHG' => 'Pahang',
+                'KTN' => 'Kelantan',
+                'TRG' => 'Terengganu',
+                'PLS' => 'Perlis',
+                'KDH' => 'Kedah',
+                'PNG' => 'Penang',
+                'MLK' => 'Melaka',
+                'SBH' => 'Sabah',
+                'SWK' => 'Sarawak',
+                'LBN' => 'Labuan',
+                'PJY' => 'Putrajaya',
+            ];
+            foreach ( (array) $rows as $raw ) {
+                $raw = trim( (string) $raw );
+                if ( $raw === '' ) {
+                    continue;
+                }
+                if ( isset( $state_map[ strtoupper( $raw ) ] ) ) {
+                    $label = $state_map[ strtoupper( $raw ) ];
+                    $bucket[ mb_strtolower( $label ) ] = $label;
+                    continue;
+                }
+                // "Perlis, Malaysia" → take first segment as state/city label.
+                $parts = array_map( 'trim', explode( ',', $raw ) );
+                $label = $parts[0] !== '' ? $parts[0] : $raw;
+                if ( mb_strlen( $label ) > 40 ) {
+                    continue;
+                }
+                $bucket[ mb_strtolower( $label ) ] = $label;
+            }
+        } else {
+            $rows = $wpdb->get_col(
+                "SELECT meta_value FROM {$wpdb->usermeta}
+                 WHERE meta_key IN ('business_city','business_country','billing_city')
+                 AND meta_value != ''
+                 LIMIT 800"
+            );
+            foreach ( (array) $rows as $raw ) {
+                $raw = trim( (string) $raw );
+                if ( $raw === '' || mb_strlen( $raw ) > 40 ) {
+                    continue;
+                }
+                $bucket[ mb_strtolower( $raw ) ] = $raw;
+            }
+        }
+
+        ksort( $bucket );
+        $out = array_values( $bucket );
+        if ( count( $out ) > 40 ) {
+            $out = array_slice( $out, 0, 40 );
+        }
+        set_transient( $cache_key, $out, 15 * MINUTE_IN_SECONDS );
         return $out;
     }
 

@@ -272,7 +272,7 @@ class CW_Activator {
             updated_at datetime NOT NULL,
             PRIMARY KEY (id),
             UNIQUE KEY submission_campaign (submission_code, campaign_id),
-            UNIQUE KEY user_campaign (user_id, campaign_id),
+            KEY user_campaign (user_id, campaign_id),
             KEY campaign_id (campaign_id)
         ) $charset_collate;";
 

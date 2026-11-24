@@ -223,6 +223,7 @@ class CW_Claim_Flow {
                         <?php wp_nonce_field( 'cw_claim_continue', 'cw_claim_nonce' ); ?>
                         <input type="hidden" name="action" value="cw_claim_continue">
                         <input type="hidden" name="campaign_id" value="<?php echo esc_attr( (string) $campaign_id ); ?>">
+                        <input type="hidden" name="pending_id" value="<?php echo esc_attr( (string) $pending_id ); ?>">
                         <div class="cw-claim-actions">
                             <button type="submit" class="cw-btn-primary"><?php esc_html_e( 'Continue to checkout', 'creativewings-core' ); ?></button>
                             <?php $this->render_cancel_button( $pending_id, $campaign_id ); ?>
@@ -234,6 +235,7 @@ class CW_Claim_Flow {
                             <?php wp_nonce_field( 'cw_claim_continue', 'cw_claim_nonce' ); ?>
                             <input type="hidden" name="action" value="cw_claim_continue">
                             <input type="hidden" name="campaign_id" value="<?php echo esc_attr( (string) $campaign_id ); ?>">
+                            <input type="hidden" name="pending_id" value="<?php echo esc_attr( (string) $pending_id ); ?>">
                             <button type="submit" class="cw-btn-outline-blue"><?php esc_html_e( 'Check again', 'creativewings-core' ); ?></button>
                         </form>
                         <?php $this->render_cancel_button( $pending_id, $campaign_id ); ?>
@@ -531,15 +533,23 @@ JS;
 
         $uid         = get_current_user_id();
         $campaign_id = absint( $_POST['campaign_id'] ?? 0 );
+        $pending_id  = absint( $_POST['pending_id'] ?? 0 );
         $base        = $this->get_link_submission_url();
-        $pending     = class_exists( 'CW_Pending_Parent_Link' )
-            ? CW_Pending_Parent_Link::get_for_user_campaign( $uid, $campaign_id )
-            : null;
+        $pending     = null;
+        if ( class_exists( 'CW_Pending_Parent_Link' ) ) {
+            if ( $pending_id ) {
+                $pending = CW_Pending_Parent_Link::get_by_id_for_user( $pending_id, $uid );
+            }
+            if ( ! $pending ) {
+                $pending = CW_Pending_Parent_Link::get_for_user_campaign( $uid, $campaign_id );
+            }
+        }
 
         if ( ! $pending ) {
             wp_safe_redirect( $base );
             exit;
         }
+        $campaign_id = (int) ( $pending['campaign_id'] ?? $campaign_id );
 
         $row = CW_Staged_Submissions::get_by_code( $pending['submission_code'], $campaign_id );
         $has_artwork = $row && (
@@ -553,7 +563,7 @@ JS;
         }
 
         if ( ( $row['status'] ?? '' ) === 'claimed' ) {
-            CW_Pending_Parent_Link::delete_for_user_campaign( $uid, $campaign_id );
+            CW_Pending_Parent_Link::delete_by_code( $pending['submission_code'], $campaign_id );
             wp_safe_redirect( add_query_arg( 'error', rawurlencode( 'This code is already linked to an account.' ), $base ) );
             exit;
         }
@@ -606,17 +616,7 @@ JS;
         }
 
         $uid = get_current_user_id();
-        if ( CW_Staged_Submissions::user_has_claimed_campaign( $uid, $campaign_id ) ) {
-            wp_safe_redirect( add_query_arg( 'error', rawurlencode( 'You already linked a submission for this campaign.' ), $base ) );
-            exit;
-        }
-        if ( class_exists( 'CW_Pending_Parent_Link' ) && CW_Pending_Parent_Link::user_has_pending( $uid, $campaign_id ) ) {
-            $existing_pending = CW_Pending_Parent_Link::get_for_user_campaign( $uid, $campaign_id );
-            if ( $existing_pending && $existing_pending['submission_code'] !== $parsed['normalized'] ) {
-                wp_safe_redirect( add_query_arg( 'error', rawurlencode( __( 'You already registered a different code for this campaign. Cancel that code below (or on the waiting page), then enter the correct one.', 'creativewings-core' ) ), $base ) );
-                exit;
-            }
-        }
+        // Siblings: one parent account may claim / hold multiple codes for the same campaign.
 
         $row = CW_Staged_Submissions::get_by_code( $parsed['normalized'], $campaign_id );
         if ( ! $row ) {
@@ -645,7 +645,8 @@ JS;
         }
 
         if ( class_exists( 'CW_Pending_Parent_Link' ) ) {
-            CW_Pending_Parent_Link::delete_for_user_campaign( $uid, $campaign_id );
+            // Only clear this code's pending row — keep sibling codes.
+            CW_Pending_Parent_Link::delete_by_code( $parsed['normalized'], $campaign_id );
         }
 
         $token = class_exists( 'CW_Security' )

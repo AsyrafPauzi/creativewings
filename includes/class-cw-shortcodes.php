@@ -3,6 +3,10 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+if ( class_exists( 'CW_Shortcodes', false ) ) {
+	return;
+}
+
 class CW_Shortcodes {
 
     public function __construct() {
@@ -507,7 +511,9 @@ class CW_Shortcodes {
     public function render_search_form( $atts = [] ) {
         $atts = shortcode_atts(
             [
-                'theme' => 'glass', // glass | solid
+                'theme'      => 'glass', // glass | solid
+                'scope'      => '',      // activities | competitions | empty = auto from page
+                'show_scope' => '1',      // 0 = hide Activities/Competitions switcher
             ],
             $atts,
             'custom_search_form'
@@ -520,21 +526,31 @@ class CW_Shortcodes {
 
         $cw_search_val = sanitize_text_field( wp_unslash( $_GET['cw_q'] ?? '' ) );
 
-        $scope = 'activities';
-        if ( is_page( 'competitions' ) || is_page( 'list-competitions' ) ) {
-            $scope = 'competitions';
-        } elseif ( is_page( 'activities' ) ) {
+        $forced_scope = sanitize_key( (string) $atts['scope'] );
+        if ( in_array( $forced_scope, [ 'activities', 'competitions' ], true ) ) {
+            $scope = $forced_scope;
+        } else {
             $scope = 'activities';
+            if ( is_page( 'competitions' ) || is_page( 'list-competitions' ) ) {
+                $scope = 'competitions';
+            } elseif ( is_page( 'activities' ) ) {
+                $scope = 'activities';
+            }
         }
 
+        $show_scope  = ! in_array( (string) $atts['show_scope'], [ '0', 'false', 'no' ], true );
         $uid         = 'cws-' . wp_unique_id();
         $theme_class = $atts['theme'] === 'solid' ? 'cws-wrap--solid' : 'cws-wrap--glass';
-        $ajax_url    = admin_url( 'admin-ajax.php' );
+        if ( ! $show_scope ) {
+            $theme_class .= ' cws-wrap--locked';
+        }
+        $ajax_url = admin_url( 'admin-ajax.php' );
 
         ob_start();
         ?>
-        <div class="cws-wrap <?php echo esc_attr( $theme_class ); ?>" data-cws-root id="<?php echo esc_attr( $uid ); ?>">
+        <div class="cws-wrap <?php echo esc_attr( $theme_class ); ?>" data-cws-root id="<?php echo esc_attr( $uid ); ?>" data-cws-scope-locked="<?php echo $show_scope ? '0' : '1'; ?>">
             <form class="cws-form" role="search" action="<?php echo esc_url( $scope === 'competitions' ? $competitions_url : $activities_url ); ?>" method="get" data-cws-form>
+                <?php if ( $show_scope ) : ?>
                 <div class="cws-scope" role="group" aria-label="<?php esc_attr_e( 'Search in', 'creativewings-core' ); ?>">
                     <button type="button"
                             class="cws-scope-btn <?php echo $scope === 'activities' ? 'is-active' : ''; ?>"
@@ -553,6 +569,7 @@ class CW_Shortcodes {
                         <span><?php esc_html_e( 'Competitions', 'creativewings-core' ); ?></span>
                     </button>
                 </div>
+                <?php endif; ?>
 
                 <div class="cws-input-row">
                     <div class="cws-input-wrap">
@@ -611,8 +628,8 @@ class CW_Shortcodes {
           scopeBtns.forEach(function (btn) {
             btn.addEventListener('click', function () {
               setScope(btn.getAttribute('data-cws-scope'), btn.getAttribute('data-url'));
+                });
             });
-          });
 
           function hideSuggest() {
             suggest.hidden = true;
@@ -640,8 +657,8 @@ class CW_Shortcodes {
             suggest.querySelectorAll('.cws-suggest-item').forEach(function (el) {
               el.addEventListener('click', function () {
                 window.location.href = el.getAttribute('data-url');
-              });
             });
+        });
           }
 
           function queueSuggest() {
@@ -963,6 +980,11 @@ class CW_Shortcodes {
             $kpi_fill_percent = max( 0, min( 100, $kpi_percent ) );
         }
 
+        // Join proof count = successful checkouts only (never display boost).
+        $join_proof_count = class_exists( 'CW_Campaign_Admin' )
+            ? (int) CW_Campaign_Admin::get_participant_count( $pid )
+            : 0;
+
         // ── Already joined ────────────────────────────────────────────────────
         // Only treats the user as "already in" when the campaign enforces one-entry-per-user.
         // Multi-entry campaigns let users register again with the same account.
@@ -972,6 +994,25 @@ class CW_Shortcodes {
         if ( $uid && $one_per_user ) {
             $entries = get_posts(['post_type'=>['cw_activity_entry','cw_competition_entry'],'meta_query'=>[['key'=>'customer_id','value'=>$uid],['key'=>'product_id','value'=>$pid]],'posts_per_page'=>1,'fields'=>'ids']);
             $already = ! empty($entries);
+        }
+
+        // Points: spend hint (≥100) for open join path; campaign invite when already joined.
+        $pts_balance     = ( $uid && class_exists( 'CW_Points' ) ) ? (int) CW_Points::get_balance( $uid ) : 0;
+        $pts_hint_show   = $uid && ! $already && class_exists( 'CW_Points' )
+            && $pts_balance >= (int) CW_Points::PTS_PER_RM;
+        $pts_hint_rm     = $pts_hint_show ? CW_Points::points_to_rm( $pts_balance ) : 0;
+        $campaign_invite_url = '';
+        $campaign_invite_wa  = '';
+        if ( $already && $uid && class_exists( 'CW_Invite' ) ) {
+            $campaign_invite_url = CW_Invite::get_campaign_invite_url( $uid, $pid );
+            $campaign_invite_wa  = 'https://wa.me/?text=' . rawurlencode(
+                sprintf(
+                    /* translators: 1: campaign title, 2: invite URL */
+                    __( 'Join %1$s on Creative Wings: %2$s', 'creativewings-core' ),
+                    get_the_title( $pid ),
+                    $campaign_invite_url
+                )
+            );
         }
 
         // ── Chip colour map ───────────────────────────────────────────────────
@@ -1059,7 +1100,7 @@ class CW_Shortcodes {
                         <div class="cwd-hero-carousel-track" data-cwd-hero-track>
                             <?php foreach ( $hero_slides as $idx => $slide ):
                                 $is_first = ( $idx === 0 ); ?>
-                            <button type="button"
+                    <button type="button"
                                     class="cwd-hero-slide<?php echo $is_first ? ' is-active' : ''; ?>"
                                     data-cwd-hero-slide
                                     data-cwd-hero-index="<?php echo (int) $idx; ?>"
@@ -1074,8 +1115,8 @@ class CW_Shortcodes {
                                      class="cwd-hero-slide-img"
                                      loading="<?php echo $is_first ? 'eager' : 'lazy'; ?>"
                                      decoding="async">
-                                <span class="cwd-hero-img-zoom" aria-hidden="true"><i class="fas fa-search-plus"></i></span>
-                            </button>
+                        <span class="cwd-hero-img-zoom" aria-hidden="true"><i class="fas fa-search-plus"></i></span>
+                    </button>
                             <?php endforeach; ?>
                         </div>
                         <?php if ( $hero_has_multi ): ?>
@@ -1261,12 +1302,41 @@ class CW_Shortcodes {
                         </div>
                         <?php endif; ?>
 
+                        <div class="cwd-join-proof" aria-label="<?php esc_attr_e( 'Join social proof', 'creativewings-core' ); ?>">
+                            <p class="cwd-join-proof__count">
+                                <i class="fas fa-user-check" aria-hidden="true"></i>
+                                <strong><?php echo esc_html( number_format_i18n( $join_proof_count ) ); ?></strong>
+                                <?php echo esc_html( _n( 'joined', 'joined', $join_proof_count, 'creativewings-core' ) ); ?>
+                            </p>
+                            <ol class="cwd-how-steps">
+                                <li><span class="cwd-how-steps__n">1</span> <?php esc_html_e( 'Register', 'creativewings-core' ); ?></li>
+                                <li><span class="cwd-how-steps__n">2</span> <?php esc_html_e( 'Join & pay', 'creativewings-core' ); ?></li>
+                                <li><span class="cwd-how-steps__n">3</span> <?php esc_html_e( 'You’re in', 'creativewings-core' ); ?></li>
+                            </ol>
+                        </div>
+
                         <?php if ( $is_closed ): ?>
                             <button class="cwd-cta-btn cwd-cta-closed" disabled><i class="fas fa-lock"></i> Already Closed</button>
                         <?php elseif ( $places_left === 0 ): ?>
                             <button class="cwd-cta-btn cwd-cta-closed" disabled><i class="fas fa-users"></i> <?php esc_html_e( 'Full', 'creativewings-core' ); ?></button>
                         <?php elseif ( $already ): ?>
                             <button class="cwd-cta-btn cwd-cta-joined" disabled><i class="fas fa-check-circle"></i> Already Joined</button>
+                            <?php if ( $campaign_invite_url !== '' ) : ?>
+                            <div class="cwd-campaign-invite">
+                                <p class="cwd-campaign-invite__label"><?php esc_html_e( 'Invite a friend to this campaign', 'creativewings-core' ); ?></p>
+                                <div class="cwd-campaign-invite__row">
+                                    <button type="button" class="cwd-campaign-invite__copy cwcd-copy" data-copy="<?php echo esc_attr( $campaign_invite_url ); ?>">
+                                        <i class="fas fa-copy" aria-hidden="true"></i>
+                                        <span class="cwcd-copy-text"><?php esc_html_e( 'Copy invite link', 'creativewings-core' ); ?></span>
+                                    </button>
+                                    <?php if ( $campaign_invite_wa !== '' ) : ?>
+                                    <a class="cwd-campaign-invite__wa" href="<?php echo esc_url( $campaign_invite_wa ); ?>" target="_blank" rel="noopener noreferrer">
+                                        <i class="fab fa-whatsapp" aria-hidden="true"></i> <?php esc_html_e( 'WhatsApp', 'creativewings-core' ); ?>
+                                    </a>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <?php endif; ?>
                         <?php elseif ( $is_upcoming ): ?>
                             <button class="cwd-cta-btn cwd-cta-upcoming" disabled><i class="fas fa-clock"></i> Coming Soon</button>
                         <?php elseif ( ! is_user_logged_in() ): ?>
@@ -1277,6 +1347,20 @@ class CW_Shortcodes {
                             <button type="button" class="cwd-cta-btn cwd-cta-join" onclick="cwdOpenRegModal()">
                                 <i class="fas fa-bolt"></i> Join Now
                             </button>
+                            <?php if ( $pts_hint_show ) : ?>
+                            <p class="cwd-points-hint">
+                                <?php
+                                echo esc_html(
+                                    sprintf(
+                                        /* translators: 1: points balance 2: RM value */
+                                        __( 'You have %1$s points (≈ RM%2$s) — apply them at checkout.', 'creativewings-core' ),
+                                        number_format_i18n( $pts_balance ),
+                                        number_format_i18n( $pts_hint_rm, 2 )
+                                    )
+                                );
+                                ?>
+                            </p>
+                        <?php endif; ?>
                         <?php endif; ?>
 
                         <?php /* Deadline/opens already shown in cwd-deadline-row above — no duplicate footnote. */ ?>
@@ -1619,7 +1703,7 @@ class CW_Shortcodes {
                             $map_total   = (int) ( $map_point_data['total'] ?? 0 );
                             $map_all_ids = array_map( 'intval', (array) ( $map_point_data['ids'] ?? [] ) );
 
-                            $pub_query = new WP_Query( [
+                        $pub_query = new WP_Query( [
                                 'post_type'      => $pub_entry_types,
                                 'post_status'    => 'publish',
                                 'post__in'       => $map_all_ids ?: [ 0 ],
@@ -1644,21 +1728,21 @@ class CW_Shortcodes {
                             $pub_per_page = 12;
                             $pub_page     = isset( $_GET['cwd_pub_page'] ) ? max( 1, (int) $_GET['cwd_pub_page'] ) : 1;
                             $pub_query    = new WP_Query( [
-                                'post_type'      => $pub_entry_types,
-                                'post_status'    => 'publish',
-                                'posts_per_page' => $pub_per_page,
-                                'paged'          => $pub_page,
-                                'orderby'        => 'date',
-                                'order'          => 'DESC',
-                                'meta_query'     => [
-                                    [
-                                        'key'     => 'product_id',
-                                        'value'   => $pid,
-                                        'compare' => '=',
-                                        'type'    => 'NUMERIC',
-                                    ],
+                            'post_type'      => $pub_entry_types,
+                            'post_status'    => 'publish',
+                            'posts_per_page' => $pub_per_page,
+                            'paged'          => $pub_page,
+                            'orderby'        => 'date',
+                            'order'          => 'DESC',
+                            'meta_query'     => [
+                                [
+                                    'key'     => 'product_id',
+                                    'value'   => $pid,
+                                    'compare' => '=',
+                                    'type'    => 'NUMERIC',
                                 ],
-                            ] );
+                            ],
+                        ] );
                         }
 
                         if ( $pub_query && $pub_query->have_posts() ) {
@@ -1896,7 +1980,7 @@ class CW_Shortcodes {
                     </section>
                         <?php
                         else :
-                        ?>
+                    ?>
                     <section class="cwd-section cwd-gallery-section cwd-public-gallery" id="cwd-public-gallery">
                         <h2 class="cwd-section-title"><i class="fas fa-images"></i> <?php esc_html_e( 'Public Submissions', 'creativewings-core' ); ?></h2>
                         <?php if ( empty( $pub_rows ) ) : ?>
@@ -1967,14 +2051,14 @@ class CW_Shortcodes {
                     <section class="cwd-section">
                         <h2 class="cwd-section-title"><i class="fas fa-info-circle"></i> About</h2>
                         <?php
-                        // The hero title is the page's only H1; organiser headings drop to H2 at the same size.
-                        $about_html = wp_filter_content_tags( wp_kses_post( wpautop( $content ) ) );
+                        // Format like post content (paragraphs, embeds) but keep the page H1 unique.
+                        $about_html = apply_filters( 'the_content', $content );
                         $about_html = preg_replace_callback( '/<h1\b([^>]*)>/i', function ( $m ) {
                             return '<h2' . $m[1] . ( stripos( $m[1], 'style=' ) === false ? ' style="font-size:1.35em"' : '' ) . '>';
                         }, $about_html );
                         $about_html = preg_replace( '#</h1>#i', '</h2>', $about_html );
                         ?>
-                        <div class="cwd-prose"><?php echo $about_html; ?></div>
+                        <div class="cwd-prose"><?php echo $about_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- filtered via the_content ?></div>
                     </section>
                     <?php endif; ?>
 
@@ -2087,6 +2171,12 @@ class CW_Shortcodes {
                         <script>
                         (function(){
                             function byId(id){ return document.getElementById(id); }
+                            /* GSAP/ScrollTrigger applies transform on .cwd-mentors-section,
+                               which traps position:fixed. Keep the overlay on document.body. */
+                            function mountMentorModal(modal){
+                                if(!modal || modal.parentElement === document.body) return;
+                                document.body.appendChild(modal);
+                            }
                             window.cwdOpenMentorModal = function(btn){
                                 if(!btn) return;
                                 var img = byId('cwd-mentor-modal-img');
@@ -2097,6 +2187,7 @@ class CW_Shortcodes {
                                 var bioWrap = byId('cwd-mentor-modal-bio-wrap');
                                 var modal = byId('cwd-mentor-modal');
                                 if(!img || !name || !title || !link || !bio || !bioWrap || !modal) return;
+                                mountMentorModal(modal);
                                 img.src = btn.getAttribute('data-photo') || '';
                                 img.alt = btn.getAttribute('data-name') || '';
                                 name.textContent = btn.getAttribute('data-name') || '';
@@ -2127,6 +2218,8 @@ class CW_Shortcodes {
                             document.addEventListener('keydown', function(e){
                                 if(e.key === 'Escape') cwdCloseMentorModal();
                             });
+                            var boot = byId('cwd-mentor-modal');
+                            if (boot) mountMentorModal(boot);
                         })();
                         </script>
                     </section>
@@ -2295,7 +2388,7 @@ class CW_Shortcodes {
                                 <span class="cwd-prize-group-chip"><?php echo esc_html( $cwd_cat_display ); ?></span>
                                 <span class="cwd-prize-group-count"><?php echo (int) count( $cwd_cat_prizes ); ?> <?php echo esc_html( _n( 'prize', 'prizes', count( $cwd_cat_prizes ), 'creativewings-core' ) ); ?></span>
                             </div>
-                            <div class="cwd-prize-grid">
+                        <div class="cwd-prize-grid">
                                 <?php foreach ( $cwd_cat_prizes as $pr ):
                                     $cwd_pos_key = isset( $pr['prize_position'] ) ? (string) $pr['prize_position'] : '';
                                     $cwd_pos     = isset( $cwd_pos_map[ $cwd_pos_key ] ) ? $cwd_pos_map[ $cwd_pos_key ] : $cwd_pos_map[''];
@@ -2313,10 +2406,10 @@ class CW_Shortcodes {
                                     <h4 class="cwd-prize-title"><?php echo esc_html( $pr['prize_title'] ); ?></h4>
                                     <?php if ( ! empty( $pr['prize_description'] ) ): ?>
                                     <p class="cwd-prize-desc"><?php echo esc_html( $pr['prize_description'] ); ?></p>
-                                    <?php endif; ?>
-                                </div>
-                                <?php endforeach; ?>
+                                <?php endif; ?>
                             </div>
+                            <?php endforeach; ?>
+                        </div>
                         </div>
                         <?php endforeach; ?>
                         <?php endif; ?>
@@ -2394,7 +2487,7 @@ class CW_Shortcodes {
             $lightbox_images[] = [ 'full' => $thumb, 'alt' => get_the_title( $pid ) ];
         }
         foreach ( array_merge( $gallery_images, $extra_gallery_images ) as $gi ) {
-            $lightbox_images[] = [ 'full' => $gi['full'], 'alt' => $gi['alt'] ];
+                $lightbox_images[] = [ 'full' => $gi['full'], 'alt' => $gi['alt'] ];
         }
         $hero_offset = $thumb ? 1 : 0;
         // Always render lightbox when there are product images OR a public map gallery
@@ -2481,17 +2574,17 @@ class CW_Shortcodes {
 
             function openPublicList(idx, pubList) {
                 if (!pubList || !pubList.length) return;
-                var prevImages  = images;
-                var prevHeroOff = heroOffset;
-                images     = pubList;
-                heroOffset = 0;
-                open(idx);
-                var restore = function(){
-                    images     = prevImages;
-                    heroOffset = prevHeroOff;
-                    document.removeEventListener('cwdGalleryClosed', restore);
-                };
-                document.addEventListener('cwdGalleryClosed', restore);
+                    var prevImages  = images;
+                    var prevHeroOff = heroOffset;
+                    images     = pubList;
+                    heroOffset = 0;
+                    open(idx);
+                    var restore = function(){
+                        images     = prevImages;
+                        heroOffset = prevHeroOff;
+                        document.removeEventListener('cwdGalleryClosed', restore);
+                    };
+                    document.addEventListener('cwdGalleryClosed', restore);
             }
 
             // Map pins + legacy pub tiles.
@@ -2724,12 +2817,11 @@ class CW_Shortcodes {
                                     <p class="cwv-card-submitter"><i class="fas fa-user" style="margin-right:4px;"></i><?php echo esc_html($e_name ?: 'Anonymous'); ?></p>
                                     <div class="cwv-vote-row">
                                         <span class="cwv-vote-count"><i class="fas fa-heart"></i> <span class="cwv-count-num" data-entry="<?php echo $entry->ID; ?>"><?php echo $e_votes; ?></span></span>
-                                        <?php if ($already_voted): ?>
+                                        <?php if ( $already_voted ) : ?>
                                         <button type="button" class="cwv-vote-btn voted" disabled><i class="fas fa-heart"></i> Voted</button>
-                                        <?php elseif ($is_closed): ?>
-                                        <button type="button" class="cwv-vote-btn voted" disabled><i class="fas fa-lock"></i> Closed</button>
-                                        <?php else: ?>
-                                        <button type="button" class="cwv-vote-btn" data-entry-id="<?php echo $entry->ID; ?>" onclick="cwvCastVote(this)">
+                                        <?php else : ?>
+                                        <?php // Voting stays open while cw_enable_voting=yes, even after registration closes. ?>
+                                        <button type="button" class="cwv-vote-btn" data-entry-id="<?php echo (int) $entry->ID; ?>" onclick="cwvCastVote(this)">
                                             <i class="fas fa-heart"></i> Vote
                                         </button>
                                         <?php endif; ?>
@@ -2864,7 +2956,18 @@ class CW_Shortcodes {
         <!-- Sticky mobile CTA -->
         <?php if ( ! $already ): ?>
         <div class="cwd-mobile-cta">
+            <div class="cwd-mobile-cta-meta">
             <div class="cwd-mobile-cta-price"><?php echo $fee_label; ?></div>
+                <div class="cwd-mobile-cta-proof">
+                    <?php
+                    printf(
+                        /* translators: %s: number of people who joined */
+                        esc_html__( '%s joined', 'creativewings-core' ),
+                        esc_html( number_format_i18n( $join_proof_count ) )
+                    );
+                    ?>
+                </div>
+            </div>
             <?php if ( $is_closed ): ?>
             <button class="cwd-cta-btn cwd-cta-closed" disabled><i class="fas fa-lock"></i> Already Closed</button>
             <?php elseif ( $is_upcoming ): ?>
@@ -2901,20 +3004,27 @@ class CW_Shortcodes {
         </div>
 
         <!-- ═══════════════════ REGISTRATION MODAL ═══════════════════ -->
-        <div id="cwd-reg-modal" class="cwd-modal-overlay" style="display:none;" aria-modal="true" role="dialog">
-            <div class="cwd-modal-wrap">
-                <div class="cwd-modal-head">
+        <div id="cwd-reg-modal" class="cwd-modal-overlay cwd-reg-overlay" style="display:none;" aria-modal="true" role="dialog" aria-labelledby="cwd-reg-modal-title">
+            <div class="cwd-modal-wrap cwd-reg-wrap">
+                <div class="cwd-modal-head cwd-reg-head">
                     <div class="cwd-modal-head-info">
+                        <p class="cwd-reg-kicker"><?php esc_html_e( 'Complete your entry', 'creativewings-core' ); ?></p>
                         <span class="cwd-cat-chip" style="background:<?php echo esc_attr($chip_color); ?>"><?php echo esc_html($cat_label); ?></span>
-                        <h3 class="cwd-modal-title"><?php the_title(); ?></h3>
-                        <p class="cwd-modal-subtitle"><i class="fas fa-tag"></i> <?php echo $fee_label; ?> &nbsp;|&nbsp; <i class="fas fa-building"></i> <?php echo esc_html($org_name); ?></p>
+                        <h3 class="cwd-modal-title" id="cwd-reg-modal-title"><?php the_title(); ?></h3>
+                        <p class="cwd-modal-subtitle">
+                            <span class="cwd-reg-meta-pill"><i class="fas fa-tag" aria-hidden="true"></i> <?php echo $fee_label; ?></span>
+                            <span class="cwd-reg-meta-pill"><i class="fas fa-building" aria-hidden="true"></i> <?php echo esc_html($org_name); ?></span>
+                        </p>
                     </div>
-                    <button class="cwd-modal-close" onclick="cwdCloseRegModal()" aria-label="Close">&times;</button>
+                    <button type="button" class="cwd-modal-close" onclick="cwdCloseRegModal()" aria-label="<?php esc_attr_e( 'Close', 'creativewings-core' ); ?>">&times;</button>
                 </div>
-                <form id="cwd-reg-form" method="POST" action="<?php echo esc_url(get_permalink($pid)); ?>" class="cwd-modal-body" enctype="multipart/form-data">
+                <form id="cwd-reg-form" method="POST" action="<?php echo esc_url(get_permalink($pid)); ?>" class="cwd-reg-form" enctype="multipart/form-data">
                     <?php wp_nonce_field('cw_reg_'.$pid, 'cw_reg_nonce'); ?>
                     <input type="hidden" name="add-to-cart" value="<?php echo esc_attr($pid); ?>">
                     <input type="hidden" name="quantity" id="cwd-reg-qty" value="1">
+
+                    <div class="cwd-modal-body cwd-reg-scroll">
+                        <p class="cwd-reg-lead"><?php esc_html_e( 'Fill in the details below. You can review everything on the next checkout step.', 'creativewings-core' ); ?></p>
 
                     <?php
                     // Extension point for feature modules that need to inject extra
@@ -2926,21 +3036,35 @@ class CW_Shortcodes {
                     do_action( 'cw_reg_modal_before_rows', (int) $pid );
                     ?>
 
-                    <div id="cwd-reg-rows"></div>
+                        <div id="cwd-reg-rows" class="cwd-reg-rows"></div>
 
                     <?php if ( $reg_max > 1 ): ?>
                     <button type="button" class="cwd-reg-add-btn" id="cwd-add-row-btn">
-                        <i class="fas fa-plus"></i> <?php echo esc_html($reg_btn); ?>
+                            <i class="fas fa-plus" aria-hidden="true"></i> <?php echo esc_html($reg_btn); ?>
                     </button>
                     <?php endif; ?>
+                    </div>
 
-                    <div class="cwd-modal-foot">
+                    <?php if ( ! empty( $pts_hint_show ) ) : ?>
+                    <p class="cwd-points-hint cwd-points-hint--modal">
+                        <?php
+                        echo esc_html(
+                            sprintf(
+                                /* translators: 1: points balance 2: RM value */
+                                __( 'You have %1$s points (≈ RM%2$s) — apply them at checkout.', 'creativewings-core' ),
+                                number_format_i18n( $pts_balance ),
+                                number_format_i18n( $pts_hint_rm, 2 )
+                            )
+                        );
+                        ?>
+                    </p>
+                    <?php endif; ?>
+                    <div class="cwd-modal-foot cwd-reg-foot">
                         <button type="button" class="cwd-cta-btn cwd-cta-closed" onclick="cwdCloseRegModal()">
-                            <i class="fas fa-times"></i> Cancel
+                            <?php esc_html_e( 'Cancel', 'creativewings-core' ); ?>
                         </button>
-                        <button type="submit" class="cwd-cta-btn cwd-cta-join cwd-reg-submit-primary" id="cwd-reg-submit"
-                            style="background:#fff;background-image:none;color:#1A1A1A;-webkit-text-fill-color:#1A1A1A;border:2px solid #125B9A;box-shadow:0 2px 10px rgba(18, 91, 154, .12);">
-                            <i class="fas fa-paper-plane" style="color:#1A1A1A;-webkit-text-fill-color:#1A1A1A;"></i> Submit &amp; Proceed
+                        <button type="submit" class="cwd-cta-btn cwd-cta-join cwd-reg-submit-primary" id="cwd-reg-submit">
+                            <?php esc_html_e( 'Continue to checkout', 'creativewings-core' ); ?>
                         </button>
                     </div>
                 </form>
@@ -2949,6 +3073,24 @@ class CW_Shortcodes {
 
         <script>
         var cwdRegConfig = <?php echo json_encode($reg_config); ?>;
+
+        (function () {
+            document.querySelectorAll('.cwd-campaign-invite__copy').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var val = btn.getAttribute('data-copy') || '';
+                    if (!val) return;
+                    var label = btn.querySelector('.cwcd-copy-text');
+                    var prev = label ? label.textContent : '';
+                    function done() {
+                        if (label) label.textContent = <?php echo wp_json_encode( __( 'Copied!', 'creativewings-core' ) ); ?>;
+                        setTimeout(function () { if (label) label.textContent = prev; }, 1600);
+                    }
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(val).then(done).catch(function () {});
+                    }
+                });
+            });
+        })();
 
         function cwdOpenJoinGate() {
             var m = document.getElementById('cwd-join-gate');
@@ -3021,7 +3163,7 @@ class CW_Shortcodes {
                 var nameVal = '';
                 var nameHint = '';
                 if (cfg.isCompetition) {
-                    if (num === 1 && cfg.useAccountFullname && cfg.accountFullName) {
+                if (num === 1 && cfg.useAccountFullname && cfg.accountFullName) {
                         nameVal = escAttr(cfg.accountFullName);
                     } else if (num > 1) {
                         var firstName = document.querySelector('#cwd-reg-rows input[name="cw_names[1]"]');
@@ -3324,8 +3466,8 @@ class CW_Shortcodes {
 
             var btn = document.getElementById('cwd-reg-submit');
             if (btn) {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
             }
         });
 
@@ -3524,7 +3666,7 @@ class CW_Shortcodes {
                 continue;
             }
 
-            $deadline  = get_post_meta( $pid, 'submission_deadline', true );
+                $deadline  = get_post_meta( $pid, 'submission_deadline', true );
             $is_closed = $deadline && CW_Campaign_Dates::is_past( $deadline, true );
             if ( $active && $is_closed ) {
                 continue;
@@ -3547,7 +3689,7 @@ class CW_Shortcodes {
             $already    = isset( $joined_pids[ $pid ] );
 
             $sdg_raw     = get_post_meta( $pid, 'sdg_goals', true );
-            $sdg_icons_d = [];
+                $sdg_icons_d = [];
             if ( is_array( $sdg_raw ) ) {
                 foreach ( $sdg_raw as $n => $v ) {
                     if ( $v === 'true' && isset( $sdg_names[ $n ] ) ) {
@@ -3628,6 +3770,17 @@ class CW_Shortcodes {
 
         $heading = trim( (string) $atts['heading'] );
 
+        // Pad empty desktop columns with promote CTAs when only 1–2 campaigns.
+        // 1 campaign → 2 promote slots; 2 campaigns → 1 promote slot; 3+ unchanged.
+        if ( $carousel && 3 === (int) $cols && count( $cards_html ) < 3 ) {
+            while ( count( $cards_html ) < 3 ) {
+                $cards_html[] = $this->render_promote_campaign_card_html();
+            }
+            // Static 3-up row — avoid carousel cloning/looping of promote slots.
+            $carousel = false;
+            $cols     = 3;
+        }
+
         if ( ! $carousel ) {
             ob_start();
             ?>
@@ -3637,9 +3790,9 @@ class CW_Shortcodes {
                 <?php endif; ?>
                 <div class="cwg-grid cwg-cols-<?php echo esc_attr( (string) $cols ); ?> cwg-events-snippet">
                     <?php echo implode( '', $cards_html ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-                </div>
+        </div>
             </section>
-            <?php
+        <?php
             return (string) ob_get_clean();
         }
 
@@ -3694,6 +3847,34 @@ class CW_Shortcodes {
                 </div>
             </div>
         </section>
+        <?php
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * Promote CTA card for empty Open Campaigns columns.
+     *
+     * @return string Safe HTML.
+     */
+    private function render_promote_campaign_card_html() {
+        $url = home_url( '/contact/' );
+        ob_start();
+        ?>
+        <a class="cwg-card cwg-card--promote" href="<?php echo esc_url( $url ); ?>">
+            <div class="cwg-card--promote__art" aria-hidden="true">
+                <span class="cwg-card--promote__sky"></span>
+                <span class="cwg-card--promote__cloud cwg-card--promote__cloud--a"></span>
+                <span class="cwg-card--promote__cloud cwg-card--promote__cloud--b"></span>
+                <span class="cwg-card--promote__cloud cwg-card--promote__cloud--c"></span>
+            </div>
+            <div class="cwg-card--promote__inner">
+                <span class="cwg-card--promote__kicker"><?php esc_html_e( 'Host with Creative Wings', 'creativewings-core' ); ?></span>
+                <h3 class="cwg-card--promote__title"><?php esc_html_e( 'Want to promote your campaign?', 'creativewings-core' ); ?></h3>
+                <p class="cwg-card--promote__text"><?php esc_html_e( 'Feature your programme here and reach young creators across Malaysia.', 'creativewings-core' ); ?></p>
+                <p class="cwg-card--promote__quote"><?php esc_html_e( 'Together, We Help Young Talents Soar', 'creativewings-core' ); ?></p>
+                <span class="cwg-card--promote__cta"><?php esc_html_e( 'Host a campaign', 'creativewings-core' ); ?> <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
+            </div>
+        </a>
         <?php
         return (string) ob_get_clean();
     }

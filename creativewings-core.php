@@ -2,7 +2,7 @@
 /**
  * Plugin Name: CreativeWings Core Platform
  * Description: Complete ecosystem: Auth, Onboarding, Campaigns, Tournaments, and Business Logic.
- * Version: 11.1.41
+ * Version: 11.2.11
  * Author: CreativeWings Dev
  * Text Domain: creativewings-core
  * Domain Path: /languages
@@ -69,7 +69,7 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
         private function define_constants() {
             define( 'CW_PATH', plugin_dir_path( __FILE__ ) );
             define( 'CW_URL', plugin_dir_url( __FILE__ ) );
-            define( 'CW_VERSION', '11.1.76' );
+            define( 'CW_VERSION', '11.2.16' );
         }
 
         /**
@@ -255,6 +255,9 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             if ( is_admin() ) {
                 new CW_Campaign_Import();
                 new CW_Image_Bulk_Optimizer();
+                if ( class_exists( 'CW_Payment_Export' ) ) {
+                    new CW_Payment_Export();
+                }
                 if ( class_exists( 'CW_Badges_Admin' ) ) {
                     new CW_Badges_Admin();
                 }
@@ -269,6 +272,15 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             if ( class_exists( 'CW_Points' ) ) {
                 CW_Points::register_hooks();
             }
+            if ( class_exists( 'CW_Invite' ) ) {
+                CW_Invite::register_hooks();
+            }
+            if ( class_exists( 'CW_Sponsor_Leads' ) ) {
+                CW_Sponsor_Leads::register_hooks();
+            }
+            if ( class_exists( 'CW_Partner_Clicks' ) ) {
+                CW_Partner_Clicks::register_hooks();
+            }
             if ( class_exists( 'CW_Security' ) ) {
                 CW_Security::register_hooks();
             }
@@ -280,6 +292,9 @@ if ( ! class_exists( 'CW_Core_Platform' ) ) :
             }
             // Render any pending award toasts inside the WP footer on the front-end.
             add_action( 'wp_footer', [ 'CW_Badges_Display', 'maybe_render_toast' ], 50 );
+            if ( class_exists( 'CW_Points' ) ) {
+                add_action( 'wp_footer', [ 'CW_Points', 'maybe_render_toasts' ], 51 );
+            }
 
             // Flash notices (SweetAlert2 popups for ?error / ?success / ?warning / etc).
             new CW_Flash_Notices();

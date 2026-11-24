@@ -108,9 +108,9 @@ class CW_Checkout {
         <div class="cw-commerce-shell cw-commerce-shell--checkout">
             <?php
             $this->render_shell_header(
-                __( 'Secure checkout', 'creativewings-core' ),
+                __( 'Registration', 'creativewings-core' ),
                 __( 'Complete your registration', 'creativewings-core' ),
-                ''
+                __( 'You’re almost there. Confirm your details and pay securely.', 'creativewings-core' )
             );
             ?>
             <div class="cw-commerce-body">
@@ -122,9 +122,9 @@ class CW_Checkout {
         <div class="cw-commerce-shell cw-commerce-shell--cart">
             <?php
             $this->render_shell_header(
-                __( 'Cart', 'creativewings-core' ),
-                __( 'Your cart', 'creativewings-core' ),
-                __( 'Review your campaign registration before checkout.', 'creativewings-core' )
+                __( 'Registration', 'creativewings-core' ),
+                __( 'Review your registration', 'creativewings-core' ),
+                __( 'Review your campaign entry before continuing to payment.', 'creativewings-core' )
             );
             ?>
             <div class="cw-commerce-body cw-commerce-body--cart">
@@ -332,7 +332,7 @@ class CW_Checkout {
     }
 
     /**
-     * Congrats modal on order-received; after ~5s redirect to the campaign product page.
+     * Congrats modal on order-received; celebrate + next-campaign CTA (C3).
      *
      * @param int $order_id
      */
@@ -352,9 +352,39 @@ class CW_Checkout {
             return;
         }
 
-        $redirect_url = $campaign['url'];
+        $campaign_url = $campaign['url'];
         $title        = $campaign['title'];
-        $seconds      = 5;
+        $seconds      = 8;
+
+        $explore_url = home_url( '/competitions/' );
+        if ( is_user_logged_in() && function_exists( 'wc_get_page_id' ) ) {
+            $explore_url = add_query_arg( 'tab', 'explore', get_permalink( wc_get_page_id( 'myaccount' ) ) );
+        }
+
+        $points_notes = [];
+        $uid          = (int) $order->get_user_id();
+        if ( $uid > 0 && class_exists( 'CW_Invite' ) ) {
+            // First-join bonus is awarded async; tip when user has not yet received it.
+            if ( 'yes' !== get_user_meta( $uid, CW_Invite::META_FIRST_JOIN, true ) ) {
+                $points_notes[] = sprintf(
+                    /* translators: %d: bonus points */
+                    __( 'First join bonus: +%d points will land on your Points balance shortly.', 'creativewings-core' ),
+                    (int) CW_Invite::BONUS_POINTS
+                );
+            }
+        }
+        if ( class_exists( 'CW_Points' ) ) {
+            $cash_pts = CW_Points::calculate_order_points( $order );
+            if ( null !== $cash_pts && $cash_pts > 0 ) {
+                $points_notes[] = sprintf(
+                    /* translators: %d: points from cash paid */
+                    __( 'This join earns about +%d points from cash paid.', 'creativewings-core' ),
+                    (int) $cash_pts
+                );
+            } elseif ( null !== $cash_pts && 0 === $cash_pts ) {
+                $points_notes[] = __( 'This join was free / fully couponed — no cash points (bonuses still apply).', 'creativewings-core' );
+            }
+        }
 
         // Ensure checkout CSS is present on thank-you (is_checkout is true, but belt-and-braces).
         wp_enqueue_style(
@@ -364,7 +394,7 @@ class CW_Checkout {
             CW_VERSION
         );
         ?>
-        <div id="cw-success-redirect-modal" class="cw-success-modal" role="dialog" aria-modal="true" aria-labelledby="cw-success-redirect-title" data-redirect-url="<?php echo esc_url( $redirect_url ); ?>" data-seconds="<?php echo (int) $seconds; ?>">
+        <div id="cw-success-redirect-modal" class="cw-success-modal" role="dialog" aria-modal="true" aria-labelledby="cw-success-redirect-title" data-redirect-url="<?php echo esc_url( $explore_url ); ?>" data-seconds="<?php echo (int) $seconds; ?>">
             <div class="cw-success-modal__backdrop"></div>
             <div class="cw-success-modal__panel">
                 <div class="cw-success-modal__icon" aria-hidden="true">
@@ -373,7 +403,7 @@ class CW_Checkout {
                         <path d="M14 24.5L21 31.5L34 16.5" stroke="#16A34A" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                 </div>
-                <h2 id="cw-success-redirect-title" class="cw-success-modal__title"><?php esc_html_e( 'Congratulations!', 'creativewings-core' ); ?></h2>
+                <h2 id="cw-success-redirect-title" class="cw-success-modal__title"><?php esc_html_e( 'You’re in!', 'creativewings-core' ); ?></h2>
                 <p class="cw-success-modal__text">
                     <?php
                     echo esc_html(
@@ -385,20 +415,32 @@ class CW_Checkout {
                     );
                     ?>
                 </p>
+                <?php if ( ! empty( $points_notes ) ) : ?>
+                    <ul class="cw-success-modal__points">
+                        <?php foreach ( $points_notes as $note ) : ?>
+                            <li><?php echo esc_html( $note ); ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
                 <p class="cw-success-modal__countdown">
                     <?php
                     echo wp_kses_post(
                         sprintf(
                             /* translators: %s: seconds remaining (HTML) */
-                            __( 'Taking you back to the campaign in %s…', 'creativewings-core' ),
+                            __( 'Opening more campaigns in %s…', 'creativewings-core' ),
                             '<strong id="cw-success-redirect-count">' . (int) $seconds . '</strong>'
                         )
                     );
                     ?>
                 </p>
-                <a class="cw-success-modal__cta" href="<?php echo esc_url( $redirect_url ); ?>">
-                    <?php esc_html_e( 'Go to campaign now', 'creativewings-core' ); ?>
-                </a>
+                <div class="cw-success-modal__actions">
+                    <a class="cw-success-modal__cta" href="<?php echo esc_url( $explore_url ); ?>">
+                        <?php esc_html_e( 'Explore more campaigns', 'creativewings-core' ); ?>
+                    </a>
+                    <a class="cw-success-modal__cta cw-success-modal__cta--ghost" href="<?php echo esc_url( $campaign_url ); ?>">
+                        <?php esc_html_e( 'Back to this campaign', 'creativewings-core' ); ?>
+                    </a>
+                </div>
             </div>
         </div>
         <script>
@@ -406,13 +448,22 @@ class CW_Checkout {
             var root = document.getElementById('cw-success-redirect-modal');
             if (!root) return;
             var url = root.getAttribute('data-redirect-url') || '';
-            var left = parseInt(root.getAttribute('data-seconds') || '5', 10);
+            var left = parseInt(root.getAttribute('data-seconds') || '8', 10);
             var countEl = document.getElementById('cw-success-redirect-count');
+            var cancelled = false;
             if (!url) return;
 
             document.documentElement.classList.add('cw-success-modal-open');
 
+            root.querySelectorAll('a.cw-success-modal__cta').forEach(function (a) {
+                a.addEventListener('click', function () { cancelled = true; });
+            });
+
             var timer = window.setInterval(function () {
+                if (cancelled) {
+                    window.clearInterval(timer);
+                    return;
+                }
                 left -= 1;
                 if (countEl) countEl.textContent = String(Math.max(left, 0));
                 if (left <= 0) {

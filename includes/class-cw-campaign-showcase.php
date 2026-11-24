@@ -14,6 +14,9 @@ class CW_Campaign_Showcase {
     /** Ordered sponsor tiers (deck package order). */
     const TIER_ORDER = [ 'champion', 'hero', 'community', 'local', 'inkind' ];
 
+    /** @var int Product ID while rendering partner logos (for click tracking). */
+    private static $render_campaign_id = 0;
+
     /**
      * @return array<string,string> tier key => public label
      */
@@ -377,10 +380,19 @@ class CW_Campaign_Showcase {
             esc_attr( $name )
         );
         if ( $url !== '' ) {
+            $attrs = '';
+            if ( self::$render_campaign_id > 0 && class_exists( 'CW_Partner_Clicks' ) ) {
+                $attrs = sprintf(
+                    ' data-cw-partner-click="1" data-cw-campaign-id="%d" data-cw-partner-key="%s"',
+                    (int) self::$render_campaign_id,
+                    esc_attr( CW_Partner_Clicks::partner_key( $partner ) )
+                );
+            }
             return sprintf(
-                '<a href="%s" class="cwd-partner-logo" target="_blank" rel="noopener noreferrer" title="%s">%s</a>',
+                '<a href="%s" class="cwd-partner-logo" target="_blank" rel="noopener noreferrer" title="%s"%s>%s</a>',
                 esc_url( $url ),
                 esc_attr( $name ),
+                $attrs,
                 $img
             );
         }
@@ -404,6 +416,7 @@ class CW_Campaign_Showcase {
         if ( empty( $champs ) ) {
             return '';
         }
+        self::$render_campaign_id = (int) $product_id;
         $labels = self::tier_labels();
         ob_start();
         ?>
@@ -421,7 +434,9 @@ class CW_Campaign_Showcase {
             </div>
         </div>
         <?php
-        return (string) ob_get_clean();
+        $html = (string) ob_get_clean();
+        self::$render_campaign_id = 0;
+        return $html;
     }
 
     /**
@@ -455,6 +470,7 @@ class CW_Campaign_Showcase {
             return '';
         }
 
+        self::$render_campaign_id = (int) $product_id;
         $section_title = __( 'Our Partners', 'creativewings-core' );
         ob_start();
         ?>
@@ -479,7 +495,9 @@ class CW_Campaign_Showcase {
             <?php endforeach; ?>
         </section>
         <?php
-        return (string) ob_get_clean();
+        $html = (string) ob_get_clean();
+        self::$render_campaign_id = 0;
+        return $html;
     }
 
     /**

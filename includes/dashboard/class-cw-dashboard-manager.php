@@ -140,7 +140,6 @@ class CW_Dashboard_Manager {
                 'explore'          => ['icon' => 'fa-bolt',     'label' => __( 'Explore Opportunities', 'creativewings-core' )],
                 'activities'       => ['icon' => 'fa-running',  'label' => __( 'My Activities', 'creativewings-core' )],
                 'points'           => ['icon' => 'fa-coins',    'label' => __( 'My Points', 'creativewings-core' )],
-                'leaderboard'      => ['icon' => 'fa-list-ol',  'label' => __( 'Leaderboard', 'creativewings-core' )],
                 'badges'           => ['icon' => 'fa-medal',    'label' => __( 'My Badges', 'creativewings-core' )],
                 'settings'         => ['icon' => 'fa-cog',      'label' => __( 'Settings', 'creativewings-core' )],
             ];
@@ -352,7 +351,8 @@ class CW_Dashboard_Manager {
                     if ( $this->contestant_dashboard ) $this->contestant_dashboard->render_points();
                     break;
                 case 'leaderboard':
-                    if ( $this->contestant_dashboard ) $this->contestant_dashboard->render_leaderboard();
+                    // Tab removed — send bookmarks to My Points.
+                    if ( $this->contestant_dashboard ) $this->contestant_dashboard->render_points();
                     break;
                 case 'badges':
                     $this->render_badges_tab( 'contestant' );

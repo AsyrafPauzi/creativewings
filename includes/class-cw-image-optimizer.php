@@ -221,6 +221,19 @@ class CW_Image_Optimizer {
             return new WP_Error( 'cw_optimizer_bad_id', __( 'Invalid attachment ID.', 'creativewings-core' ) );
         }
 
+        if ( apply_filters( 'cw_skip_image_optimize', false, $attach_id, $context ) ) {
+            return [
+                'optimized'    => false,
+                'webp_path'    => '',
+                'bytes_before' => 0,
+                'bytes_after'  => 0,
+                'dims_before'  => null,
+                'dims_after'   => null,
+                'skipped'      => 'concurrency_skip',
+                'attach_id'    => $attach_id,
+            ];
+        }
+
         if ( get_post_meta( $attach_id, self::ATTACH_META_OPTIMIZED, true ) === '1' ) {
             // Already processed.
             $existing_webp = (string) get_post_meta( $attach_id, self::ATTACH_META_WEBP_URL, true );

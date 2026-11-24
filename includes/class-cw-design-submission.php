@@ -1098,10 +1098,10 @@ class CW_Design_Submission {
             if ( ! function_exists( 'wp_generate_attachment_metadata' ) ) {
                 require_once ABSPATH . 'wp-admin/includes/image.php';
             }
-            $meta = wp_generate_attachment_metadata( $attachment_id, $move['file'] );
+        $meta = wp_generate_attachment_metadata( $attachment_id, $move['file'] );
         }
         if ( ! empty( $meta ) ) {
-            wp_update_attachment_metadata( $attachment_id, $meta );
+        wp_update_attachment_metadata( $attachment_id, $meta );
         }
 
         // Track in WC session so we can pull it into cart-item-data on
@@ -1779,27 +1779,27 @@ class CW_Design_Submission {
                     $chosen      = isset( $chosen_per_slot[ $slot ] ) && $chosen_per_slot[ $slot ] !== ''
                         ? $chosen_per_slot[ $slot ]
                         : $cfg['default'];
-                    $picker_data = [
-                        'cartKey'   => $key,
-                        'productId' => $product_id,
+            $picker_data = [
+                'cartKey'   => $key,
+                'productId' => $product_id,
                         'slot'      => $slot,
-                        'width'     => $cfg['width'],
-                        'height'    => $cfg['height'],
-                        'artwork'   => $artwork_url,
-                        'default'   => $chosen,
+                'width'     => $cfg['width'],
+                'height'    => $cfg['height'],
+                'artwork'   => $artwork_url,
+                'default'   => $chosen,
                         // Print-area window (px). When null the JS uses
                         // contain-fit. When present, the artwork is
                         // cropped to fit this rectangle on the casing.
                         'printArea' => $cfg['print_area'] ?? null,
-                        'variants'  => [],
-                    ];
-                    foreach ( $cfg['variants'] as $v ) {
-                        $picker_data['variants'][] = [
-                            'slug' => (string) ( $v['slug'] ?? '' ),
-                            'name' => (string) ( $v['name'] ?? '' ),
-                            'url'  => (string) wp_get_attachment_url( (int) ( $v['attachment_id'] ?? 0 ) ),
-                        ];
-                    }
+                'variants'  => [],
+            ];
+            foreach ( $cfg['variants'] as $v ) {
+                $picker_data['variants'][] = [
+                    'slug' => (string) ( $v['slug'] ?? '' ),
+                    'name' => (string) ( $v['name'] ?? '' ),
+                    'url'  => (string) wp_get_attachment_url( (int) ( $v['attachment_id'] ?? 0 ) ),
+                ];
+            }
 
                     $heading_label = $is_multi_line
                         ? ( isset( $participant_names[ $slot ] )
@@ -1821,14 +1821,14 @@ class CW_Design_Submission {
                     $scale = min( $max_w / $buf_w, $max_h / $buf_h, 1 );
                     $disp_w = (int) round( $buf_w * $scale );
                     $disp_h = (int) round( $buf_h * $scale );
-                ?>
-                <div class="cw-design-picker form-row form-row-wide"
-                     data-cart-key="<?php echo esc_attr( $key ); ?>"
+            ?>
+            <div class="cw-design-picker form-row form-row-wide"
+                 data-cart-key="<?php echo esc_attr( $key ); ?>"
                      data-slot="<?php echo (int) $slot; ?>"
-                     data-config="<?php echo esc_attr( wp_json_encode( $picker_data ) ); ?>">
-                    <h3 class="cw-design-picker__heading">
+                 data-config="<?php echo esc_attr( wp_json_encode( $picker_data ) ); ?>">
+                <h3 class="cw-design-picker__heading">
                         <?php echo esc_html( $heading_label ); ?>
-                    </h3>
+                </h3>
 
                     <?php
                         // "Your uploaded artwork" verification strip — gives the
@@ -1863,33 +1863,33 @@ class CW_Design_Submission {
                     </div>
 
                     <div class="cw-design-picker__swatches" role="radiogroup" aria-label="<?php echo esc_attr( $heading_label ); ?>">
-                        <?php foreach ( $cfg['variants'] as $v ) :
-                            $vslug = (string) ( $v['slug'] ?? '' );
-                            $vname = (string) ( $v['name'] ?? '' );
-                            $vimg  = (string) wp_get_attachment_image_url( (int) ( $v['attachment_id'] ?? 0 ), 'thumbnail' );
-                            $is_on = ( $vslug === $chosen );
-                        ?>
-                            <button type="button"
-                                    class="cw-design-swatch <?php echo $is_on ? 'is-selected' : ''; ?>"
-                                    data-variant="<?php echo esc_attr( $vslug ); ?>"
-                                    role="radio"
-                                    aria-checked="<?php echo $is_on ? 'true' : 'false'; ?>"
-                                    title="<?php echo esc_attr( $vname ); ?>">
-                                <?php if ( $vimg ) : ?>
-                                    <img src="<?php echo esc_url( $vimg ); ?>" alt="<?php echo esc_attr( $vname ); ?>">
-                                <?php endif; ?>
-                                <span class="cw-design-swatch__name"><?php echo esc_html( $vname ); ?></span>
-                            </button>
-                        <?php endforeach; ?>
-                    </div>
+                    <?php foreach ( $cfg['variants'] as $v ) :
+                        $vslug = (string) ( $v['slug'] ?? '' );
+                        $vname = (string) ( $v['name'] ?? '' );
+                        $vimg  = (string) wp_get_attachment_image_url( (int) ( $v['attachment_id'] ?? 0 ), 'thumbnail' );
+                        $is_on = ( $vslug === $chosen );
+                    ?>
+                        <button type="button"
+                                class="cw-design-swatch <?php echo $is_on ? 'is-selected' : ''; ?>"
+                                data-variant="<?php echo esc_attr( $vslug ); ?>"
+                                role="radio"
+                                aria-checked="<?php echo $is_on ? 'true' : 'false'; ?>"
+                                title="<?php echo esc_attr( $vname ); ?>">
+                            <?php if ( $vimg ) : ?>
+                                <img src="<?php echo esc_url( $vimg ); ?>" alt="<?php echo esc_attr( $vname ); ?>">
+                            <?php endif; ?>
+                            <span class="cw-design-swatch__name"><?php echo esc_html( $vname ); ?></span>
+                        </button>
+                    <?php endforeach; ?>
+                </div>
 
-                    <div class="cw-design-picker__preview-wrap">
-                        <canvas class="cw-design-picker__canvas"
-                                width="<?php echo $buf_w; ?>"
-                                height="<?php echo $buf_h; ?>"
-                                style="width:<?php echo $disp_w; ?>px;height:<?php echo $disp_h; ?>px;"></canvas>
-                        <div class="cw-design-picker__loading"><?php esc_html_e( 'Loading preview…', 'creativewings-core' ); ?></div>
-                    </div>
+                <div class="cw-design-picker__preview-wrap">
+                    <canvas class="cw-design-picker__canvas"
+                            width="<?php echo $buf_w; ?>"
+                            height="<?php echo $buf_h; ?>"
+                            style="width:<?php echo $disp_w; ?>px;height:<?php echo $disp_h; ?>px;"></canvas>
+                    <div class="cw-design-picker__loading"><?php esc_html_e( 'Loading preview…', 'creativewings-core' ); ?></div>
+                </div>
 
                     <input type="hidden" name="<?php echo esc_attr( $field_name ); ?>" value="<?php echo esc_attr( $chosen ); ?>" class="cw-design-picker__field">
                 </div>
@@ -1965,14 +1965,14 @@ class CW_Design_Submission {
                         'error'
                     );
                 } else {
-                    wc_add_notice(
-                        sprintf(
-                            /* translators: %s picker label */
-                            __( 'Please select an option for "%s" before placing your order.', 'creativewings-core' ),
-                            $cfg['label']
-                        ),
-                        'error'
-                    );
+                wc_add_notice(
+                    sprintf(
+                        /* translators: %s picker label */
+                        __( 'Please select an option for "%s" before placing your order.', 'creativewings-core' ),
+                        $cfg['label']
+                    ),
+                    'error'
+                );
                 }
             }
         }
@@ -2201,7 +2201,7 @@ class CW_Design_Submission {
             $art_id = (int) $item->get_meta( '_' . self::CART_ARTWORK_ID );
         }
         if ( ! $source_id ) {
-            $source_id = (int) $item->get_meta( '_' . self::CART_SOURCE_ID );
+        $source_id = (int) $item->get_meta( '_' . self::CART_SOURCE_ID );
         }
         if ( $variant === '' ) {
             $variant = (string) $item->get_meta( '_' . self::CART_VARIANT );
@@ -2301,10 +2301,10 @@ class CW_Design_Submission {
         // rendering inline instead of as a fixed overlay).
         $css_path = CW_PATH . 'assets/css/cw-style-design.css';
         $css_ver  = file_exists( $css_path ) ? (string) filemtime( $css_path ) : ( defined( 'CW_VERSION' ) ? CW_VERSION : null );
-        wp_enqueue_style(
-            'cw-style-design',
-            CW_URL . 'assets/css/cw-style-design.css',
-            [],
+            wp_enqueue_style(
+                'cw-style-design',
+                CW_URL . 'assets/css/cw-style-design.css',
+                [],
             $css_ver
         );
 
