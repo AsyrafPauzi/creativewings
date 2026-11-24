@@ -1,0 +1,29 @@
+/*
+Theme Name: Creative Wings (Astra Child)
+Theme URI: https://creativewings.asia
+Description: Astra child theme — Elementor exit Phase 1 chrome + browse pages
+Author: Creative Wings
+Template: astra
+Version: 0.11.5
+Text Domain: cw-astra-child
+*/
+
+/* Base layout tweaks — detailed styles in assets/css/ */
+.ast-container {
+	max-width: var(--cw-container, 1200px);
+}
+
+body {
+	font-family: var(--cw-font, "Montserrat", system-ui, sans-serif);
+}
+
+.cw-discovery-intro {
+	margin: 0 0 1.25rem;
+	max-width: 42rem;
+	font-size: 1rem;
+	line-height: 1.5;
+}
+
+.cw-discovery-intro a {
+	text-decoration: underline;
+}

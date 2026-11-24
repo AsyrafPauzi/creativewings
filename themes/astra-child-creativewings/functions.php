@@ -7,7 +7,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'CW_CHILD_VERSION', '0.12.2' );
+define( 'CW_CHILD_VERSION', '0.12.3' );
 define( 'CW_CHILD_DIR', get_stylesheet_directory() );
 define( 'CW_CHILD_URI', get_stylesheet_directory_uri() );
 
@@ -19,6 +19,8 @@ define( 'CW_CHILD_SDG_ID', 2216 );
 define( 'CW_CHILD_FOOTER_BADGE_ID', 2262 );
 define( 'CW_CHILD_MOBILE_LOGO_ID', 3378 );
 define( 'CW_CHILD_HOME_HERO_ID', 2225 );
+
+require_once CW_CHILD_DIR . '/inc/discovery-category-intro.php';
 
 /**
  * Slugs that use Phase 1 browse templates.
