@@ -146,19 +146,19 @@ function cw_bulk_seo_product_payload( WP_Post $post ) {
 function cw_bulk_seo_page_map() {
     return [
         'homepage'                  => [
-            'seo_title'        => 'Creative Wings | Competitions, Activities & Campaigns in Malaysia',
-            'meta_description' => 'Creative Wings connects students, creators, and communities through competitions, activities, and meaningful campaigns across Malaysia. Join, create, and make an impact.',
-            'focus_keywords'   => [ 'Creative Wings', 'Malaysia competitions', 'creative campaigns Malaysia' ],
+            'seo_title'        => 'Competitions in Malaysia | Creative Wings',
+            'meta_description' => 'Join art, drawing, and design competitions in Malaysia. Open to students and adults. Browse what is open and register online.',
+            'focus_keywords'   => [ 'competitions in Malaysia' ],
         ],
         'competitions'              => [
-            'seo_title'        => 'Creative Competitions in Malaysia | Creative Wings',
-            'meta_description' => 'Browse art, design, drawing, writing, and photography competitions on Creative Wings. Register online and submit your creative work.',
-            'focus_keywords'   => [ 'Malaysia competitions', 'art competition', 'Creative Wings' ],
+            'seo_title'        => 'Competitions in Malaysia | Creative Wings',
+            'meta_description' => 'Art, drawing, and design competitions in Malaysia. Open to students and adults. Pick one and register online.',
+            'focus_keywords'   => [ 'art drawing design competitions' ],
         ],
         'activities'                => [
-            'seo_title'        => 'Community Activities & Events | Creative Wings',
-            'meta_description' => 'Discover runs, workshops, volunteer activities, and community events on Creative Wings. Join activities that create positive impact in Malaysia.',
-            'focus_keywords'   => [ 'Malaysia activities', 'community events', 'Creative Wings' ],
+            'seo_title'        => 'Activities and Events in Malaysia | Creative Wings',
+            'meta_description' => 'Runs, art sessions, and talks in Malaysia. Open to families and adults. Pick one and register online.',
+            'focus_keywords'   => [ 'activities and events in Malaysia' ],
         ],
         'list-competitions'         => [
             'seo_title'        => 'All Competitions | Creative Wings',
@@ -247,7 +247,35 @@ function cw_bulk_seo_noindex_slugs() {
     ];
 }
 
+function cw_bulk_seo_discovery_term_payload( $slug ) {
+    $map = [
+        'drawing' => [
+            'seo_title'        => 'Drawing Competitions in Malaysia | Creative Wings',
+            'meta_description' => 'Drawing competitions in Malaysia for students and adults. The Merdeka Month drawing competition has closed. See what is open.',
+            'focus_keywords'   => [ 'drawing competitions in Malaysia' ],
+            'robots'           => [ 'index' => 'index', 'follow' => 'follow' ],
+        ],
+        'competitions-design' => [
+            'seo_title'        => 'Design Competitions in Malaysia | Creative Wings',
+            'meta_description' => 'Design competitions in Malaysia for students and adults. The ORBI design competition has closed. See what is open.',
+            'focus_keywords'   => [ 'design competitions in Malaysia' ],
+            'robots'           => [ 'index' => 'index', 'follow' => 'follow' ],
+        ],
+        'art-activities' => [
+            'seo_title'        => 'Art Competitions in Malaysia | Creative Wings',
+            'meta_description' => 'Art competitions in Malaysia. One Smile, One World is open for children until 31 December 2026. Register online.',
+            'focus_keywords'   => [ 'art competitions in Malaysia' ],
+            'robots'           => [ 'index' => 'index', 'follow' => 'follow' ],
+        ],
+    ];
+    return $map[ $slug ] ?? null;
+}
+
 function cw_bulk_seo_term_payload( WP_Term $term, WP_Term $parent = null ) {
+    $override = cw_bulk_seo_discovery_term_payload( $term->slug );
+    if ( null !== $override ) {
+        return $override;
+    }
     $name = $term->name;
     $parent_name = $parent ? $parent->name : '';
     $ctx = $parent_name ? "$name $parent_name" : $name;
